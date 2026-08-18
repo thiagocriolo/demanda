@@ -1,0 +1,5 @@
+ALTER TABLE "app"."social_post_blocks" DROP CONSTRAINT "social_post_blocks_kind_allowed";--> statement-breakpoint
+ALTER TABLE "app"."social_post_blocks" DROP CONSTRAINT "social_post_blocks_content_consistent";--> statement-breakpoint
+ALTER TABLE "app"."social_post_blocks" ADD CONSTRAINT "social_post_blocks_kind_allowed" CHECK ("app"."social_post_blocks"."kind" in ('text', 'image', 'video'));--> statement-breakpoint
+ALTER TABLE "app"."social_post_blocks" ADD CONSTRAINT "social_post_blocks_content_consistent" CHECK (("app"."social_post_blocks"."kind" = 'text' and nullif(btrim(coalesce("app"."social_post_blocks"."text_content", '')), '') is not null and "app"."social_post_blocks"."file_id" is null)
+        or ("app"."social_post_blocks"."kind" in ('image', 'video') and "app"."social_post_blocks"."file_id" is not null and "app"."social_post_blocks"."text_content" is null));

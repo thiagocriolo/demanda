@@ -1,0 +1,2 @@
+ALTER TABLE "app"."password_reset_tokens" ADD COLUMN "revoked_at" timestamp (3) with time zone;--> statement-breakpoint
+ALTER TABLE "app"."password_reset_tokens" ADD CONSTRAINT "password_reset_tokens_revocation_not_before_creation" CHECK ("app"."password_reset_tokens"."revoked_at" is null or "app"."password_reset_tokens"."revoked_at" >= "app"."password_reset_tokens"."created_at");

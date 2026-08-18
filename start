@@ -1,0 +1,77 @@
+INSTRUCOES PARA INICIAR O SISTEMA DEMANDA
+
+Diretorio do projeto:
+C:\danger\Demanda
+
+Endereco local:
+http://localhost:5190
+
+1. Verificar os pre-requisitos
+
+- Node.js 20 ou superior.
+- PostgreSQL em execucao.
+- Arquivo .env existente na raiz, com DATABASE_URL configurada.
+- Dependencias instaladas em node_modules.
+
+2. Abrir o PowerShell no diretorio do projeto
+
+Set-Location "C:\danger\Demanda"
+
+3. Instalar as dependencias, caso node_modules nao exista
+
+npm install
+
+4. Verificar a conexao com o PostgreSQL
+
+npm run db:check
+
+Se a verificacao falhar, confirmar se o servico PostgreSQL esta ativo e se a
+DATABASE_URL do arquivo .env esta correta antes de continuar.
+
+5. Aplicar migrations pendentes
+
+npm run db:migrate
+
+Este passo deve ser executado antes de iniciar a aplicacao. Ele evita erros 500
+causados por diferencas entre o codigo atual e a estrutura do banco.
+
+6. Verificar se a porta 5190 ja esta em uso
+
+Get-NetTCPConnection -State Listen -LocalPort 5190 -ErrorAction SilentlyContinue
+
+Se houver um processo escutando nessa porta, testar primeiro:
+
+curl.exe --noproxy "*" --max-time 10 -sS -L -o NUL -w "HTTP %{http_code}`n" "http://localhost:5190/"
+
+Se o resultado for HTTP 200, o sistema ja esta iniciado e nao se deve abrir
+outro processo.
+
+7. Iniciar o servidor de desenvolvimento em segundo plano
+
+Start-Process -FilePath "npm.cmd" -ArgumentList "run", "dev" -WorkingDirectory "C:\danger\Demanda" -WindowStyle Hidden -PassThru
+
+8. Confirmar que o sistema iniciou
+
+Aguardar alguns segundos e executar:
+
+Get-NetTCPConnection -State Listen -LocalPort 5190 -ErrorAction SilentlyContinue
+
+curl.exe --noproxy "*" --max-time 10 -sS -L -o NUL -w "HTTP %{http_code}`n" "http://localhost:5190/"
+
+O resultado esperado e HTTP 200. Depois, acessar:
+
+http://localhost:5190
+
+9. Diagnostico rapido em caso de falha
+
+- Executar novamente: npm run db:check
+- Confirmar que npm run db:migrate terminou sem erros.
+- Executar npm run check para validar o projeto.
+- Confirmar que nenhuma outra aplicacao esta usando a porta 5190.
+- Nao executar npm run db:seed durante uma inicializacao comum, pois esse
+  comando cria ou atualiza dados de desenvolvimento e nao e necessario para
+  apenas iniciar o sistema.
+
+Pedido sugerido para uma proxima sessao:
+
+"Consulte o arquivo start e inicie o sistema"

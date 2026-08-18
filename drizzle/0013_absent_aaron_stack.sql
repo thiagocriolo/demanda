@@ -1,0 +1,2 @@
+ALTER TABLE "app"."workspace_configurations" ADD COLUMN "template_gallery_version" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "app"."workspace_configurations" ADD CONSTRAINT "workspace_configurations_gallery_version_positive" CHECK ("app"."workspace_configurations"."template_gallery_version" > 0);

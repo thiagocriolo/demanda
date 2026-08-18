@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Avatar do usuário">
+  <defs>
+    <linearGradient id="background" x1="14" y1="8" x2="82" y2="90" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#dce5ff"/>
+      <stop offset="1" stop-color="#aebff5"/>
+    </linearGradient>
+    <linearGradient id="shirt" x1="48" y1="58" x2="48" y2="98" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5575dc"/>
+      <stop offset="1" stop-color="#2f4ca7"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="48" fill="url(#background)"/>
+  <circle cx="48" cy="37" r="19" fill="#f3c9a9"/>
+  <path d="M29 36c0-15 8-23 20-23 11 0 19 8 19 21-6-2-11-7-14-13-5 7-14 12-25 15Z" fill="#273550"/>
+  <path d="M17 96c2-24 13-36 31-36s29 12 31 36H17Z" fill="url(#shirt)"/>
+  <path d="M39 59c2 5 5 7 9 7s7-2 9-7v10c-2 4-5 6-9 6s-7-2-9-6V59Z" fill="#eab895"/>
+</svg>

@@ -1,0 +1,1 @@
+ALTER TABLE "app"."audit_logs" ADD CONSTRAINT "audit_logs_metadata_is_object" CHECK (jsonb_typeof("app"."audit_logs"."metadata") = 'object');

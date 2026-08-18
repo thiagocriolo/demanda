@@ -1,0 +1,3 @@
+DROP INDEX "app"."contacts_workspace_linked_user_unique";--> statement-breakpoint
+CREATE INDEX "contacts_workspace_updated_id_index" ON "app"."contacts" USING btree ("workspace_id","updated_at","id");--> statement-breakpoint
+CREATE UNIQUE INDEX "contacts_workspace_linked_user_unique" ON "app"."contacts" USING btree ("workspace_id","linked_user_id") WHERE "app"."contacts"."linked_user_id" is not null and "app"."contacts"."archived_at" is null;

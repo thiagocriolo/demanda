@@ -1,0 +1,286 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1783992495841,
+      "tag": "0000_core-tenancy",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783992501679,
+      "tag": "0001_workspace-owner-invariant",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783993821113,
+      "tag": "0002_authentication",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783994019704,
+      "tag": "0003_password-reset-revocation",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783994834940,
+      "tag": "0004_request-context-authorization",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783995228957,
+      "tag": "0005_audit-metadata-object",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783996206822,
+      "tag": "0006_people-contacts",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783997417712,
+      "tag": "0007_contact-index-hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783998454903,
+      "tag": "0008_businesses",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783998952489,
+      "tag": "0009_business-note-ordering",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784000679656,
+      "tag": "0010_projects-services",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784003412949,
+      "tag": "0011_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784026941632,
+      "tag": "0012_polite_leech",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784027359678,
+      "tag": "0013_absent_aaron_stack",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784028074459,
+      "tag": "0014_sudden_proudstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784029102821,
+      "tag": "0015_careless_grey_gargoyle",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784030308555,
+      "tag": "0016_nifty_smasher",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784031335694,
+      "tag": "0017_wet_turbo",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784033315909,
+      "tag": "0018_fixed_colonel_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784035839640,
+      "tag": "0019_chubby_chronomancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784040400554,
+      "tag": "0020_harsh_luke_cage",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784061456712,
+      "tag": "0021_simple_mantis",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784067030958,
+      "tag": "0022_bizarre_rage",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1784067544158,
+      "tag": "0023_private_user_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784068500000,
+      "tag": "0024_global_cronograma",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784069700000,
+      "tag": "0025_canonical_personal_workspace_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1784295912111,
+      "tag": "0026_great_toro",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1784295972205,
+      "tag": "0027_melted_maelstrom",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1786460574196,
+      "tag": "0028_needy_skrulls",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1786473434465,
+      "tag": "0029_strong_imperial_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1786477136949,
+      "tag": "0030_absent_steve_rogers",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1786483806342,
+      "tag": "0031_calm_greymalkin",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786485145040,
+      "tag": "0032_glossy_yellowjacket",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786488341527,
+      "tag": "0033_clean_pyro",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1786490484622,
+      "tag": "0034_flowery_killraven",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1786492419633,
+      "tag": "0035_massive_surge",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1786495414463,
+      "tag": "0036_absurd_jocasta",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1786499834716,
+      "tag": "0037_dear_wild_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1786501220748,
+      "tag": "0038_fluffy_ozymandias",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1786999530968,
+      "tag": "0039_concerned_leader",
+      "breakpoints": true
+    }
+  ]
+}
