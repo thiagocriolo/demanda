@@ -61,6 +61,7 @@
       ...contactRecordsDomain.initialFacets,
     }),
   );
+  let contactsPage = $state(1);
   const contactsController = createPaginatedRecordsController({
     pageSize: recordsPageSize,
     initialFacets: { ...contactRecordsDomain.initialFacets },
@@ -68,6 +69,7 @@
     errorMessage: contactRecordsDomain.errorMessage,
     onChange: (state) => {
       contactsState = state;
+      contactsPage = state.page;
     },
   });
   let contactsInitialized = $state(false);
@@ -387,7 +389,7 @@
       orderBy: recordsOrderBy,
       showArchived: recordsShowArchived,
     });
-    const page = contactsState.page;
+    const page = contactsPage;
     if (!contactsInitialized || activeTab !== "pessoas") return;
     if (lastContactFilterKey && lastContactFilterKey !== filterKey) {
       lastContactFilterKey = filterKey;
