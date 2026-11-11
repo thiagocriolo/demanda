@@ -56,14 +56,9 @@ export const services = applicationSchema.table(
       withTimezone: true,
       precision: 3,
     }),
-    activeName: varchar("active_name", { length: 140 }).generatedAlwaysAs(
-      sql`case when archived_at is null then name else null end`,
-    ),
   },
   (table) => [
     unique("services_workspace_id_id_unique").on(table.workspaceId, table.id),
-    uniqueIndex("services_workspace_active_name_unique")
-      .on(table.workspaceId, table.activeName),
     index("services_workspace_updated_id_index").on(
       table.workspaceId,
       table.updatedAt,
@@ -285,9 +280,6 @@ export const deliveryTemplates = applicationSchema.table(
       withTimezone: true,
       precision: 3,
     }),
-    activeName: varchar("active_name", { length: 140 }).generatedAlwaysAs(
-      sql`case when archived_at is null then name else null end`,
-    ),
   },
   (table) => [
     unique("delivery_templates_workspace_id_id_unique").on(
@@ -299,8 +291,6 @@ export const deliveryTemplates = applicationSchema.table(
       columns: [table.workspaceId, table.serviceId],
       foreignColumns: [services.workspaceId, services.id],
     }),
-    uniqueIndex("delivery_templates_workspace_active_name_unique")
-      .on(table.workspaceId, table.activeName),
     index("delivery_templates_workspace_service_order_index").on(
       table.workspaceId,
       table.serviceId,

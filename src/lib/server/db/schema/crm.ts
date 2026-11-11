@@ -105,9 +105,6 @@ export const contactPhones = applicationSchema.table(
     number: varchar("number", { length: 16 }).notNull(),
     label: varchar("label", { length: 80 }),
     isPrimary: boolean("is_primary").default(false).notNull(),
-    primaryContactId: uuid("primary_contact_id").generatedAlwaysAs(
-      sql`case when is_primary then contact_id else null end`,
-    ),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -122,8 +119,6 @@ export const contactPhones = applicationSchema.table(
       table.contactId,
       table.number,
     ),
-    uniqueIndex("contact_phones_one_primary_unique")
-      .on(table.workspaceId, table.primaryContactId),
     index("contact_phones_workspace_number_index").on(
       table.workspaceId,
       table.number,
@@ -162,9 +157,6 @@ export const contactEmails = applicationSchema.table(
     address: varchar("address", { length: 320 }).notNull(),
     label: varchar("label", { length: 80 }),
     isPrimary: boolean("is_primary").default(false).notNull(),
-    primaryContactId: uuid("primary_contact_id").generatedAlwaysAs(
-      sql`case when is_primary then contact_id else null end`,
-    ),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -179,8 +171,6 @@ export const contactEmails = applicationSchema.table(
       table.contactId,
       table.address,
     ),
-    uniqueIndex("contact_emails_one_primary_unique")
-      .on(table.workspaceId, table.primaryContactId),
     index("contact_emails_workspace_address_index").on(
       table.workspaceId,
       table.address,

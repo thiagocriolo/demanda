@@ -47,9 +47,6 @@ export const workspaces = applicationSchema.table(
     ownerUserId: uuid("owner_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    personalOwnerId: uuid("personal_owner_id").generatedAlwaysAs(
-      sql`case when kind = 'personal' then owner_user_id else null end`,
-    ),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: timestamp("archived_at", {
@@ -59,8 +56,6 @@ export const workspaces = applicationSchema.table(
   },
   (table) => [
     index("workspaces_owner_user_id_index").on(table.ownerUserId),
-    uniqueIndex("workspaces_personal_owner_unique")
-      .on(table.personalOwnerId),
     check("workspaces_name_not_blank", sql`length(btrim(${table.name})) > 0`),
     check(
       "workspaces_kind_allowed",
@@ -86,9 +81,6 @@ export const workspaceMembers = applicationSchema.table(
       .$type<WorkspaceRole>()
       .default("member")
       .notNull(),
-    ownerUserId: uuid("owner_user_id").generatedAlwaysAs(
-      sql`case when role = 'owner' then user_id else null end`,
-    ),
     joinedAt: timestamp("joined_at", {
       withTimezone: true,
       precision: 3,
@@ -103,8 +95,6 @@ export const workspaceMembers = applicationSchema.table(
       columns: [table.workspaceId, table.userId],
     }),
     index("workspace_members_user_id_index").on(table.userId),
-    uniqueIndex("workspace_members_one_owner_unique")
-      .on(table.workspaceId, table.ownerUserId),
     check(
       "workspace_members_role_allowed",
       sql`${table.role} in ('owner', 'admin', 'member')`,
@@ -221,9 +211,6 @@ export const workspaceInvitations = applicationSchema.table(
       .$type<WorkspaceInvitationStatus>()
       .default("pending")
       .notNull(),
-    pendingEmail: varchar("pending_email", { length: 320 }).generatedAlwaysAs(
-      sql`case when status = 'pending' then email else null end`,
-    ),
     acceptedByUserId: uuid("accepted_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -244,8 +231,6 @@ export const workspaceInvitations = applicationSchema.table(
       table.email,
       table.status,
     ),
-    uniqueIndex("workspace_invitations_pending_email_unique")
-      .on(table.workspaceId, table.pendingEmail),
     check(
       "workspace_invitations_email_normalized",
       sql`${table.email} = lower(btrim(${table.email}))`,

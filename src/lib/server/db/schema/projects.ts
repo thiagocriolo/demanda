@@ -34,10 +34,6 @@ export const projects = applicationSchema.table(
       .references(() => businesses.id, { onDelete: "cascade" }),
     sourceServiceId: uuid("source_service_id"),
     isInstitutional: boolean("is_institutional").default(false).notNull(),
-    institutionalBusinessId: char("institutional_business_id", { length: 36 })
-      .generatedAlwaysAs(
-        sql`case when is_institutional then business_id else null end`,
-      ),
     name: varchar("name", { length: 140 }).notNull(),
     statusKey: varchar("status_key", { length: 64 }).notNull(),
     briefing: text("briefing").default("").notNull(),
@@ -65,8 +61,6 @@ export const projects = applicationSchema.table(
       table.id,
       table.businessId,
     ),
-    uniqueIndex("projects_workspace_business_institutional_unique")
-      .on(table.workspaceId, table.institutionalBusinessId),
     foreignKey({
       name: "projects_workspace_source_service_foreign_key",
       columns: [table.workspaceId, table.sourceServiceId],
