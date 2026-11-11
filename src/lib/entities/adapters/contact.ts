@@ -3,6 +3,7 @@ import {
   archiveContact,
   contactToEntityRecord,
   createContact,
+  deleteContact,
   entityValuesToContactInput,
   getContact,
   updateContact,
@@ -27,6 +28,10 @@ export const contactEntityAdapter: EntityPersistenceAdapter = {
 
   async archive(id) {
     await archiveContact(id);
+  },
+
+  async delete(id) {
+    await deleteContact(id);
   },
 
   isApiError(cause) {

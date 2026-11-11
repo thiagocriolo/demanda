@@ -3,6 +3,7 @@ import {
   archiveBusiness,
   businessToEntityRecord,
   createBusiness,
+  deleteBusiness,
   entityValuesToBusinessInput,
   getBusiness,
   updateBusiness,
@@ -25,6 +26,10 @@ export const businessEntityAdapter: EntityPersistenceAdapter = {
 
   async archive(id) {
     await archiveBusiness(id);
+  },
+
+  async delete(id) {
+    await deleteBusiness(id);
   },
 
   isApiError(cause) {

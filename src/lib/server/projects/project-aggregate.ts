@@ -1,6 +1,7 @@
 export {
   archiveWorkspaceProject,
   createWorkspaceProject,
+  deleteWorkspaceProject,
   updateWorkspaceProject,
 } from "./project-commands";
 

@@ -27,6 +27,7 @@ import {
   contactNotes,
   contactPhones,
   contacts,
+  businessResponsibles,
   users,
   workspaces,
 } from "../db/schema";
@@ -606,5 +607,39 @@ export async function archiveWorkspaceContact(
       )
       ;
     if (affectedRows(archived) !== 1) throw new ContactNotFoundError();
+  });
+}
+
+export async function deleteWorkspaceContact(
+  database: Database,
+  context: RequestAuthorizationContext,
+  contactId: string,
+): Promise<void> {
+  await database.transaction(async (transaction) => {
+    const existing = await findScopedContactRow(
+      transaction,
+      context.user.id,
+      contactId,
+      true,
+    );
+    if (!existing) throw new ContactNotFoundError();
+
+    await transaction
+      .delete(businessResponsibles)
+      .where(
+        and(
+          eq(businessResponsibles.workspaceId, existing.workspaceId),
+          eq(businessResponsibles.contactId, contactId),
+        ),
+      );
+    const deleted = await transaction
+      .delete(contacts)
+      .where(
+        and(
+          eq(contacts.ownerUserId, context.user.id),
+          eq(contacts.id, contactId),
+        ),
+      );
+    if (affectedRows(deleted) !== 1) throw new ContactNotFoundError();
   });
 }

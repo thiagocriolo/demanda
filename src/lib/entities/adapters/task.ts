@@ -2,6 +2,7 @@ import {
   TaskApiError,
   archiveTask,
   createTask,
+  deleteTask,
   entityValuesToTaskCreateInput,
   getTask,
   taskToEntityRecord,
@@ -32,6 +33,13 @@ export const taskEntityAdapter: EntityPersistenceAdapter = {
       ? taskVersionFromRecord(current)
       : (await getTask(id)).version;
     await archiveTask(id, version);
+  },
+
+  async delete(id, current) {
+    const version = current
+      ? taskVersionFromRecord(current)
+      : (await getTask(id)).version;
+    await deleteTask(id, version);
   },
 
   isApiError(cause) {

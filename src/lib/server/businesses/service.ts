@@ -844,3 +844,39 @@ export async function archiveWorkspaceBusiness(
     if (affectedRows(archived) !== 1) throw new BusinessNotFoundError();
   });
 }
+
+export async function deleteWorkspaceBusiness(
+  database: Database,
+  context: RequestAuthorizationContext,
+  businessId: string,
+): Promise<void> {
+  const ownerUserId = context.user.id;
+  await database.transaction(async (transaction) => {
+    const existing = await findScopedBusinessRow(
+      transaction,
+      ownerUserId,
+      businessId,
+      true,
+    );
+    if (!existing) throw new BusinessNotFoundError();
+
+    await transaction
+      .delete(projects)
+      .where(
+        and(
+          eq(projects.workspaceId, existing.workspaceId),
+          eq(projects.businessId, businessId),
+        ),
+      );
+    const deleted = await transaction
+      .delete(businesses)
+      .where(
+        and(
+          eq(businesses.workspaceId, existing.workspaceId),
+          eq(businesses.ownerUserId, ownerUserId),
+          eq(businesses.id, businessId),
+        ),
+      );
+    if (affectedRows(deleted) !== 1) throw new BusinessNotFoundError();
+  });
+}

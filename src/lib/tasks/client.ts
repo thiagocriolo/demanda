@@ -297,10 +297,23 @@ export async function archiveTask(
   const task = await requestJson<Task>(
     fetcher,
     `/api/tasks/${encodeURIComponent(taskId)}?version=${encodeURIComponent(String(version))}`,
-    { method: "DELETE" },
+    { method: "PATCH" },
   );
   notifyTasksChanged();
   return task;
+}
+
+export async function deleteTask(
+  taskId: string,
+  version: number,
+  fetcher: FetchLike = fetch,
+): Promise<void> {
+  await requestJson<{ deleted: true }>(
+    fetcher,
+    `/api/tasks/${encodeURIComponent(taskId)}?version=${encodeURIComponent(String(version))}`,
+    { method: "DELETE" },
+  );
+  notifyTasksChanged();
 }
 
 export async function updateTaskBoard(

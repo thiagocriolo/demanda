@@ -17,5 +17,6 @@ export type EntityPersistenceAdapter = {
   load(id: string): Promise<EntityRecord>;
   save(request: EntitySaveRequest): Promise<EntityRecord>;
   archive(id: string, current?: EntityRecord): Promise<void>;
+  delete(id: string, current?: EntityRecord): Promise<void>;
   isApiError(cause: unknown): boolean;
 };

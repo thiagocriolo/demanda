@@ -1640,3 +1640,38 @@ export async function archiveWorkspaceTask(
     return task;
   });
 }
+
+export async function deleteWorkspaceTask(
+  database: Database,
+  context: RequestAuthorizationContext,
+  taskId: string,
+  version: number,
+): Promise<void> {
+  const workspaceId = workspaceIdFromContext(context);
+  await database.transaction(async (transaction) => {
+    await requireWorkspacePermissionForUpdate(
+      transaction,
+      context.user.id,
+      workspaceId,
+      "workspace:write",
+    );
+    const existing = await findScopedTaskRow(
+      transaction,
+      workspaceId,
+      taskId,
+      true,
+    );
+    if (!existing) throw new TaskNotFoundError();
+    if (existing.version !== version) throw new TaskVersionConflictError();
+    const deleted = await transaction
+      .delete(tasks)
+      .where(
+        and(
+          eq(tasks.workspaceId, workspaceId),
+          eq(tasks.id, taskId),
+          eq(tasks.version, version),
+        ),
+      );
+    if (affectedRows(deleted) !== 1) throw new TaskVersionConflictError();
+  });
+}

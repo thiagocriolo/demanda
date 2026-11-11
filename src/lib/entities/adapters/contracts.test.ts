@@ -117,10 +117,10 @@ describe("entity persistence adapter contracts", () => {
 
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/tasks/task-1?version=7");
-    expect(fetcher.mock.calls[0]?.[1]?.method).toBe("DELETE");
+    expect(fetcher.mock.calls[0]?.[1]?.method).toBe("PATCH");
   });
 
-  it("loads a card task before archiving so the delete remains versioned", async () => {
+  it("loads a card task before archiving so the action remains versioned", async () => {
     const fetcher = vi.fn(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
         jsonResponse(task),
@@ -132,6 +132,25 @@ describe("entity persistence adapter contracts", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/tasks/task-1");
     expect(fetcher.mock.calls[1]?.[0]).toBe("/api/tasks/task-1?version=7");
-    expect(fetcher.mock.calls[1]?.[1]?.method).toBe("DELETE");
+    expect(fetcher.mock.calls[1]?.[1]?.method).toBe("PATCH");
+  });
+
+  it("deletes a task permanently with its current version", async () => {
+    const fetcher = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        jsonResponse({ deleted: true }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+
+    await taskEntityAdapter.delete("task-1", {
+      id: "task-1",
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      version: "7",
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/tasks/task-1?version=7");
+    expect(fetcher.mock.calls[0]?.[1]?.method).toBe("DELETE");
   });
 });

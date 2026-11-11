@@ -7,6 +7,7 @@ import { getDatabase } from "$lib/server/db";
 import { throwTaskHttpError } from "$lib/server/tasks/http";
 import {
   archiveWorkspaceTask,
+  deleteWorkspaceTask,
   getWorkspaceTask,
   TaskNotFoundError,
   updateWorkspaceTask,
@@ -54,7 +55,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
 };
 
-export const DELETE: RequestHandler = async ({ locals, params, url }) => {
+export const PATCH: RequestHandler = async ({ locals, params, url }) => {
   const context = requireAuthenticatedRequest(locals);
   const parsed = taskArchiveQuerySchema.safeParse(
     Object.fromEntries(url.searchParams),
@@ -70,6 +71,26 @@ export const DELETE: RequestHandler = async ({ locals, params, url }) => {
         parsed.data.version,
       ),
     );
+  } catch (cause) {
+    throwTaskHttpError(cause);
+  }
+};
+
+export const DELETE: RequestHandler = async ({ locals, params, url }) => {
+  const context = requireAuthenticatedRequest(locals);
+  const parsed = taskArchiveQuerySchema.safeParse(
+    Object.fromEntries(url.searchParams),
+  );
+  if (!parsed.success) error(400, "VersÃ£o da tarefa invÃ¡lida.");
+
+  try {
+    await deleteWorkspaceTask(
+      getDatabase(),
+      context,
+      taskId(params.taskId),
+      parsed.data.version,
+    );
+    return json({ deleted: true as const });
   } catch (cause) {
     throwTaskHttpError(cause);
   }

@@ -302,6 +302,18 @@ export async function archiveProject(
   await requestJson<{ archived: true }>(
     fetcher,
     `/api/projects/${encodeURIComponent(projectId)}`,
+    { method: "PATCH" },
+  );
+  notifyProjectsChanged();
+}
+
+export async function deleteProject(
+  projectId: string,
+  fetcher: FetchLike = fetch,
+): Promise<void> {
+  await requestJson<{ deleted: true }>(
+    fetcher,
+    `/api/projects/${encodeURIComponent(projectId)}`,
     { method: "DELETE" },
   );
   notifyProjectsChanged();

@@ -7,6 +7,7 @@ import { throwBusinessHttpError } from "$lib/server/businesses/http";
 import {
   archiveWorkspaceBusiness,
   BusinessNotFoundError,
+  deleteWorkspaceBusiness,
   getWorkspaceBusiness,
   updateWorkspaceBusiness,
 } from "$lib/server/businesses/service";
@@ -57,7 +58,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
 };
 
-export const DELETE: RequestHandler = async ({ locals, params }) => {
+export const PATCH: RequestHandler = async ({ locals, params }) => {
   const context = requireAuthenticatedRequest(locals);
   try {
     await archiveWorkspaceBusiness(
@@ -66,6 +67,20 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
       businessId(params.businessId),
     );
     return json({ archived: true as const });
+  } catch (cause) {
+    throwBusinessHttpError(cause);
+  }
+};
+
+export const DELETE: RequestHandler = async ({ locals, params }) => {
+  const context = requireAuthenticatedRequest(locals);
+  try {
+    await deleteWorkspaceBusiness(
+      getDatabase(),
+      context,
+      businessId(params.businessId),
+    );
+    return json({ deleted: true as const });
   } catch (cause) {
     throwBusinessHttpError(cause);
   }

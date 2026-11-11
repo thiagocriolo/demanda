@@ -458,3 +458,35 @@ export async function archiveWorkspaceProject(
     if (affectedRows(updated) !== 1) throw new ProjectNotFoundError();
   });
 }
+
+export async function deleteWorkspaceProject(
+  database: Database,
+  context: RequestAuthorizationContext,
+  projectId: string,
+): Promise<void> {
+  const workspaceId = workspaceIdFromContext(context);
+  await database.transaction(async (transaction) => {
+    await requireWorkspacePermissionForUpdate(
+      transaction,
+      context.user.id,
+      workspaceId,
+      "workspace:write",
+    );
+    const existing = await findScopedProjectRow(
+      transaction,
+      workspaceId,
+      projectId,
+      true,
+    );
+    if (!existing) throw new ProjectNotFoundError();
+    if (existing.isInstitutional) {
+      throw new InstitutionalProjectProtectedError();
+    }
+    const deleted = await transaction
+      .delete(projects)
+      .where(
+        and(eq(projects.workspaceId, workspaceId), eq(projects.id, projectId)),
+      );
+    if (affectedRows(deleted) !== 1) throw new ProjectNotFoundError();
+  });
+}

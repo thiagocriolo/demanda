@@ -8,6 +8,7 @@ import { throwContactHttpError } from "$lib/server/contacts/http";
 import {
   archiveWorkspaceContact,
   ContactNotFoundError,
+  deleteWorkspaceContact,
   getWorkspaceContact,
   updateWorkspaceContact,
 } from "$lib/server/contacts/service";
@@ -57,7 +58,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
 };
 
-export const DELETE: RequestHandler = async ({ locals, params }) => {
+export const PATCH: RequestHandler = async ({ locals, params }) => {
   const context = requireAuthenticatedRequest(locals);
   try {
     await archiveWorkspaceContact(
@@ -66,6 +67,20 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
       contactId(params.contactId),
     );
     return json({ archived: true as const });
+  } catch (cause) {
+    throwContactHttpError(cause);
+  }
+};
+
+export const DELETE: RequestHandler = async ({ locals, params }) => {
+  const context = requireAuthenticatedRequest(locals);
+  try {
+    await deleteWorkspaceContact(
+      getDatabase(),
+      context,
+      contactId(params.contactId),
+    );
+    return json({ deleted: true as const });
   } catch (cause) {
     throwContactHttpError(cause);
   }

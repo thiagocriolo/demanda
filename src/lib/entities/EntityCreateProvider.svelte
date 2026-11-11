@@ -267,8 +267,20 @@
 
   async function confirmDelete(): Promise<void> {
     if (!activeConfig || !activeRecord) return;
-    if (getEntityPersistenceAdapter(activeConfig.key)) {
-      await archiveActive();
+    const adapter = getEntityPersistenceAdapter(activeConfig.key);
+    if (adapter) {
+      const epoch = beginRequest();
+      if (epoch === undefined) return;
+      try {
+        await adapter.delete(activeRecord.id, activeRecord);
+        if (!isCurrentRequest(epoch)) return;
+        reset();
+      } catch (cause) {
+        if (!isCurrentRequest(epoch)) return;
+        requestError = entityPersistenceErrorMessage(cause);
+      } finally {
+        finishRequest(epoch);
+      }
       return;
     }
     const records = loadEntityRecords(activeConfig).filter(
@@ -281,6 +293,19 @@
   function cancelDelete(): void {
     deleting = false;
     if (!formMode) reset();
+  }
+
+  function deleteWarningFor(config: EntityConfig): string | undefined {
+    if (config.key === "negocios") {
+      return "Projetos, tarefas e lançamentos financeiros vinculados também serão removidos.";
+    }
+    if (config.key === "projetos") {
+      return "Tarefas e lançamentos financeiros vinculados também serão removidos.";
+    }
+    if (config.key === "entregas") {
+      return "Subtarefas e blocos do cronograma vinculados também serão removidos.";
+    }
+    return undefined;
   }
 </script>
 
@@ -340,10 +365,7 @@
     oncancel={cancelDelete}
     onarchive={archiveActive}
     onconfirm={confirmDelete}
-    softDeleteOnly={activeConfig.key === "pessoas" ||
-      activeConfig.key === "negocios" ||
-      activeConfig.key === "projetos" ||
-      activeConfig.key === "entregas"}
+    deleteWarning={deleteWarningFor(activeConfig)}
   />
 {/if}
 

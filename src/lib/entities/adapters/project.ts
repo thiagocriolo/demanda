@@ -3,6 +3,7 @@ import {
   archiveProject,
   createProject,
   createProjectFromService,
+  deleteProject,
   entityValuesToProjectFromServiceInput,
   entityValuesToProjectInput,
   getProject,
@@ -33,6 +34,10 @@ export const projectEntityAdapter: EntityPersistenceAdapter = {
 
   async archive(id) {
     await archiveProject(id);
+  },
+
+  async delete(id) {
+    await deleteProject(id);
   },
 
   isApiError(cause) {

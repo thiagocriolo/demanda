@@ -7,12 +7,14 @@
     onarchive,
     onconfirm,
     softDeleteOnly = false,
+    deleteWarning,
   } = $props<{
     entityName: string;
     oncancel: () => void;
     onarchive?: () => void;
     onconfirm: () => void;
     softDeleteOnly?: boolean;
+    deleteWarning?: string;
   }>();
 </script>
 
@@ -40,7 +42,8 @@
         continuará preservado no workspace.
       {:else}
         Tem certeza de que deseja excluir <strong>{entityName}</strong>? Esta
-        ação removerá o cadastro permanentemente deste dispositivo.
+        ação removerá o cadastro permanentemente.
+        {#if deleteWarning} {deleteWarning}{/if}
       {/if}
     </p>
     <div class="actions">

@@ -184,6 +184,18 @@ export async function archiveContact(
   await requestJson<{ archived: true }>(
     fetcher,
     `/api/contacts/${encodeURIComponent(contactId)}`,
+    { method: "PATCH" },
+  );
+  notifyContactsChanged();
+}
+
+export async function deleteContact(
+  contactId: string,
+  fetcher: FetchLike = fetch,
+): Promise<void> {
+  await requestJson<{ deleted: true }>(
+    fetcher,
+    `/api/contacts/${encodeURIComponent(contactId)}`,
     { method: "DELETE" },
   );
   notifyContactsChanged();

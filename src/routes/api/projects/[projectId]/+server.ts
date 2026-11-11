@@ -7,6 +7,7 @@ import { getDatabase } from "$lib/server/db";
 import { throwProjectHttpError } from "$lib/server/projects/http";
 import {
   archiveWorkspaceProject,
+  deleteWorkspaceProject,
   getWorkspaceProject,
   ProjectNotFoundError,
   updateWorkspaceProject,
@@ -57,7 +58,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
 };
 
-export const DELETE: RequestHandler = async ({ locals, params }) => {
+export const PATCH: RequestHandler = async ({ locals, params }) => {
   const context = requireAuthenticatedRequest(locals);
   try {
     await archiveWorkspaceProject(
@@ -66,6 +67,20 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
       projectId(params.projectId),
     );
     return json({ archived: true as const });
+  } catch (cause) {
+    throwProjectHttpError(cause);
+  }
+};
+
+export const DELETE: RequestHandler = async ({ locals, params }) => {
+  const context = requireAuthenticatedRequest(locals);
+  try {
+    await deleteWorkspaceProject(
+      getDatabase(),
+      context,
+      projectId(params.projectId),
+    );
+    return json({ deleted: true as const });
   } catch (cause) {
     throwProjectHttpError(cause);
   }

@@ -10,6 +10,7 @@ export {
   archiveWorkspaceProject,
   createWorkspaceProject,
   createWorkspaceProjectFromService,
+  deleteWorkspaceProject,
   getWorkspaceProject,
   getWorkspaceProjectOptions,
   listWorkspaceProjects,

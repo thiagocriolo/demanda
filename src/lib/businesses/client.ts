@@ -170,6 +170,18 @@ export async function archiveBusiness(
   await requestJson<{ archived: true }>(
     fetcher,
     `/api/businesses/${encodeURIComponent(businessId)}`,
+    { method: "PATCH" },
+  );
+  notifyBusinessesChanged();
+}
+
+export async function deleteBusiness(
+  businessId: string,
+  fetcher: FetchLike = fetch,
+): Promise<void> {
+  await requestJson<{ deleted: true }>(
+    fetcher,
+    `/api/businesses/${encodeURIComponent(businessId)}`,
     { method: "DELETE" },
   );
   notifyBusinessesChanged();
