@@ -168,6 +168,7 @@ export async function registerAccount(
   const avatarUrl =
     input.avatarUrl ??
     avatarProfileUrl(generatedAvatar.avatarImage, generatedAvatar.avatarColor);
+  const now = new Date();
 
   try {
     return await database.transaction(async (transaction) => {
@@ -180,6 +181,10 @@ export async function registerAccount(
           name: input.username,
           email: input.email,
           avatarUrl,
+          emailVerifiedAt: null,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
         });
       const [createdUser] = await transaction
         .select()
@@ -192,6 +197,9 @@ export async function registerAccount(
       await transaction.insert(userCredentials).values({
         userId: createdUser.id,
         passwordHash,
+        passwordChangedAt: now,
+        createdAt: now,
+        updatedAt: now,
       });
 
       const workspaceId = randomUUID();
@@ -205,11 +213,16 @@ export async function registerAccount(
           color: "blue",
           kind: "personal",
           ownerUserId: createdUser.id,
+          createdAt: now,
+          updatedAt: now,
+          archivedAt: null,
         });
       await transaction.insert(workspaceMembers).values({
         workspaceId,
         userId: createdUser.id,
         role: "owner",
+        joinedAt: now,
+        updatedAt: now,
       });
       const [personalWorkspace] = await transaction
         .select({ id: workspaces.id })
