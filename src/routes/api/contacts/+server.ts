@@ -13,6 +13,14 @@ import {
   contactMutationSchema,
 } from "$lib/server/contacts/validation";
 
+function logContactFailure(operation: "list" | "create", cause: unknown): void {
+  const details =
+    cause instanceof Error
+      ? { message: cause.message, cause: cause.cause }
+      : { cause };
+  console.error(`[contacts:${operation}] failed`, details);
+}
+
 export const GET: RequestHandler = async ({ locals, url }) => {
   const context = requireAuthenticatedRequest(locals);
   const parsed = contactListQuerySchema.safeParse(
@@ -25,6 +33,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
       await listWorkspaceContacts(getDatabase(), context, parsed.data),
     );
   } catch (cause) {
+    logContactFailure("list", cause);
     throwContactHttpError(cause);
   }
 };
@@ -44,6 +53,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     );
     return json(contact, { status: 201 });
   } catch (cause) {
+    logContactFailure("create", cause);
     throwContactHttpError(cause);
   }
 };
