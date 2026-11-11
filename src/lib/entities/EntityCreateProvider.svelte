@@ -15,46 +15,12 @@
     loadEntityRecords,
     saveEntityRecords,
   } from "./storage";
+  import {
+    entityPersistenceErrorMessage,
+    getEntityPersistenceAdapter,
+    type EntityPersistenceAdapter,
+  } from "./adapters";
   import { loadActiveWorkspaceId } from "$lib/workspaces/workspace-storage";
-  import {
-    BusinessApiError,
-    archiveBusiness,
-    businessToEntityRecord,
-    createBusiness,
-    entityValuesToBusinessInput,
-    getBusiness,
-    updateBusiness,
-  } from "$lib/businesses/client";
-  import {
-    ProjectApiError,
-    archiveProject,
-    createProject,
-    createProjectFromService,
-    entityValuesToProjectFromServiceInput,
-    entityValuesToProjectInput,
-    getProject,
-    projectToEntityRecord,
-    updateProject,
-  } from "$lib/projects/client";
-  import {
-    archiveTask,
-    createTask,
-    entityValuesToTaskCreateInput,
-    getTask,
-    TaskApiError,
-    taskToEntityRecord,
-    taskVersionFromRecord,
-    updateTaskFromEntityValues,
-  } from "$lib/tasks/client";
-  import {
-    ContactApiError,
-    archiveContact,
-    contactToEntityRecord,
-    createContact,
-    entityValuesToContactInput,
-    getContact,
-    updateContact,
-  } from "$lib/contacts/client";
   import type { EntityConfig, EntityRecord } from "./types";
   import type {
     EntityCardAction,
@@ -82,7 +48,7 @@
 
   const createContext: EntityCreateContext = {
     open: (key) => {
-      invalidateContactRequest();
+      invalidateRequest();
       activeConfig = entityConfigs[key];
       activeRecord = undefined;
       formMode = "create";
@@ -94,12 +60,12 @@
 
   setContext(ENTITY_CREATE_CONTEXT, createContext);
 
-  function invalidateContactRequest(): void {
+  function invalidateRequest(): void {
     requestEpoch += 1;
     requestPending = false;
   }
 
-  function beginContactRequest(): number | undefined {
+  function beginRequest(): number | undefined {
     if (requestPending) return undefined;
     requestEpoch += 1;
     requestPending = true;
@@ -111,12 +77,12 @@
     return epoch === requestEpoch;
   }
 
-  function finishContactRequest(epoch: number): void {
+  function finishRequest(epoch: number): void {
     if (isCurrentRequest(epoch)) requestPending = false;
   }
 
   function reset(): void {
-    invalidateContactRequest();
+    invalidateRequest();
     activeConfig = undefined;
     activeRecord = undefined;
     formMode = undefined;
@@ -127,23 +93,12 @@
 
   function actOnCard(action: EntityCardAction, item: EntityCardItem): void {
     const config = entityConfigs[configKeyByKind[item.kind]];
-    if (config.key === "pessoas") {
-      void actOnContactCard(action, item.id);
+    const adapter = getEntityPersistenceAdapter(config.key);
+    if (adapter) {
+      void actOnPersistedCard(adapter, config, action, item.id);
       return;
     }
-    if (config.key === "negocios") {
-      void actOnBusinessCard(action, item.id);
-      return;
-    }
-    if (config.key === "projetos") {
-      void actOnProjectCard(action, item.id);
-      return;
-    }
-    if (config.key === "entregas") {
-      void actOnTaskCard(action, item.id);
-      return;
-    }
-    invalidateContactRequest();
+    invalidateRequest();
     requestError = "";
     const record = loadEntityRecords(config).find(
       (candidate) => candidate.id === item.id,
@@ -155,6 +110,38 @@
       return;
     }
 
+    openRecord(config, record, action);
+  }
+
+  async function actOnPersistedCard(
+    adapter: EntityPersistenceAdapter,
+    config: EntityConfig,
+    action: EntityCardAction,
+    id: string,
+  ): Promise<void> {
+    const epoch = beginRequest();
+    if (epoch === undefined) return;
+    try {
+      if (action === "archive") {
+        await adapter.archive(id);
+        return;
+      }
+      const record = await adapter.load(id);
+      if (!isCurrentRequest(epoch)) return;
+      openRecord(config, record, action);
+    } catch (cause) {
+      if (!isCurrentRequest(epoch)) return;
+      requestError = entityPersistenceErrorMessage(cause);
+    } finally {
+      finishRequest(epoch);
+    }
+  }
+
+  function openRecord(
+    config: EntityConfig,
+    record: EntityRecord,
+    action: EntityCardAction,
+  ): void {
     activeConfig = config;
     activeRecord = record;
     deleting = action === "delete";
@@ -168,229 +155,25 @@
             : undefined;
   }
 
-  async function actOnContactCard(
-    action: EntityCardAction,
-    contactId: string,
-  ): Promise<void> {
-    const epoch = beginContactRequest();
-    if (epoch === undefined) return;
-    try {
-      if (action === "archive") {
-        await archiveContact(contactId);
-        return;
-      }
-      const record = contactToEntityRecord(await getContact(contactId));
-      if (!isCurrentRequest(epoch)) return;
-      activeConfig = entityConfigs.pessoas;
-      activeRecord = record;
-      deleting = action === "delete";
-      formMode =
-        action === "view"
-          ? "view"
-          : action === "edit"
-            ? "edit"
-            : action === "copy"
-              ? "create"
-              : undefined;
-    } catch (cause) {
-      if (!isCurrentRequest(epoch)) return;
-      requestError = serverErrorMessage(cause);
-    } finally {
-      finishContactRequest(epoch);
-    }
-  }
-
-  async function actOnBusinessCard(
-    action: EntityCardAction,
-    businessId: string,
-  ): Promise<void> {
-    const epoch = beginContactRequest();
-    if (epoch === undefined) return;
-    try {
-      if (action === "archive") {
-        await archiveBusiness(businessId);
-        return;
-      }
-      const record = businessToEntityRecord(await getBusiness(businessId));
-      if (!isCurrentRequest(epoch)) return;
-      activeConfig = entityConfigs.negocios;
-      activeRecord = record;
-      deleting = action === "delete";
-      formMode =
-        action === "view"
-          ? "view"
-          : action === "edit"
-            ? "edit"
-            : action === "copy"
-              ? "create"
-              : undefined;
-    } catch (cause) {
-      if (!isCurrentRequest(epoch)) return;
-      requestError = serverErrorMessage(cause);
-    } finally {
-      finishContactRequest(epoch);
-    }
-  }
-
-  async function actOnProjectCard(
-    action: EntityCardAction,
-    projectId: string,
-  ): Promise<void> {
-    const epoch = beginContactRequest();
-    if (epoch === undefined) return;
-    try {
-      if (action === "archive") {
-        await archiveProject(projectId);
-        return;
-      }
-      const record = projectToEntityRecord(await getProject(projectId));
-      if (!isCurrentRequest(epoch)) return;
-      activeConfig = entityConfigs.projetos;
-      activeRecord = record;
-      deleting = action === "delete";
-      formMode =
-        action === "view"
-          ? "view"
-          : action === "edit"
-            ? "edit"
-            : action === "copy"
-              ? "create"
-              : undefined;
-    } catch (cause) {
-      if (!isCurrentRequest(epoch)) return;
-      requestError = serverErrorMessage(cause);
-    } finally {
-      finishContactRequest(epoch);
-    }
-  }
-
-  async function actOnTaskCard(
-    action: EntityCardAction,
-    taskId: string,
-  ): Promise<void> {
-    const epoch = beginContactRequest();
-    if (epoch === undefined) return;
-    try {
-      const task = await getTask(taskId);
-      if (action === "archive") {
-        await archiveTask(taskId, task.version);
-        return;
-      }
-      const record = taskToEntityRecord(task);
-      if (!isCurrentRequest(epoch)) return;
-      activeConfig = entityConfigs.entregas;
-      activeRecord = record;
-      deleting = action === "delete";
-      formMode =
-        action === "view"
-          ? "view"
-          : action === "edit"
-            ? "edit"
-            : action === "copy"
-              ? "create"
-              : undefined;
-    } catch (cause) {
-      if (!isCurrentRequest(epoch)) return;
-      requestError = serverErrorMessage(cause);
-    } finally {
-      finishContactRequest(epoch);
-    }
-  }
-
   async function save(values: Record<string, string>): Promise<void> {
     if (!activeConfig || !formMode) return;
-    if (activeConfig.key === "pessoas") {
-      const epoch = beginContactRequest();
+    const adapter = getEntityPersistenceAdapter(activeConfig.key);
+    if (adapter) {
+      const epoch = beginRequest();
       if (epoch === undefined) return;
       try {
-        const input = entityValuesToContactInput(values, activeRecord, {
-          copy: formMode === "create" && Boolean(activeRecord),
+        await adapter.save({
+          mode: formMode,
+          values,
+          current: activeRecord,
         });
-        if (formMode === "edit" && activeRecord) {
-          await updateContact(activeRecord.id, input);
-        } else {
-          await createContact(input);
-        }
         if (!isCurrentRequest(epoch)) return;
         reset();
       } catch (cause) {
         if (!isCurrentRequest(epoch)) return;
-        requestError = serverErrorMessage(cause);
+        requestError = entityPersistenceErrorMessage(cause);
       } finally {
-        finishContactRequest(epoch);
-      }
-      return;
-    }
-    if (activeConfig.key === "negocios") {
-      const epoch = beginContactRequest();
-      if (epoch === undefined) return;
-      try {
-        const input = entityValuesToBusinessInput(values, activeRecord);
-        if (formMode === "edit" && activeRecord) {
-          await updateBusiness(activeRecord.id, input);
-        } else {
-          await createBusiness(input);
-        }
-        if (!isCurrentRequest(epoch)) return;
-        reset();
-      } catch (cause) {
-        if (!isCurrentRequest(epoch)) return;
-        requestError = serverErrorMessage(cause);
-      } finally {
-        finishContactRequest(epoch);
-      }
-      return;
-    }
-    if (activeConfig.key === "projetos") {
-      const epoch = beginContactRequest();
-      if (epoch === undefined) return;
-      try {
-        if (formMode === "edit" && activeRecord) {
-          await updateProject(
-            activeRecord.id,
-            entityValuesToProjectInput(values, activeRecord),
-          );
-        } else if (values.sourceServiceId) {
-          await createProjectFromService(
-            entityValuesToProjectFromServiceInput(values, activeRecord),
-          );
-        } else {
-          await createProject(entityValuesToProjectInput(values, activeRecord));
-        }
-        if (!isCurrentRequest(epoch)) return;
-        reset();
-      } catch (cause) {
-        if (!isCurrentRequest(epoch)) return;
-        requestError = serverErrorMessage(cause);
-      } finally {
-        finishContactRequest(epoch);
-      }
-      return;
-    }
-    if (activeConfig.key === "entregas") {
-      const epoch = beginContactRequest();
-      if (epoch === undefined) return;
-      try {
-        if (formMode === "edit" && activeRecord) {
-          await updateTaskFromEntityValues(
-            activeRecord.id,
-            values,
-            activeRecord,
-          );
-        } else {
-          await createTask(
-            entityValuesToTaskCreateInput(values, activeRecord, {
-              copy: formMode === "create" && Boolean(activeRecord?.id),
-            }),
-          );
-        }
-        if (!isCurrentRequest(epoch)) return;
-        reset();
-      } catch (cause) {
-        if (!isCurrentRequest(epoch)) return;
-        requestError = serverErrorMessage(cause);
-      } finally {
-        finishContactRequest(epoch);
+        finishRequest(epoch);
       }
       return;
     }
@@ -415,31 +198,24 @@
     values: Record<string, string>,
   ): Promise<void> {
     if (activeConfig?.key !== "projetos" || !formMode) return;
-    const epoch = beginContactRequest();
+    const adapter = getEntityPersistenceAdapter(activeConfig.key);
+    if (!adapter) return;
+    const epoch = beginRequest();
     if (epoch === undefined) return;
     let project: EntityRecord;
     try {
-      const result =
-        formMode === "edit" && activeRecord
-          ? await updateProject(
-              activeRecord.id,
-              entityValuesToProjectInput(values, activeRecord),
-            )
-          : values.sourceServiceId
-            ? await createProjectFromService(
-                entityValuesToProjectFromServiceInput(values, activeRecord),
-              )
-            : await createProject(
-                entityValuesToProjectInput(values, activeRecord),
-              );
+      project = await adapter.save({
+        mode: formMode,
+        values,
+        current: activeRecord,
+      });
       if (!isCurrentRequest(epoch)) return;
-      project = projectToEntityRecord(result);
     } catch (cause) {
       if (!isCurrentRequest(epoch)) return;
-      requestError = serverErrorMessage(cause);
+      requestError = entityPersistenceErrorMessage(cause);
       return;
     } finally {
-      finishContactRequest(epoch);
+      finishRequest(epoch);
     }
 
     activeConfig = entityConfigs.entregas;
@@ -469,63 +245,19 @@
 
   async function archiveActive(): Promise<void> {
     if (!activeConfig || !activeRecord) return;
-    if (activeConfig.key === "pessoas") {
-      const epoch = beginContactRequest();
+    const adapter = getEntityPersistenceAdapter(activeConfig.key);
+    if (adapter) {
+      const epoch = beginRequest();
       if (epoch === undefined) return;
       try {
-        await archiveContact(activeRecord.id);
+        await adapter.archive(activeRecord.id, activeRecord);
         if (!isCurrentRequest(epoch)) return;
         reset();
       } catch (cause) {
         if (!isCurrentRequest(epoch)) return;
-        requestError = serverErrorMessage(cause);
+        requestError = entityPersistenceErrorMessage(cause);
       } finally {
-        finishContactRequest(epoch);
-      }
-      return;
-    }
-    if (activeConfig.key === "negocios") {
-      const epoch = beginContactRequest();
-      if (epoch === undefined) return;
-      try {
-        await archiveBusiness(activeRecord.id);
-        if (!isCurrentRequest(epoch)) return;
-        reset();
-      } catch (cause) {
-        if (!isCurrentRequest(epoch)) return;
-        requestError = serverErrorMessage(cause);
-      } finally {
-        finishContactRequest(epoch);
-      }
-      return;
-    }
-    if (activeConfig.key === "projetos") {
-      const epoch = beginContactRequest();
-      if (epoch === undefined) return;
-      try {
-        await archiveProject(activeRecord.id);
-        if (!isCurrentRequest(epoch)) return;
-        reset();
-      } catch (cause) {
-        if (!isCurrentRequest(epoch)) return;
-        requestError = serverErrorMessage(cause);
-      } finally {
-        finishContactRequest(epoch);
-      }
-      return;
-    }
-    if (activeConfig.key === "entregas") {
-      const epoch = beginContactRequest();
-      if (epoch === undefined) return;
-      try {
-        await archiveTask(activeRecord.id, taskVersionFromRecord(activeRecord));
-        if (!isCurrentRequest(epoch)) return;
-        reset();
-      } catch (cause) {
-        if (!isCurrentRequest(epoch)) return;
-        requestError = serverErrorMessage(cause);
-      } finally {
-        finishContactRequest(epoch);
+        finishRequest(epoch);
       }
       return;
     }
@@ -535,12 +267,7 @@
 
   async function confirmDelete(): Promise<void> {
     if (!activeConfig || !activeRecord) return;
-    if (
-      activeConfig.key === "pessoas" ||
-      activeConfig.key === "negocios" ||
-      activeConfig.key === "projetos" ||
-      activeConfig.key === "entregas"
-    ) {
+    if (getEntityPersistenceAdapter(activeConfig.key)) {
       await archiveActive();
       return;
     }
@@ -554,15 +281,6 @@
   function cancelDelete(): void {
     deleting = false;
     if (!formMode) reset();
-  }
-
-  function serverErrorMessage(cause: unknown): string {
-    return cause instanceof ContactApiError ||
-      cause instanceof BusinessApiError ||
-      cause instanceof ProjectApiError ||
-      cause instanceof TaskApiError
-      ? cause.message
-      : "Não foi possível concluir a operação solicitada.";
   }
 </script>
 

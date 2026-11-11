@@ -10,7 +10,7 @@ async function main(): Promise<void> {
   try {
     await pool.query("select 1");
     const latency = Math.round(performance.now() - startedAt);
-    console.log(`PostgreSQL acessível (${latency} ms).`);
+    console.log(`MySQL acessível (${latency} ms).`);
   } finally {
     await pool.end();
   }

@@ -17,7 +17,7 @@ import {
   requireWorkspacePermission,
   requireWorkspacePermissionForUpdate,
 } from "../authorization/workspace-context";
-import type { Database } from "../db/database";
+import { affectedRows, type Database } from "../db/database";
 import {
   businesses,
   financialEntries,
@@ -386,29 +386,28 @@ async function insertManualOccurrences(
 ): Promise<string[]> {
   const occurrences = occurrenceValues(input);
   const seriesId = occurrences.length > 1 ? randomUUID() : null;
-  const rows = await database
+  const rows = occurrences.map((item) => ({
+    id: randomUUID(),
+    workspaceId,
+    source: "manual" as const,
+    type: input.type,
+    mode: input.mode,
+    title: input.title,
+    category: input.category,
+    notes: input.notes,
+    amount: centsToDecimal(item.amountCents),
+    competenceDate: item.competenceDate,
+    dueDate: item.dueDate,
+    seriesId,
+    seriesKind: item.seriesKind,
+    seriesNumber: item.seriesNumber,
+    seriesCount: item.seriesCount,
+    createdByUserId: actorUserId,
+    updatedByUserId: actorUserId,
+  }));
+  await database
     .insert(financialEntries)
-    .values(
-      occurrences.map((item) => ({
-        workspaceId,
-        source: "manual" as const,
-        type: input.type,
-        mode: input.mode,
-        title: input.title,
-        category: input.category,
-        notes: input.notes,
-        amount: centsToDecimal(item.amountCents),
-        competenceDate: item.competenceDate,
-        dueDate: item.dueDate,
-        seriesId,
-        seriesKind: item.seriesKind,
-        seriesNumber: item.seriesNumber,
-        seriesCount: item.seriesCount,
-        createdByUserId: actorUserId,
-        updatedByUserId: actorUserId,
-      })),
-    )
-    .returning({ id: financialEntries.id });
+    .values(rows);
   return rows.map(({ id }) => id);
 }
 
@@ -635,9 +634,8 @@ export async function changeFinancialEntryState(
           eq(financialEntries.id, current.id),
           eq(financialEntries.version, input.version),
         ),
-      )
-      .returning({ id: financialEntries.id });
-    if (updated.length !== 1) throw new FinancialVersionConflictError();
+      );
+    if (affectedRows(updated) !== 1) throw new FinancialVersionConflictError();
     if (status === "settled" && current.projectInstallmentId) {
       await transaction
         .update(projectInstallments)
@@ -695,9 +693,8 @@ export async function deleteFinancialEntry(
           eq(financialEntries.version, input.version),
           isNull(financialEntries.deletedAt),
         ),
-      )
-      .returning({ id: financialEntries.id });
-    if (deleted.length !== 1) throw new FinancialVersionConflictError();
+      );
+    if (affectedRows(deleted) !== 1) throw new FinancialVersionConflictError();
     await appendAdministrativeAuditLog(
       transaction,
       { userId: context.user.id, workspace: access },

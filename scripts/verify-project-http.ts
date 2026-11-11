@@ -1,7 +1,7 @@
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { Pool } from "pg";
+import { createPool } from "mysql2/promise";
 
 type Session = { cookie: string };
 type JsonRecord = Record<string, unknown>;
@@ -11,7 +11,9 @@ const target = new URL(baseUrl);
 if (!["127.0.0.1", "localhost", "::1", "[::1]"].includes(target.hostname)) {
   throw new Error("A verificação HTTP só pode ser executada contra localhost.");
 }
-if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL não configurada.");
+if (!process.env.MYSQL_URL && !process.env.DATABASE_URL) {
+  throw new Error("MYSQL_URL não configurada.");
+}
 
 const suffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
 const ownerEmail = `be07-owner-${suffix}@example.test`;
@@ -19,7 +21,16 @@ const memberEmail = `be07-member-${suffix}@example.test`;
 const ownerUsername = `be07_owner_${suffix}`.slice(0, 40);
 const memberUsername = `be07_member_${suffix}`.slice(0, 40);
 const password = "Be07Live2026!";
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const mysqlPool = createPool({
+  uri: process.env.MYSQL_URL ?? process.env.DATABASE_URL,
+});
+const pool = {
+  async query<T>(statement: string, values: unknown[] = []): Promise<{ rows: T[] }> {
+    const [rows] = await mysqlPool.query(statement, values);
+    return { rows: rows as T[] };
+  },
+  end: () => mysqlPool.end(),
+};
 
 function sessionCookie(response: Response): string {
   const value = response.headers.get("set-cookie") ?? "";
@@ -243,12 +254,12 @@ async function idsForTemporaryUsers(): Promise<
     personal_workspace_id: string;
   }>(
     `select u.id, u.email, w.id as personal_workspace_id
-       from app.users u
-       join app.workspaces w
+       from users u
+       join workspaces w
          on w.owner_user_id = u.id and w.kind = 'personal'
-      where u.email = any($1::text[])
+      where u.email in (?, ?)
       order by u.email`,
-    [[ownerEmail, memberEmail]],
+    [ownerEmail, memberEmail],
   );
   return result.rows.map((row) => ({
     id: row.id,
@@ -280,8 +291,8 @@ async function createBusiness(
 
 async function cleanup(): Promise<void> {
   const users = await pool.query<{ id: string }>(
-    `select id from app.users where email = any($1::text[])`,
-    [[ownerEmail, memberEmail]],
+    `select id from users where email in (?, ?)`,
+    [ownerEmail, memberEmail],
   );
   const userIds = users.rows.map(({ id }) => id);
   if (!userIds.length) return;
@@ -293,12 +304,13 @@ async function cleanup(): Promise<void> {
   await pool.query("begin");
   try {
     await pool.query(
-      `delete from app.workspaces where owner_user_id = any($1::uuid[])`,
-      [userIds],
-    );
-    await pool.query(`delete from app.users where id = any($1::uuid[])`, [
+      `delete from workspaces where owner_user_id in (${userIds.map(() => "?").join(", ")})`,
       userIds,
-    ]);
+    );
+    await pool.query(
+      `delete from users where id in (${userIds.map(() => "?").join(", ")})`,
+      userIds,
+    );
     await pool.query("commit");
   } catch (error) {
     await pool.query("rollback");
@@ -340,18 +352,17 @@ async function main(): Promise<void> {
   );
   assert.equal(foreignService.workspaceId, memberUser.personalWorkspaceId);
 
-  const workspace = await pool.query<{ id: string }>(
-    `insert into app.workspaces (name, description, kind, owner_user_id)
-     values ($1, $2, 'shared', $3)
-     returning id`,
-    [`BE-07 HTTP ${suffix}`, "Workspace temporário", ownerUser.id],
+  const sharedWorkspaceId = randomUUID();
+  await pool.query(
+    `insert into workspaces (id, name, description, kind, owner_user_id)
+     values (?, ?, ?, 'shared', ?)`,
+    [sharedWorkspaceId, `BE-07 HTTP ${suffix}`, "Workspace temporário", ownerUser.id],
   );
-  const sharedWorkspaceId = workspace.rows[0]?.id ?? "";
   assert.ok(sharedWorkspaceId);
   await pool.query(
-    `insert into app.workspace_members (workspace_id, user_id, role)
-     values ($1, $2, 'member')`,
-    [sharedWorkspaceId, memberUser.id],
+    `insert into workspace_members (workspace_id, user_id, role)
+     values (?, ?, 'member'), (?, ?, 'owner')`,
+    [sharedWorkspaceId, memberUser.id, sharedWorkspaceId, ownerUser.id],
   );
   await switchWorkspace(owner, sharedWorkspaceId);
   await switchWorkspace(member, sharedWorkspaceId);
@@ -438,11 +449,11 @@ async function main(): Promise<void> {
     tags: number;
   }>(
     `select
-       (select count(*)::int from app.services
-         where workspace_id = $1 and lower(name) = lower($2)) as services,
-       (select count(*)::int from app.tags
-         where workspace_id = $1 and label = $3) as tags`,
-    [sharedWorkspaceId, sourceServiceName, rollbackTag],
+       (select count(*) from services
+         where workspace_id = ? and lower(name) = lower(?)) as services,
+       (select count(*) from tags
+         where workspace_id = ? and label = ?) as tags`,
+    [sharedWorkspaceId, sourceServiceName, sharedWorkspaceId, rollbackTag],
   );
   assert.deepEqual(rollbackProof.rows[0], { services: 1, tags: 0 });
 

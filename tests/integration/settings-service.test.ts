@@ -53,14 +53,14 @@ async function withRollback(
 
 async function insertUser(database: Database, label: string) {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
-  const [user] = await database
-    .insert(users)
-    .values({
+  const id = randomUUID();
+  await database.insert(users).values({
+      id,
       name: label,
       username: `${label.toLowerCase()}_${suffix}`,
       email: `${label.toLowerCase()}-${suffix}@example.test`,
-    })
-    .returning();
+    });
+  const [user] = await database.select().from(users).where(eq(users.id, id));
   if (!user) throw new Error("Usuario de teste nao criado.");
   return user;
 }
@@ -70,10 +70,16 @@ async function insertWorkspace(
   ownerUserId: string,
   name: string,
 ) {
-  const [workspace] = await database
+  const id = randomUUID();
+  await database
     .insert(workspaces)
-    .values({ name, kind: "shared", ownerUserId })
-    .returning();
+    .values({ id, name, kind: "shared", ownerUserId });
+  await database.insert(workspaceMembers).values({
+    workspaceId: id,
+    userId: ownerUserId,
+    role: "owner",
+  });
+  const [workspace] = await database.select().from(workspaces).where(eq(workspaces.id, id));
   if (!workspace) throw new Error("Workspace de teste nao criado.");
   return workspace;
 }

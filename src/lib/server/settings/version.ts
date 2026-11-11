@@ -11,7 +11,9 @@ export async function ensureWorkspaceConfiguration(
   await database
     .insert(workspaceConfigurations)
     .values({ workspaceId })
-    .onConflictDoNothing({ target: workspaceConfigurations.workspaceId });
+    .onDuplicateKeyUpdate({
+      set: { workspaceId: sql`${workspaceConfigurations.workspaceId}` },
+    });
 }
 
 export async function touchWorkspaceConfiguration(

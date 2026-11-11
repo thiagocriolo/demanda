@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
-import type { Database } from "../db/database";
+import { affectedRows, type Database } from "../db/database";
 import {
   businesses,
   projects,
@@ -84,6 +85,10 @@ function databaseConstraint(cause: unknown): string | undefined {
     visited.add(current);
     if ("constraint" in current && typeof current.constraint === "string") {
       return current.constraint;
+    }
+    if ("sqlMessage" in current && typeof current.sqlMessage === "string") {
+      const match = /CONSTRAINT `([^`]+)`/u.exec(current.sqlMessage);
+      if (match?.[1]) return match[1];
     }
     current = "cause" in current ? current.cause : undefined;
   }
@@ -385,17 +390,23 @@ export async function createWorkspaceToolModel(
       "A configuração não corresponde à ferramenta escolhida.",
     );
   }
-  const [row] = await database
+  const id = randomUUID();
+  await database
     .insert(toolModels)
     .values({
+      id,
       workspaceId,
       createdByUserId: context.user.id,
       toolKey: input.toolKey,
       name: input.name,
       description: input.description,
       config: structuredClone(input.config),
-    })
-    .returning();
+    });
+  const [row] = await database
+    .select()
+    .from(toolModels)
+    .where(eq(toolModels.id, id))
+    .limit(1);
   if (!row) throw new Error("Modelo não criado.");
   return modelDto(row, 0);
 }
@@ -423,7 +434,7 @@ export async function updateWorkspaceToolModel(
       "Não é possível alterar a Ferramenta de um Modelo.",
     );
   }
-  const [updated] = await database
+  const updated = await database
     .update(toolModels)
     .set({
       name: input.name,
@@ -439,11 +450,20 @@ export async function updateWorkspaceToolModel(
         eq(toolModels.version, input.version),
         isNull(toolModels.archivedAt),
       ),
-    )
-    .returning();
-  if (!updated) throw new ToolVersionConflictError();
+    );
+  if (affectedRows(updated) !== 1) throw new ToolVersionConflictError();
   const counts = await modelUsageCounts(database, workspaceId);
-  return modelDto(updated, counts.get(modelId) ?? 0);
+  return modelDto(
+    {
+      ...current,
+      name: input.name,
+      description: input.description,
+      config: structuredClone(input.config),
+      version: input.version + 1,
+      updatedAt: new Date(),
+    },
+    counts.get(modelId) ?? 0,
+  );
 }
 
 export async function duplicateWorkspaceToolModel(
@@ -459,17 +479,23 @@ export async function duplicateWorkspaceToolModel(
     workspaceId,
     "workspace:write",
   );
-  const [copy] = await database
+  const copyId = randomUUID();
+  await database
     .insert(toolModels)
     .values({
+      id: copyId,
       workspaceId,
       createdByUserId: context.user.id,
       toolKey: current.toolKey,
       name: `${current.name} — cópia`.slice(0, 120),
       description: current.description,
       config: structuredClone(current.config),
-    })
-    .returning();
+    });
+  const [copy] = await database
+    .select()
+    .from(toolModels)
+    .where(eq(toolModels.id, copyId))
+    .limit(1);
   if (!copy) throw new Error("Modelo não duplicado.");
   return modelDto(copy, 0);
 }
@@ -489,7 +515,7 @@ export async function archiveWorkspaceToolModel(
     "workspace:write",
   );
   const now = new Date();
-  const [updated] = await database
+  const updated = await database
     .update(toolModels)
     .set({ archivedAt: now, updatedAt: now, version: version + 1 })
     .where(
@@ -499,16 +525,18 @@ export async function archiveWorkspaceToolModel(
         eq(toolModels.version, version),
         isNull(toolModels.archivedAt),
       ),
-    )
-    .returning();
-  if (!updated) {
+    );
+  if (affectedRows(updated) !== 1) {
     if (current.version !== version || current.archivedAt) {
       throw new ToolVersionConflictError();
     }
     throw new ToolVersionConflictError();
   }
   const counts = await modelUsageCounts(database, workspaceId);
-  return modelDto(updated, counts.get(modelId) ?? 0);
+  return modelDto(
+    { ...current, archivedAt: now, updatedAt: now, version: version + 1 },
+    counts.get(modelId) ?? 0,
+  );
 }
 
 function assertUseInputMatchesModel(
@@ -575,9 +603,11 @@ export async function createWorkspaceToolUse(
   assertUseInputMatchesModel(model, input.content, input.status);
   await assertVisualAssets(database, workspaceId, input.content);
   try {
-    const [created] = await database
+    const id = randomUUID();
+    await database
       .insert(toolUses)
       .values({
+        id,
         workspaceId,
         createdByUserId: context.user.id,
         modelId: model.id,
@@ -587,10 +617,10 @@ export async function createWorkspaceToolUse(
         configSnapshot: structuredClone(model.config),
         content: structuredClone(input.content),
         status: input.status,
-      })
-      .returning({ id: toolUses.id });
+      });
+    const created = { id };
     if (!created) throw new Error("Uso não criado.");
-    return getHydratedUse(database, workspaceId, created.id);
+    return getHydratedUse(database, workspaceId, id);
   } catch (cause) {
     if (databaseConstraint(cause) === "tool_uses_workspace_task_foreign_key") {
       throw new ToolInputError(
@@ -660,7 +690,7 @@ export async function updateWorkspaceToolUse(
         : null;
   const archivedAt = input.status === "archived" ? now : null;
   try {
-    const [updated] = await database
+    const updated = await database
       .update(toolUses)
       .set({
         name: input.name,
@@ -678,10 +708,9 @@ export async function updateWorkspaceToolUse(
           eq(toolUses.id, useId),
           eq(toolUses.version, input.version),
         ),
-      )
-      .returning({ id: toolUses.id });
-    if (!updated) throw new ToolVersionConflictError();
-    return getHydratedUse(database, workspaceId, updated.id);
+      );
+    if (affectedRows(updated) !== 1) throw new ToolVersionConflictError();
+    return getHydratedUse(database, workspaceId, useId);
   } catch (cause) {
     if (cause instanceof ToolVersionConflictError) throw cause;
     if (databaseConstraint(cause) === "tool_uses_workspace_task_foreign_key") {
@@ -784,13 +813,8 @@ export async function submitWorkspaceToolResponse(
       payload: structuredClone(payload),
       submittedAt: now,
     })
-    .onConflictDoUpdate({
-      target: [
-        toolResponses.workspaceId,
-        toolResponses.useId,
-        toolResponses.respondentUserId,
-      ],
-      set: {
+    .onDuplicateKeyUpdate({
+        set: {
         payload: structuredClone(payload),
         submittedAt: now,
         updatedAt: now,

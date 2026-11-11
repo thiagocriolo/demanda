@@ -2,144 +2,34 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import {
-    businessConfig,
-    deliveryConfig,
-    peopleConfig,
-    projectConfig,
-  } from "$lib/entities/catalog";
+    recordsTabConfigs as tabConfigs,
+    recordsTabFromPath as tabFromPath,
+    recordsTabRoutes as tabRoutes,
+    recordsTabs as tabs,
+  } from "$lib/records/config";
+  import { businessRecordsDomain } from "$lib/records/domains/businesses";
+  import { contactRecordsDomain } from "$lib/records/domains/contacts";
+  import { projectRecordsDomain } from "$lib/records/domains/projects";
+  import { taskRecordsDomain } from "$lib/records/domains/tasks";
   import {
-    ContactApiError,
-    contactToEntityRecord,
-    listContacts,
-    observeContacts,
-  } from "$lib/contacts/client";
-  import {
-    BusinessApiError,
-    businessToEntityRecord,
-    listBusinesses,
-    observeBusinesses,
-  } from "$lib/businesses/client";
-  import type { BusinessList } from "$lib/businesses/types";
-  import {
-    ProjectApiError,
-    listProjects,
-    observeProjects,
-    projectToEntityRecord,
-  } from "$lib/projects/client";
-  import type { ProjectList } from "$lib/projects/types";
-  import {
-    listTasks,
-    observeTasks,
-    TaskApiError,
-    taskToEntityRecord,
-  } from "$lib/tasks/client";
-  import type { TaskList } from "$lib/tasks/types";
-  import type { ContactList, ContactStatus } from "$lib/contacts/types";
-  import type {
-    EntityConfig,
-    EntityFieldOption,
-    EntityRecord,
-  } from "$lib/entities/types";
+    createInitialPaginatedRecordsState,
+    createPaginatedRecordsController,
+  } from "$lib/records/pagination";
+  import type { RecordsOrderBy, RecordsTab } from "$lib/records/types";
+  import type { EntityRecord } from "$lib/entities/types";
   import {
     currentSettings,
     loadSettingsFromServer,
   } from "$lib/settings/client";
   import EntityCardList from "$lib/ui/EntityCardList.svelte";
-  import type { EntityCardItem, EntityCardKind } from "$lib/ui/entity-card";
   import FilterBar, { type FilterOption } from "$lib/ui/FilterBar.svelte";
   import TabSystem from "$lib/ui/TabSystem.svelte";
-  import type { TabItem } from "$lib/ui/Tabs.svelte";
   import {
     loadWorkspaceUsers,
     observeWorkspaces,
     type WorkspaceUser,
   } from "$lib/workspaces/workspace-storage";
-  import { resolveResponsibleUser } from "$lib/workspaces/responsible-user";
   import { onMount } from "svelte";
-
-  type RecordsTab = "pessoas" | "negocios" | "projetos" | "tarefas";
-  type RecordsOrderBy = "updated" | "name_asc" | "name_desc";
-
-  const tabRoutes: Record<RecordsTab, string> = {
-    pessoas: "/registros/contatos",
-    negocios: "/registros/negócios",
-    projetos: "/registros/projetos",
-    tarefas: "/registros/tarefas",
-  };
-
-  function tabFromPath(pathname: string): RecordsTab | undefined {
-    const segment = decodeURIComponent(pathname)
-      .replace(/\/$/, "")
-      .split("/")
-      .at(-1)
-      ?.toLocaleLowerCase("pt-BR");
-
-    if (segment === "contatos") return "pessoas";
-    if (segment === "negócios") return "negocios";
-    if (segment === "projetos") return "projetos";
-    if (segment === "tarefas") return "tarefas";
-    return undefined;
-  }
-
-  type TabConfig = {
-    config: EntityConfig;
-    kind: EntityCardKind;
-    statusField: string;
-    placeholder: string;
-    emptyLabel: string;
-    createLabel: string;
-  };
-
-  const tabs: TabItem[] = [
-    { id: "pessoas", label: "Contatos" },
-    { id: "negocios", label: "Negócios" },
-    { id: "projetos", label: "Projetos" },
-    { id: "tarefas", label: "Tarefas" },
-  ];
-
-  const tabConfigs: Record<RecordsTab, TabConfig> = {
-    pessoas: {
-      config: peopleConfig,
-      kind: "pessoa",
-      statusField: "tipo",
-      placeholder: "Buscar contatos",
-      emptyLabel: "contato",
-      createLabel: "contato",
-    },
-    negocios: {
-      config: businessConfig,
-      kind: "negocio",
-      statusField: "etapa",
-      placeholder: "Buscar negócios",
-      emptyLabel: "negócio",
-      createLabel: "negócio",
-    },
-    projetos: {
-      config: projectConfig,
-      kind: "projeto",
-      statusField: "status",
-      placeholder: "Buscar projetos",
-      emptyLabel: "projeto",
-      createLabel: "projeto",
-    },
-    tarefas: {
-      config: deliveryConfig,
-      kind: "tarefa",
-      statusField: "status",
-      placeholder: "Buscar tarefas",
-      emptyLabel: "tarefa",
-      createLabel: "tarefa",
-    },
-  };
-
-  const toneColors: Record<NonNullable<EntityFieldOption["tone"]>, string> = {
-    blue: "#2e56ff",
-    green: "#5dac83",
-    amber: "#f59e0b",
-    red: "#dc2626",
-    violet: "#7c5ce5",
-    gray: "#64748b",
-  };
 
   let activeTab = $state<RecordsTab>(
     tabFromPath(page.url.pathname) ?? "pessoas",
@@ -165,34 +55,29 @@
   let recordsOrderBy = $state<RecordsOrderBy>("updated");
   let recordsShowArchived = $state(false);
   let workspaceUsers = $state<WorkspaceUser[]>([]);
-  let contactsPage = $state(1);
   const recordsPageSize = 10;
-  let contactsTotal = $state(0);
-  let contactsTotalPages = $state(1);
-  let contactsLoading = $state(false);
-  let contactsError = $state("");
-  let contactsFacets = $state<ContactList["facets"]>({
-    all: 0,
-    lead: 0,
-    prospect: 0,
-    active: 0,
-    inactive: 0,
-    archived: 0,
+  let contactsState = $state(
+    createInitialPaginatedRecordsState({
+      ...contactRecordsDomain.initialFacets,
+    }),
+  );
+  const contactsController = createPaginatedRecordsController({
+    pageSize: recordsPageSize,
+    initialFacets: { ...contactRecordsDomain.initialFacets },
+    load: contactRecordsDomain.list,
+    errorMessage: contactRecordsDomain.errorMessage,
+    onChange: (state) => {
+      contactsState = state;
+    },
   });
   let contactsInitialized = $state(false);
   let lastContactFilterKey = "";
-  let contactsAbortController: AbortController | undefined;
   let businessesPage = $state(1);
   let businessesTotal = $state(0);
   let businessesTotalPages = $state(1);
   let businessesLoading = $state(false);
   let businessesError = $state("");
-  let businessesFacets = $state<BusinessList["facets"]>({
-    all: 0,
-    archived: 0,
-    stages: {},
-    categories: {},
-  });
+  let businessesFacets = $state({ ...businessRecordsDomain.initialFacets });
   let businessesInitialized = $state(false);
   let lastBusinessFilterKey = "";
   let businessesAbortController: AbortController | undefined;
@@ -201,12 +86,7 @@
   let projectsTotalPages = $state(1);
   let projectsLoading = $state(false);
   let projectsError = $state("");
-  let projectsFacets = $state<ProjectList["facets"]>({
-    all: 0,
-    archived: 0,
-    statuses: {},
-    services: {},
-  });
+  let projectsFacets = $state({ ...projectRecordsDomain.initialFacets });
   let projectsInitialized = $state(false);
   let lastProjectFilterKey = "";
   let projectsAbortController: AbortController | undefined;
@@ -215,121 +95,46 @@
   let tasksTotalPages = $state(1);
   let tasksLoading = $state(false);
   let tasksError = $state("");
-  let tasksFacets = $state<TaskList["facets"]>({
-    all: 0,
-    archived: 0,
-    statuses: {},
-    priorities: {},
-    categories: {},
-    projects: {},
-  });
+  let tasksFacets = $state({ ...taskRecordsDomain.initialFacets });
   let tasksInitialized = $state(false);
   let lastTaskFilterKey = "";
   let tasksAbortController: AbortController | undefined;
   let loadMoreSentinel = $state<HTMLDivElement>();
 
   let activeConfig = $derived(tabConfigs[activeTab]);
-  let scopedRecords = $derived(records[activeTab]);
+  let scopedRecords = $derived(
+    activeTab === "pessoas" ? contactsState.items : records[activeTab],
+  );
   let filterOptions = $derived.by((): FilterOption[] => {
-    const statusOptions =
-      activeConfig.config.fields.find(
-        (field) => field.name === activeConfig.statusField,
-      )?.options ?? [];
-    if (activeTab === "pessoas") {
-      const countByLegacyStatus: Record<string, number> = {
-        lead: contactsFacets.lead,
-        prospecto: contactsFacets.prospect,
-        ativo: contactsFacets.active,
-        desativado: contactsFacets.inactive,
-        arquivado: contactsFacets.archived,
-      };
-      return [
-        { value: "todos", label: "Todos", count: contactsFacets.all },
-        ...statusOptions.map((option) => ({
-          value: option.value,
-          label: option.label,
-          count: countByLegacyStatus[option.value] ?? 0,
-        })),
-      ];
-    }
-    if (activeTab === "negocios") {
-      const configuredValues = new Set(statusOptions.map(({ value }) => value));
-      const dynamicStageOptions = Object.keys(businessesFacets.stages)
-        .filter((stage) => !configuredValues.has(stage))
-        .sort((left, right) => left.localeCompare(right, "pt-BR"))
-        .map((stage) => ({ value: stage, label: stage }));
-      const archivedOption =
-        businessesFacets.archived > 0 && !configuredValues.has("arquivado")
-          ? [{ value: "arquivado", label: "Arquivado" }]
-          : [];
-      return [
-        { value: "todos", label: "Todos", count: businessesFacets.all },
-        ...[...statusOptions, ...dynamicStageOptions, ...archivedOption].map(
-          (option) => ({
-            value: option.value,
-            label: option.label,
-            count:
-              option.value === "arquivado"
-                ? businessesFacets.archived
-                : (businessesFacets.stages[option.value] ?? 0),
-          }),
-        ),
-      ];
-    }
-    if (activeTab === "projetos") {
-      const configuredValues = new Set(statusOptions.map(({ value }) => value));
-      const dynamicStatusOptions = Object.keys(projectsFacets.statuses)
-        .filter((status) => !configuredValues.has(status))
-        .sort((left, right) => left.localeCompare(right, "pt-BR"))
-        .map((status) => ({ value: status, label: status }));
-      const archivedOption =
-        projectsFacets.archived > 0 && !configuredValues.has("arquivado")
-          ? [{ value: "arquivado", label: "Arquivados" }]
-          : [];
-      return [
-        { value: "todos", label: "Todos", count: projectsFacets.all },
-        ...[...statusOptions, ...dynamicStatusOptions, ...archivedOption].map(
-          (option) => ({
-            value: option.value,
-            label: option.label,
-            count:
-              option.value === "arquivado"
-                ? projectsFacets.archived
-                : (projectsFacets.statuses[option.value] ?? 0),
-          }),
-        ),
-      ];
-    }
-    const configuredValues = new Set(statusOptions.map(({ value }) => value));
-    const dynamicStatusOptions = Object.keys(tasksFacets.statuses)
-      .filter((status) => !configuredValues.has(status))
-      .sort((left, right) => left.localeCompare(right, "pt-BR"))
-      .map((status) => ({ value: status, label: status }));
-    const archivedOption =
-      tasksFacets.archived > 0 && !configuredValues.has("arquivado")
-        ? [{ value: "arquivado", label: "Arquivadas" }]
-        : [];
-    return [
-      { value: "todos", label: "Todos", count: tasksFacets.all },
-      ...[...statusOptions, ...dynamicStatusOptions, ...archivedOption].map(
-        (option) => ({
-          value: option.value,
-          label: option.label,
-          count:
-            option.value === "arquivado"
-              ? tasksFacets.archived
-              : (tasksFacets.statuses[option.value] ?? 0),
-        }),
-      ),
-    ];
+    if (activeTab === "pessoas")
+      return contactRecordsDomain.filterOptions(
+        activeConfig,
+        contactsState.facets,
+      );
+    if (activeTab === "negocios")
+      return businessRecordsDomain.filterOptions(
+        activeConfig,
+        businessesFacets,
+      );
+    if (activeTab === "projetos")
+      return projectRecordsDomain.filterOptions(activeConfig, projectsFacets);
+    return taskRecordsDomain.filterOptions(activeConfig, tasksFacets);
   });
   let visibleRecords = $derived(scopedRecords);
   let cards = $derived(
-    visibleRecords.map((record) => toCardItem(activeTab, activeConfig, record)),
+    visibleRecords.map((record) =>
+      activeTab === "pessoas"
+        ? contactRecordsDomain.toCard(activeConfig, record, workspaceUsers)
+        : activeTab === "negocios"
+          ? businessRecordsDomain.toCard(activeConfig, record, workspaceUsers)
+          : activeTab === "projetos"
+            ? projectRecordsDomain.toCard(activeConfig, record, workspaceUsers)
+            : taskRecordsDomain.toCard(activeConfig, record, workspaceUsers),
+    ),
   );
   let activeLoading = $derived(
     activeTab === "pessoas"
-      ? contactsLoading
+      ? contactsState.loading
       : activeTab === "negocios"
         ? businessesLoading
         : activeTab === "projetos"
@@ -338,7 +143,7 @@
   );
   let activeError = $derived(
     activeTab === "pessoas"
-      ? contactsError
+      ? contactsState.error
       : activeTab === "negocios"
         ? businessesError
         : activeTab === "projetos"
@@ -347,7 +152,7 @@
   );
   let activeHasMore = $derived(
     activeTab === "pessoas"
-      ? contactsPage < contactsTotalPages
+      ? contactsState.page < contactsState.totalPages
       : activeTab === "negocios"
         ? businessesPage < businessesTotalPages
         : activeTab === "projetos"
@@ -367,8 +172,7 @@
     if (activeLoading || activeError || !activeHasMore) return;
 
     if (activeTab === "pessoas") {
-      contactsLoading = true;
-      contactsPage += 1;
+      contactsController.advancePage();
     } else if (activeTab === "negocios") {
       businessesLoading = true;
       businessesPage += 1;
@@ -381,72 +185,13 @@
     }
   }
 
-  function selectedContactStatus(): ContactStatus | undefined {
-    return (
-      {
-        lead: "lead",
-        prospecto: "prospect",
-        ativo: "active",
-        desativado: "inactive",
-      } as const
-    )[filters.pessoas as "lead" | "prospecto" | "ativo" | "desativado"];
-  }
-
   async function reloadContacts(): Promise<void> {
-    contactsAbortController?.abort();
-    const controller = new AbortController();
-    const requestedPage = contactsPage;
-    contactsAbortController = controller;
-    contactsLoading = true;
-    contactsError = "";
-    if (requestedPage === 1) records.pessoas = [];
-
-    try {
-      const result = await listContacts({
-        page: requestedPage,
-        pageSize: recordsPageSize,
-        query: queries.pessoas,
-        status: selectedContactStatus(),
-        orderBy: recordsOrderBy,
-        archived:
-          filters.pessoas === "arquivado"
-            ? "only"
-            : recordsShowArchived
-              ? "include"
-              : "exclude",
-        signal: controller.signal,
-      });
-      if (controller.signal.aborted) return;
-
-      if (result.totalPages > 0 && requestedPage > result.totalPages) {
-        contactsPage = result.totalPages;
-        return;
-      }
-      const incoming = result.items.map(contactToEntityRecord);
-      records.pessoas =
-        requestedPage === 1
-          ? incoming
-          : mergeRecords(records.pessoas, incoming);
-      contactsTotal = result.total;
-      contactsTotalPages = Math.max(1, result.totalPages);
-      contactsFacets = result.facets;
-    } catch (cause) {
-      if (controller.signal.aborted) return;
-      contactsError =
-        cause instanceof ContactApiError
-          ? cause.message
-          : "Não foi possível carregar os contatos.";
-      if (requestedPage === 1) records.pessoas = [];
-    } finally {
-      if (contactsAbortController === controller) contactsLoading = false;
-    }
-  }
-
-  function selectedBusinessStage(): string | undefined {
-    const selected = filters.negocios;
-    return selected !== "todos" && selected !== "arquivado"
-      ? selected
-      : undefined;
+    await contactsController.reload({
+      query: queries.pessoas,
+      filter: filters.pessoas,
+      orderBy: recordsOrderBy,
+      showArchived: recordsShowArchived,
+    });
   }
 
   async function reloadBusinesses(): Promise<void> {
@@ -459,18 +204,13 @@
     if (requestedPage === 1) records.negocios = [];
 
     try {
-      const result = await listBusinesses({
+      const result = await businessRecordsDomain.list({
         page: requestedPage,
         pageSize: recordsPageSize,
         query: queries.negocios,
-        stage: selectedBusinessStage(),
+        filter: filters.negocios,
         orderBy: recordsOrderBy,
-        archived:
-          filters.negocios === "arquivado"
-            ? "only"
-            : recordsShowArchived
-              ? "include"
-              : "exclude",
+        showArchived: recordsShowArchived,
         signal: controller.signal,
       });
       if (controller.signal.aborted) return;
@@ -479,7 +219,7 @@
         businessesPage = result.totalPages;
         return;
       }
-      const incoming = result.items.map(businessToEntityRecord);
+      const incoming = result.items;
       records.negocios =
         requestedPage === 1
           ? incoming
@@ -489,21 +229,11 @@
       businessesFacets = result.facets;
     } catch (cause) {
       if (controller.signal.aborted) return;
-      businessesError =
-        cause instanceof BusinessApiError
-          ? cause.message
-          : "Não foi possível carregar os negócios.";
+      businessesError = businessRecordsDomain.errorMessage(cause);
       if (requestedPage === 1) records.negocios = [];
     } finally {
       if (businessesAbortController === controller) businessesLoading = false;
     }
-  }
-
-  function selectedProjectStatus(): string | undefined {
-    const selected = filters.projetos;
-    return selected !== "todos" && selected !== "arquivado"
-      ? selected
-      : undefined;
   }
 
   async function reloadProjects(): Promise<void> {
@@ -516,18 +246,13 @@
     if (requestedPage === 1) records.projetos = [];
 
     try {
-      const result = await listProjects({
+      const result = await projectRecordsDomain.list({
         page: requestedPage,
         pageSize: recordsPageSize,
         query: queries.projetos,
-        status: selectedProjectStatus(),
+        filter: filters.projetos,
         orderBy: recordsOrderBy,
-        archived:
-          filters.projetos === "arquivado"
-            ? "only"
-            : recordsShowArchived
-              ? "include"
-              : "exclude",
+        showArchived: recordsShowArchived,
         signal: controller.signal,
       });
       if (controller.signal.aborted) return;
@@ -536,7 +261,7 @@
         projectsPage = result.totalPages;
         return;
       }
-      const incoming = result.items.map(projectToEntityRecord);
+      const incoming = result.items;
       records.projetos =
         requestedPage === 1
           ? incoming
@@ -546,21 +271,11 @@
       projectsFacets = result.facets;
     } catch (cause) {
       if (controller.signal.aborted) return;
-      projectsError =
-        cause instanceof ProjectApiError
-          ? cause.message
-          : "Não foi possível carregar os projetos.";
+      projectsError = projectRecordsDomain.errorMessage(cause);
       if (requestedPage === 1) records.projetos = [];
     } finally {
       if (projectsAbortController === controller) projectsLoading = false;
     }
-  }
-
-  function selectedTaskStatus(): string | undefined {
-    const selected = filters.tarefas;
-    return selected !== "todos" && selected !== "arquivado"
-      ? selected
-      : undefined;
   }
 
   async function reloadTasks(): Promise<void> {
@@ -573,18 +288,13 @@
     if (requestedPage === 1) records.tarefas = [];
 
     try {
-      const result = await listTasks({
+      const result = await taskRecordsDomain.list({
         page: requestedPage,
         pageSize: recordsPageSize,
         query: queries.tarefas,
-        status: selectedTaskStatus(),
+        filter: filters.tarefas,
         orderBy: recordsOrderBy,
-        archived:
-          filters.tarefas === "arquivado"
-            ? "only"
-            : recordsShowArchived
-              ? "include"
-              : "exclude",
+        showArchived: recordsShowArchived,
         signal: controller.signal,
       });
       if (controller.signal.aborted) return;
@@ -592,7 +302,7 @@
         tasksPage = result.totalPages;
         return;
       }
-      const incoming = result.items.map(taskToEntityRecord);
+      const incoming = result.items;
       records.tarefas =
         requestedPage === 1
           ? incoming
@@ -602,123 +312,18 @@
       tasksFacets = result.facets;
     } catch (cause) {
       if (controller.signal.aborted) return;
-      tasksError =
-        cause instanceof TaskApiError
-          ? cause.message
-          : "Não foi possível carregar as tarefas.";
+      tasksError = taskRecordsDomain.errorMessage(cause);
       if (requestedPage === 1) records.tarefas = [];
     } finally {
       if (tasksAbortController === controller) tasksLoading = false;
     }
   }
 
-  function statusMeta(
-    tabConfig: TabConfig,
-    record: EntityRecord,
-  ): { label: string; color: string } {
-    const statusValue = record[tabConfig.statusField] ?? "";
-    const option = tabConfig.config.fields
-      .find((field) => field.name === tabConfig.statusField)
-      ?.options?.find((candidate) => candidate.value === statusValue);
-    return {
-      label: option?.label ?? (statusValue || "Sem status"),
-      color: option?.tone ? toneColors[option.tone] : toneColors.gray,
-    };
-  }
-
-  function formatDate(value: string): string {
-    if (!value) return "Sem prazo";
-    const date = new Date(`${value}T12:00:00`);
-    if (Number.isNaN(date.getTime())) return value;
-    return new Intl.DateTimeFormat("pt-BR").format(date);
-  }
-
-  function taskSteps(record: EntityRecord): string {
-    try {
-      const subtasks = JSON.parse(record.subtarefas || "[]") as Array<{
-        status?: unknown;
-      }>;
-      if (!Array.isArray(subtasks)) return "0/0";
-      const completed = subtasks.filter(({ status }) =>
-        ["concluida", "concluido", "conclusao", "done", "completed"].includes(
-          String(status ?? "").toLocaleLowerCase("pt-BR"),
-        ),
-      ).length;
-      return `${completed}/${subtasks.length}`;
-    } catch {
-      return "0/0";
-    }
-  }
-
-  function toCardItem(
-    tab: RecordsTab,
-    tabConfig: TabConfig,
-    record: EntityRecord,
-  ): EntityCardItem {
-    const status = statusMeta(tabConfig, record);
-    const base = {
-      id: record.id,
-      kind: tabConfig.kind,
-      title: record.nome || `${tabConfig.emptyLabel} sem nome`,
-      status: status.label,
-      statusColor: status.color,
-    } satisfies EntityCardItem;
-
-    if (tab === "pessoas") {
-      return {
-        ...base,
-        primary: record.telefone || "Telefone não informado",
-        secondary: record.email || "E-mail não informado",
-        relation: record.cargo || "Contato cadastrado",
-      };
-    }
-    if (tab === "negocios") {
-      const responsibles = (record.responsaveis ?? "")
-        .split(",")
-        .map((name) => name.trim())
-        .filter(Boolean);
-      const category = tabConfig.config.fields
-        .find((field) => field.name === "categoria")
-        ?.options?.find((option) => option.value === record.categoria);
-      return {
-        ...base,
-        primary: responsibles[0] || "Responsável não informado",
-        primaryMore:
-          responsibles.length > 1 ? `+${responsibles.length - 1}` : undefined,
-        secondary:
-          category?.label || record.categoria || "Categoria não informada",
-        relation: record.observacoes || "Sem resumo do cliente",
-      };
-    }
-    if (tab === "projetos") {
-      return {
-        ...base,
-        secondary: record.negocio || record.cliente || "Negócio não informado",
-        relation:
-          record.responsavel || record.servicos || "Responsável não informado",
-        completion: formatDate(record.dataFim || record.prazo),
-      };
-    }
-
-    const responsibleUser = resolveResponsibleUser(record, workspaceUsers);
-    return {
-      ...base,
-      primary: record.negocio || "Negócio não informado",
-      secondary: record.projeto || "Projeto não informado",
-      relation: record.categoria || record.descricao || "Tarefa planejada",
-      responsible: record.responsavel || "Sem responsável",
-      responsibleAvatarUrl: responsibleUser?.avatarUrl,
-      steps: taskSteps(record),
-    };
-  }
-
   function applyRecordSettings(
     settings: ReturnType<typeof currentSettings>,
   ): void {
     activeTab =
-      tabFromPath(page.url.pathname) ??
-      settings.recordsDefaultTab ??
-      activeTab;
+      tabFromPath(page.url.pathname) ?? settings.recordsDefaultTab ?? activeTab;
     recordsOrderBy = settings.recordsOrderBy ?? recordsOrderBy;
     recordsShowArchived = settings.recordsShowArchived ?? recordsShowArchived;
   }
@@ -742,17 +347,23 @@
       if (tasksInitialized) void reloadTasks();
     };
     refreshWorkspace();
-    const stopContacts = observeContacts(() => void reloadContacts());
-    const stopBusinesses = observeBusinesses(() => void reloadBusinesses());
-    const stopProjects = observeProjects(() => void reloadProjects());
-    const stopTasks = observeTasks(() => void reloadTasks());
+    const stopContacts = contactRecordsDomain.observe(
+      () => void reloadContacts(),
+    );
+    const stopBusinesses = businessRecordsDomain.observe(
+      () => void reloadBusinesses(),
+    );
+    const stopProjects = projectRecordsDomain.observe(
+      () => void reloadProjects(),
+    );
+    const stopTasks = taskRecordsDomain.observe(() => void reloadTasks());
     const stopWorkspaces = observeWorkspaces(refreshWorkspace);
     contactsInitialized = true;
     businessesInitialized = true;
     projectsInitialized = true;
     tasksInitialized = true;
     return () => {
-      contactsAbortController?.abort();
+      contactsController.dispose();
       businessesAbortController?.abort();
       projectsAbortController?.abort();
       tasksAbortController?.abort();
@@ -776,14 +387,11 @@
       orderBy: recordsOrderBy,
       showArchived: recordsShowArchived,
     });
-    const page = contactsPage;
+    const page = contactsState.page;
     if (!contactsInitialized || activeTab !== "pessoas") return;
     if (lastContactFilterKey && lastContactFilterKey !== filterKey) {
       lastContactFilterKey = filterKey;
-      if (contactsPage !== 1) {
-        contactsPage = 1;
-        return;
-      }
+      if (contactsController.resetPage()) return;
     } else {
       lastContactFilterKey = filterKey;
     }
@@ -907,15 +515,15 @@
     />
   </div>
 
-  {#if activeTab === "pessoas" && contactsError && !cards.length}
+  {#if activeTab === "pessoas" && contactsState.error && !cards.length}
     <div class="empty-state" role="alert">
       <strong>Não foi possível carregar os contatos</strong>
-      <p>{contactsError}</p>
+      <p>{contactsState.error}</p>
       <button type="button" onclick={() => void reloadContacts()}
         >Tentar novamente</button
       >
     </div>
-  {:else if activeTab === "pessoas" && contactsLoading && !cards.length}
+  {:else if activeTab === "pessoas" && contactsState.loading && !cards.length}
     <div class="empty-state" aria-live="polite">
       <strong>Carregando contatos…</strong>
     </div>

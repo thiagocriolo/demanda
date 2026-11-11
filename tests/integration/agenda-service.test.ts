@@ -49,14 +49,16 @@ async function withRollback(
 
 async function insertUser(database: Database, label: string) {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
-  const [user] = await database
+  const id = randomUUID();
+  await database
     .insert(users)
     .values({
+      id,
       name: label,
       username: `${label.toLowerCase()}_${suffix}`,
       email: `${label.toLowerCase()}-${suffix}@example.test`,
-    })
-    .returning();
+    });
+  const [user] = await database.select().from(users).where(eq(users.id, id));
   if (!user) throw new Error("Usuario de teste nao criado.");
   return user;
 }
@@ -102,35 +104,46 @@ function context(
 async function fixture(database: Database, label = "BE10") {
   const owner = await insertUser(database, `${label}Owner`);
   const member = await insertUser(database, `${label}Member`);
-  const [workspace] = await database
+  const workspaceId = randomUUID();
+  await database
     .insert(workspaces)
     .values({
+      id: workspaceId,
       name: `${label} workspace`,
       kind: "shared",
       ownerUserId: owner.id,
-    })
-    .returning();
+    });
+  const [workspace] = await database.select().from(workspaces).where(eq(workspaces.id, workspaceId));
   if (!workspace) throw new Error("Workspace nao criado.");
+  await database.insert(workspaceMembers).values({
+    workspaceId: workspace.id,
+    userId: owner.id,
+    role: "owner",
+  });
   await database.insert(workspaceMembers).values({
     workspaceId: workspace.id,
     userId: member.id,
     role: "member",
   });
-  const [business] = await database
+  const businessId = randomUUID();
+  await database
     .insert(businesses)
     .values({
+      id: businessId,
       workspaceId: workspace.id,
       ownerUserId: owner.id,
       name: `${label} negocio`,
       categoryKey: "cliente",
       stageKey: "ativo",
-    })
-    .returning();
+    });
+  const [business] = await database.select().from(businesses).where(eq(businesses.id, businessId));
   if (!business) throw new Error("Negocio nao criado.");
-  const projectRows = await database
+  const projectIds = [randomUUID(), randomUUID()];
+  await database
     .insert(projects)
     .values([
       {
+        id: projectIds[0],
         workspaceId: workspace.id,
         businessId: business.id,
         name: `${label} Projeto A`,
@@ -138,24 +151,27 @@ async function fixture(database: Database, label = "BE10") {
         endDate: "2026-08-10",
       },
       {
+        id: projectIds[1],
         workspaceId: workspace.id,
         businessId: business.id,
         name: `${label} Projeto B`,
         statusKey: "planejamento",
         endDate: "2026-08-11",
       },
-    ])
-    .returning();
-  const [task] = await database
+    ]);
+  const projectRows = await database.select().from(projects).where(and(eq(projects.id, projectIds[0]!), eq(projects.workspaceId, workspace.id))).orderBy(asc(projects.name));
+  const taskId = randomUUID();
+  await database
     .insert(tasks)
     .values({
+      id: taskId,
       workspaceId: workspace.id,
       projectId: projectRows[0]!.id,
       businessId: business.id,
       name: `${label} Tarefa`,
       dueDate: "2026-08-12",
-    })
-    .returning();
+    });
+  const [task] = await database.select().from(tasks).where(eq(tasks.id, taskId));
   if (!task) throw new Error("Tarefa nao criada.");
   await database.insert(taskSubtasks).values([
     {

@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { Database } from "../db/database";
+import { affectedRows, rawRows, type Database } from "../db/database";
 import {
   communities,
   communityInvitations,
@@ -65,17 +66,17 @@ async function communityRows(
       community.cover_file_id,
       community.created_at,
       membership.role as current_user_role,
-      (select count(*)::integer from app.community_members member_count
+      (select count(*) from community_members member_count
         where member_count.community_id = community.id) as member_count
-    from app.communities community
-    inner join app.community_members membership
+    from communities community
+    inner join community_members membership
       on membership.community_id = community.id
-      and membership.user_id = ${actorUserId}::uuid
+      and membership.user_id = ${actorUserId}
     where community.deleted_at is null
-      and (${linkName ?? null}::text is null or community.link_name = ${linkName ?? null})
+      and (${linkName ?? null} is null or community.link_name = ${linkName ?? null})
     order by community.created_at desc, community.id desc
   `);
-  return result.rows;
+  return rawRows<CommunityRow>(result);
 }
 
 async function membersForCommunities(
@@ -102,19 +103,28 @@ async function membersForCommunities(
       person.name as user_name,
       person.username as user_username,
       person.avatar_url as user_avatar_url,
-      nullif(preference.settings #>> '{profile,cover}', '') as user_cover_url
-    from app.community_members membership
-    inner join app.users person on person.id = membership.user_id
-    left join app.user_preferences preference on preference.user_id = person.id
+      nullif(json_unquote(json_extract(preference.settings, '$.profile.cover')), '') as user_cover_url
+    from community_members membership
+    inner join users person on person.id = membership.user_id
+    left join user_preferences preference on preference.user_id = person.id
     where membership.community_id in ${sql`(${sql.join(
-      communityIds.map((id) => sql`${id}::uuid`),
+      communityIds.map((id) => sql`${id}`),
       sql`, `,
     )})`}
     order by
       case membership.role when 'owner' then 0 when 'admin' then 1 else 2 end,
       person.name asc
   `);
-  for (const row of result.rows) {
+  for (const row of rawRows<{
+    community_id: string;
+    role: "owner" | "admin" | "member";
+    joined_at: Date | string;
+    user_id: string;
+    user_name: string;
+    user_username: string;
+    user_avatar_url: string | null;
+    user_cover_url: string | null;
+  }>(result)) {
     const member: CommunityMember = {
       role: row.role,
       joinedAt: toIso(row.joined_at),
@@ -237,9 +247,11 @@ export async function createCommunity(
       }
     }
 
-    const [created] = await transaction
+    const id = randomUUID();
+    await transaction
       .insert(communities)
       .values({
+        id,
         ownerUserId: actorUserId,
         coverFileId: input.coverFileId ?? null,
         linkName: input.linkName,
@@ -248,22 +260,22 @@ export async function createCommunity(
         topic: input.topic.trim(),
         visibility: input.visibility,
       })
-      .returning({ id: communities.id });
-    if (!created)
+      ;
+    if (!id)
       throw new SocialOperationError(
         "Não foi possível criar a comunidade.",
         500,
       );
 
     await transaction.insert(communityMembers).values({
-      communityId: created.id,
+      communityId: id,
       userId: actorUserId,
       role: "owner",
     });
     if (memberUserIds.length > 0) {
       await transaction.insert(communityInvitations).values(
         memberUserIds.map((invitedUserId) => ({
-          communityId: created.id,
+          communityId: id,
           invitedUserId,
           invitedByUserId: actorUserId,
         })),
@@ -421,16 +433,19 @@ export async function inviteCommunityMember(
     if (membership)
       throw new SocialOperationError("Essa pessoa já participa da comunidade.");
 
-    const [created] = await transaction
+    const invitationId = randomUUID();
+    const created = await transaction
       .insert(communityInvitations)
       .values({
+        id: invitationId,
         communityId: actor.communityId,
         invitedUserId: memberUserId,
         invitedByUserId: actorUserId,
       })
-      .onConflictDoNothing()
-      .returning({ id: communityInvitations.id });
-    if (!created)
+      .onDuplicateKeyUpdate({
+        set: { id: sql`${communityInvitations.id}` },
+      });
+    if (affectedRows(created) !== 1)
       throw new SocialOperationError("Essa pessoa já foi convidada.");
   });
 }
@@ -462,15 +477,26 @@ export async function listCommunityInvitations(
       inviter.name as inviter_name,
       inviter.username as inviter_username,
       inviter.avatar_url as inviter_avatar_url
-    from app.community_invitations invitation
-    inner join app.communities community on community.id = invitation.community_id
-    inner join app.users inviter on inviter.id = invitation.invited_by_user_id
-    where invitation.invited_user_id = ${actorUserId}::uuid
+    from community_invitations invitation
+    inner join communities community on community.id = invitation.community_id
+    inner join users inviter on inviter.id = invitation.invited_by_user_id
+    where invitation.invited_user_id = ${actorUserId}
       and invitation.status = 'pending'
       and community.deleted_at is null
     order by invitation.invited_at desc, invitation.id desc
   `);
-  return result.rows.map((row) => ({
+  return rawRows<{
+    id: string;
+    invited_at: Date | string;
+    community_link_name: string;
+    community_name: string;
+    community_topic: string;
+    community_cover_file_id: string | null;
+    inviter_id: string;
+    inviter_name: string;
+    inviter_username: string;
+    inviter_avatar_url: string | null;
+  }>(result).map((row) => ({
     id: row.id,
     invitedAt: toIso(row.invited_at),
     community: {
@@ -497,6 +523,19 @@ export async function acceptCommunityInvitation(
 ): Promise<Community> {
   return database.transaction(async (transaction) => {
     const [accepted] = await transaction
+      .select({ communityId: communityInvitations.communityId })
+      .from(communityInvitations)
+      .where(
+        and(
+          eq(communityInvitations.id, invitationId),
+          eq(communityInvitations.invitedUserId, actorUserId),
+          eq(communityInvitations.status, "pending"),
+        ),
+      )
+      .limit(1);
+    if (!accepted)
+      throw new SocialOperationError("Convite nÃ£o encontrado.", 404);
+    const changed = await transaction
       .update(communityInvitations)
       .set({ status: "accepted", acceptedAt: new Date() })
       .where(
@@ -505,9 +544,8 @@ export async function acceptCommunityInvitation(
           eq(communityInvitations.invitedUserId, actorUserId),
           eq(communityInvitations.status, "pending"),
         ),
-      )
-      .returning({ communityId: communityInvitations.communityId });
-    if (!accepted)
+      );
+    if (affectedRows(changed) !== 1)
       throw new SocialOperationError("Convite não encontrado.", 404);
 
     const [community] = await transaction
@@ -525,7 +563,9 @@ export async function acceptCommunityInvitation(
     await transaction
       .insert(communityMembers)
       .values({ communityId: accepted.communityId, userId: actorUserId })
-      .onConflictDoNothing();
+      .onDuplicateKeyUpdate({
+        set: { communityId: sql`${communityMembers.communityId}` },
+      });
     return getCommunity(
       transaction as Database,
       actorUserId,
@@ -546,7 +586,7 @@ export async function promoteCommunityMember(
       "Somente o administrador pode promover gestores.",
       403,
     );
-  const [updated] = await database
+  const updated = await database
     .update(communityMembers)
     .set({ role: "admin" })
     .where(
@@ -555,9 +595,8 @@ export async function promoteCommunityMember(
         eq(communityMembers.userId, memberUserId),
         eq(communityMembers.role, "member"),
       ),
-    )
-    .returning({ userId: communityMembers.userId });
-  if (!updated)
+    );
+  if (affectedRows(updated) !== 1)
     throw new SocialOperationError(
       "Membro não encontrado ou já é gestor.",
       404,
@@ -591,13 +630,20 @@ export async function listCommunityJoinRequests(
       person.name as user_name,
       person.username as user_username,
       person.avatar_url as user_avatar_url
-    from app.community_join_requests request
-    inner join app.users person on person.id = request.user_id
-    where request.community_id = ${actor.communityId}::uuid
+    from community_join_requests request
+    inner join users person on person.id = request.user_id
+    where request.community_id = ${actor.communityId}
       and request.status = 'pending'
     order by request.requested_at asc, request.id asc
   `);
-  return result.rows.map((row) => ({
+  return rawRows<{
+    id: string;
+    requested_at: Date | string;
+    user_id: string;
+    user_name: string;
+    user_username: string;
+    user_avatar_url: string | null;
+  }>(result).map((row) => ({
     id: row.id,
     requestedAt: toIso(row.requested_at),
     user: {
@@ -637,7 +683,9 @@ export async function acceptCommunityJoinRequest(
     await transaction
       .insert(communityMembers)
       .values({ communityId: actor.communityId, userId: request.userId })
-      .onConflictDoNothing();
+      .onDuplicateKeyUpdate({
+        set: { communityId: sql`${communityMembers.communityId}` },
+      });
     await transaction
       .update(communityJoinRequests)
       .set({
@@ -671,16 +719,17 @@ export async function listCommunityFeed(
       post.id, post.kind, post.title, post.body, post.link_url, post.created_at,
       author.id as author_id, author.name as author_name,
       author.username as author_username, author.avatar_url as author_avatar_url
-    from app.social_posts post
-    inner join app.users author on author.id = post.author_user_id
-    where post.community_id = ${communityId}::uuid
+    from social_posts post
+    inner join users author on author.id = post.author_user_id
+    where post.community_id = ${communityId}
       and post.deleted_at is null
-      and (${cursorIso}::timestamptz is null or post.created_at < ${cursorIso}::timestamptz)
+      and (${cursorIso} is null or post.created_at < ${cursorIso})
     order by post.created_at desc, post.id desc
     limit 21
   `);
-  const hasMore = result.rows.length > 20;
-  const visible = result.rows.slice(0, 20);
+  const rows = rawRows<PostRow>(result);
+  const hasMore = rows.length > 20;
+  const visible = rows.slice(0, 20);
   return {
     items: await hydratePosts(database, visible, actorUserId),
     nextCursor:

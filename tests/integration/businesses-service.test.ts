@@ -53,14 +53,14 @@ async function withRollback(
 
 async function insertUser(database: Database, label: string) {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
-  const [user] = await database
-    .insert(users)
-    .values({
+  const id = randomUUID();
+  await database.insert(users).values({
+      id,
       name: label,
       username: `${label.toLowerCase()}_${suffix}`,
       email: `${label.toLowerCase()}-${suffix}@example.test`,
-    })
-    .returning();
+    });
+  const [user] = await database.select().from(users).where(eq(users.id, id));
   if (!user) throw new Error("Usuario de teste nao criado.");
   return user;
 }
@@ -71,10 +71,10 @@ async function insertWorkspace(
   name: string,
   kind: "personal" | "shared" = "personal",
 ) {
-  const [workspace] = await database
-    .insert(workspaces)
-    .values({ name, kind, ownerUserId })
-    .returning();
+  const id = randomUUID();
+  await database.insert(workspaces).values({ id, name, kind, ownerUserId });
+  await database.insert(workspaceMembers).values({ workspaceId: id, userId: ownerUserId, role: "owner" });
+  const [workspace] = await database.select().from(workspaces).where(eq(workspaces.id, id));
   if (!workspace) throw new Error("Workspace de teste nao criado.");
   return workspace;
 }
@@ -86,9 +86,9 @@ async function insertContact(
   name: string,
   archived = false,
 ) {
-  const [contact] = await database
-    .insert(contacts)
-    .values({
+  const id = randomUUID();
+  await database.insert(contacts).values({
+      id,
       workspaceId,
       ownerUserId,
       name,
@@ -96,8 +96,8 @@ async function insertContact(
       status: "active",
       profession: "Estrategista",
       archivedAt: archived ? new Date() : null,
-    })
-    .returning();
+    });
+  const [contact] = await database.select().from(contacts).where(eq(contacts.id, id));
   if (!contact) throw new Error("Contato de teste nao criado.");
   return contact;
 }

@@ -1,11 +1,12 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import type { RequestAuthorizationContext } from "../../src/lib/server/authorization/workspace-context";
 import { parseServerEnvironment } from "../../src/lib/server/config/env-schema";
 import {
   createDatabase,
+  rawRows,
   type Database,
 } from "../../src/lib/server/db/database";
 import { createDatabasePool } from "../../src/lib/server/db/pool";
@@ -51,14 +52,14 @@ async function withRollback(
 
 async function insertUser(database: Database, label: string) {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
-  const [user] = await database
-    .insert(users)
-    .values({
+  const id = randomUUID();
+  await database.insert(users).values({
+      id,
       name: label,
       username: `${label.toLowerCase()}_${suffix}`,
       email: `${label.toLowerCase()}-${suffix}@example.test`,
-    })
-    .returning();
+    });
+  const [user] = await database.select().from(users).where(eq(users.id, id));
   if (!user) throw new Error("Usuário não criado.");
   return user;
 }
@@ -68,10 +69,16 @@ async function insertWorkspace(
   ownerId: string,
   name: string,
 ) {
-  const [workspace] = await database
+  const id = randomUUID();
+  await database
     .insert(workspaces)
-    .values({ name, kind: "shared", ownerUserId: ownerId })
-    .returning();
+    .values({ id, name, kind: "shared", ownerUserId: ownerId });
+  await database.insert(workspaceMembers).values({
+    workspaceId: id,
+    userId: ownerId,
+    role: "owner",
+  });
+  const [workspace] = await database.select().from(workspaces).where(eq(workspaces.id, id));
   if (!workspace) throw new Error("Workspace não criado.");
   return workspace;
 }
@@ -81,38 +88,38 @@ async function insertTaskContext(
   workspaceId: string,
   ownerUserId: string,
 ) {
-  const [business] = await database
-    .insert(businesses)
-    .values({
+  const businessId = randomUUID();
+  await database.insert(businesses).values({
+      id: businessId,
       workspaceId,
       ownerUserId,
       name: "Cliente Acme",
       categoryKey: "cliente",
       stageKey: "ativo",
-    })
-    .returning();
+    });
+  const [business] = await database.select().from(businesses).where(eq(businesses.id, businessId));
   if (!business) throw new Error("Negócio não criado.");
-  const [project] = await database
-    .insert(projects)
-    .values({
+  const projectId = randomUUID();
+  await database.insert(projects).values({
+      id: projectId,
       workspaceId,
       businessId: business.id,
       name: "Identidade Acme",
       statusKey: "execucao",
       startDate: "2026-08-01",
-    })
-    .returning();
+    });
+  const [project] = await database.select().from(projects).where(eq(projects.id, projectId));
   if (!project) throw new Error("Projeto não criado.");
-  const [task] = await database
-    .insert(tasks)
-    .values({
+  const taskId = randomUUID();
+  await database.insert(tasks).values({
+      id: taskId,
       workspaceId,
       projectId: project.id,
       businessId: business.id,
       name: "Definir direção visual",
       statusKey: "producao",
-    })
-    .returning();
+    });
+  const [task] = await database.select().from(tasks).where(eq(tasks.id, taskId));
   if (!task) throw new Error("Tarefa não criada.");
   return { business, project, task };
 }
@@ -160,14 +167,13 @@ describe("Ferramentas: Modelos, Usos e Respostas", () => {
 
   it("localiza anexos visuais aninhados com a mesma expressão da autorização", async () => {
     const fileId = randomUUID();
-    const result = await database.execute<{ allowed: boolean }>(sql`
-      select jsonb_path_exists(
-        ${JSON.stringify({ items: [{ assets: [{ fileId }] }] })}::jsonb,
-        '$.**.fileId ? (@ == $fileId)',
-        jsonb_build_object('fileId', ${fileId}::text)
+    const result = await database.execute<{ allowed: number }>(sql`
+      select json_search(
+        cast(${JSON.stringify({ items: [{ assets: [{ fileId }] }] })} as json),
+        'one', ${fileId}, null, '$**.fileId'
       ) as allowed
     `);
-    expect(result.rows[0]?.allowed).toBe(true);
+    expect(rawRows<{ allowed: string | null }>(result)[0]?.allowed).not.toBeNull();
   });
 
   it("preserva snapshot, deriva contexto da tarefa e aceita vários participantes", async () => {

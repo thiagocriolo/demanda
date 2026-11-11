@@ -15,7 +15,7 @@ import {
   requireWorkspacePermission,
   requireWorkspacePermissionForUpdate,
 } from "../authorization/workspace-context";
-import type { Database } from "../db/database";
+import { affectedRows, type Database } from "../db/database";
 import {
   cronogramaBlocks,
   taskResponsibles,
@@ -255,6 +255,69 @@ async function activeStoredBlocks(
   return rows.map(({ block }) => block);
 }
 
+async function globalResponsibleState(
+  database: CronogramaDatabase,
+): Promise<{ blocks: StoredBlock[]; responsibles: Map<string, string[]> }> {
+  const rows = await database
+    .select({
+      block: cronogramaBlocks,
+      userId: taskResponsibles.userId,
+    })
+    .from(cronogramaBlocks)
+    .innerJoin(
+      tasks,
+      and(
+        eq(tasks.workspaceId, cronogramaBlocks.workspaceId),
+        eq(tasks.id, cronogramaBlocks.taskId),
+        isNull(tasks.archivedAt),
+      ),
+    )
+    .innerJoin(
+      taskSubtasks,
+      and(
+        eq(taskSubtasks.workspaceId, cronogramaBlocks.workspaceId),
+        eq(taskSubtasks.id, cronogramaBlocks.subtaskId),
+        eq(taskSubtasks.taskId, cronogramaBlocks.taskId),
+        isNull(taskSubtasks.archivedAt),
+      ),
+    )
+    .innerJoin(
+      taskResponsibles,
+      and(
+        eq(taskResponsibles.workspaceId, cronogramaBlocks.workspaceId),
+        eq(taskResponsibles.taskId, cronogramaBlocks.taskId),
+      ),
+    );
+  const byId = new Map<string, StoredBlock>();
+  const responsibles = new Map<string, string[]>();
+  for (const row of rows) {
+    byId.set(row.block.id, row.block);
+    const assigned = responsibles.get(row.block.taskId) ?? [];
+    if (!assigned.includes(row.userId)) assigned.push(row.userId);
+    responsibles.set(row.block.taskId, assigned);
+  }
+  return { blocks: [...byId.values()], responsibles };
+}
+
+async function assertGlobalResponsibleOverlap(
+  database: CronogramaDatabase,
+  workspaceId: string,
+  replacementBlocks: StoredBlock[],
+  replacementResponsibles: Map<string, string[]>,
+): Promise<void> {
+  const global = await globalResponsibleState(database);
+  for (const [taskId, userIds] of replacementResponsibles) {
+    global.responsibles.set(taskId, userIds);
+  }
+  assertNoResponsibleOverlap(
+    [
+      ...global.blocks.filter((block) => block.workspaceId !== workspaceId),
+      ...replacementBlocks,
+    ],
+    global.responsibles,
+  );
+}
+
 function blockStartsBefore(left: StoredBlock, right: StoredBlock): boolean {
   return (
     left.scheduledDate < right.scheduledDate ||
@@ -403,16 +466,17 @@ async function assertRules(
   blocks: StoredBlock[],
   subtasks: SubtaskRule[],
   responsibles: Map<string, string[]>,
+  workdayBlocks: StoredBlock[] = [],
 ): Promise<void> {
   assertSequence(blocks, subtasks);
   assertNoResponsibleOverlap(blocks, responsibles);
   const users = new Set<string>();
-  for (const block of blocks) {
+  for (const block of workdayBlocks) {
     const responsibleUserIds = responsibles.get(block.taskId) ?? [];
     for (const userId of responsibleUserIds) users.add(userId);
   }
   const preferences = await preferencesByUser(database, [...users]);
-  for (const block of blocks) {
+  for (const block of workdayBlocks) {
     const responsibleUserIds = responsibles.get(block.taskId) ?? [];
     if (!responsibleUserIds.length) {
       assertInsideWorkday(block, "não atribuído", defaultPersonalSettings());
@@ -530,6 +594,12 @@ export async function saveCronogramaBlock(
         state.subtasks,
         state.responsibles,
       );
+      await assertGlobalResponsibleOverlap(
+        transaction,
+        workspaceId,
+        nextBlocks,
+        state.responsibles,
+      );
 
       if (current) {
         const updated = await transaction
@@ -547,9 +617,8 @@ export async function saveCronogramaBlock(
               eq(cronogramaBlocks.workspaceId, workspaceId),
               eq(cronogramaBlocks.version, input.version),
             ),
-          )
-          .returning({ id: cronogramaBlocks.id });
-        if (updated.length !== 1) throw new CronogramaVersionConflictError();
+          );
+        if (affectedRows(updated) !== 1) throw new CronogramaVersionConflictError();
       } else {
         await transaction.insert(cronogramaBlocks).values({
           workspaceId,
@@ -612,6 +681,12 @@ export async function deleteCronogramaBlock(
       state.subtasks,
       state.responsibles,
     );
+      await assertGlobalResponsibleOverlap(
+        transaction,
+        workspaceId,
+        nextBlocks,
+        state.responsibles,
+      );
     const deleted = await transaction
       .delete(cronogramaBlocks)
       .where(
@@ -620,9 +695,8 @@ export async function deleteCronogramaBlock(
           eq(cronogramaBlocks.workspaceId, workspaceId),
           eq(cronogramaBlocks.version, input.version),
         ),
-      )
-      .returning({ id: cronogramaBlocks.id });
-    if (deleted.length !== 1) throw new CronogramaVersionConflictError();
+      );
+    if (affectedRows(deleted) !== 1) throw new CronogramaVersionConflictError();
     return readSnapshot(transaction, workspaceId, {
       responsibleUserId: context.user.id,
     });
@@ -707,6 +781,13 @@ export async function reorganizeCronogramaBlocks(
         transaction,
         nextBlocks,
         state.subtasks,
+        state.responsibles,
+        candidates,
+      );
+      await assertGlobalResponsibleOverlap(
+        transaction,
+        workspaceId,
+        nextBlocks,
         state.responsibles,
       );
 

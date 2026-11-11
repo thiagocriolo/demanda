@@ -96,14 +96,19 @@ async function withRollback(run: (database: Database) => Promise<void>) {
 
 async function insertUser(database: Database, label: string) {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
-  const [user] = await database
+  const id = randomUUID();
+  await database
     .insert(users)
     .values({
+      id,
       name: label,
       username: `${label.toLowerCase()}_${suffix}`,
       email: `${label.toLowerCase()}-${suffix}@example.test`,
-    })
-    .returning();
+    });
+  const [user] = await database
+    .select()
+    .from(users)
+    .where(eq(users.id, id));
   if (!user) throw new Error("Usuário de teste não criado.");
   return user;
 }
@@ -112,20 +117,26 @@ async function fixture(database: Database) {
   const owner = await insertUser(database, "FileOwner");
   const member = await insertUser(database, "FileMember");
   const outsider = await insertUser(database, "FileOutsider");
+  const workspaceId = randomUUID();
+  const otherWorkspaceId = randomUUID();
+  await database.insert(workspaces).values([
+    { id: workspaceId, name: "Arquivos privados", ownerUserId: owner.id },
+    { id: otherWorkspaceId, name: "Outro workspace", ownerUserId: outsider.id },
+  ]);
   const [workspace] = await database
-    .insert(workspaces)
-    .values({ name: "Arquivos privados", ownerUserId: owner.id })
-    .returning();
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId));
   const [otherWorkspace] = await database
-    .insert(workspaces)
-    .values({ name: "Outro workspace", ownerUserId: outsider.id })
-    .returning();
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.id, otherWorkspaceId));
   if (!workspace || !otherWorkspace) throw new Error("Workspace não criado.");
-  await database.insert(workspaceMembers).values({
-    workspaceId: workspace.id,
-    userId: member.id,
-    role: "member",
-  });
+  await database.insert(workspaceMembers).values([
+    { workspaceId: workspace.id, userId: owner.id, role: "owner" },
+    { workspaceId: workspace.id, userId: member.id, role: "member" },
+    { workspaceId: otherWorkspace.id, userId: outsider.id, role: "owner" },
+  ]);
   const context = (
     user: typeof users.$inferSelect,
     active: typeof workspaces.$inferSelect,

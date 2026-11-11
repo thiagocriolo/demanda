@@ -13,7 +13,7 @@ import {
   requireWorkspacePermission,
   requireWorkspacePermissionForUpdate,
 } from "../authorization/workspace-context";
-import type { Database } from "../db/database";
+import { affectedRows, type Database } from "../db/database";
 import {
   agendaEntries,
   projects,
@@ -392,9 +392,8 @@ export async function moveWorkspaceAgenda(
             eq(agendaEntries.workspaceId, workspaceId),
             eq(agendaEntries.id, row.id),
           ),
-        )
-        .returning({ id: agendaEntries.id });
-      if (updated.length !== 1) throw new AgendaVersionConflictError();
+        );
+      if (affectedRows(updated) !== 1) throw new AgendaVersionConflictError();
     }
     return readSnapshot(transaction, workspaceId);
   });

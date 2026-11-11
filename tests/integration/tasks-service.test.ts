@@ -70,14 +70,19 @@ async function insertUser(
 ): Promise<typeof users.$inferSelect> {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
   const key = label.toLowerCase().replace(/[^a-z0-9]+/g, "_");
-  const [user] = await database
+  const id = randomUUID();
+  await database
     .insert(users)
     .values({
+      id,
       name: label,
       username: `${key}_${suffix}`,
       email: `${key}-${suffix}@example.test`,
-    })
-    .returning();
+    });
+  const [user] = await database
+    .select()
+    .from(users)
+    .where(eq(users.id, id));
   if (!user) throw new Error("Usuário de teste não criado.");
   return user;
 }
@@ -87,11 +92,16 @@ async function insertWorkspace(
   owner: typeof users.$inferSelect,
   name: string,
 ): Promise<typeof workspaces.$inferSelect> {
-  const [workspace] = await database
+  const id = randomUUID();
+  await database
     .insert(workspaces)
-    .values({ name, kind: "shared", ownerUserId: owner.id })
-    .returning();
+    .values({ id, name, kind: "shared", ownerUserId: owner.id });
+  const [workspace] = await database
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.id, id));
   if (!workspace) throw new Error("Workspace de teste não criado.");
+  await insertMember(database, workspace.id, owner.id, "owner");
   return workspace;
 }
 
@@ -117,16 +127,21 @@ async function insertBusiness(
     .limit(1);
   const resolvedOwnerUserId = ownerUserId ?? workspace?.ownerUserId;
   if (!resolvedOwnerUserId) throw new Error("Owner do negocio nao encontrado.");
-  const [business] = await database
+  const id = randomUUID();
+  await database
     .insert(businesses)
     .values({
+      id,
       workspaceId,
       ownerUserId: resolvedOwnerUserId,
       name,
       categoryKey: "cliente",
       stageKey: "ativo",
-    })
-    .returning();
+    });
+  const [business] = await database
+    .select()
+    .from(businesses)
+    .where(eq(businesses.id, id));
   if (!business) throw new Error("Negócio de teste não criado.");
   return business;
 }
@@ -137,9 +152,11 @@ async function insertProject(
   businessId: string,
   name: string,
 ): Promise<typeof projects.$inferSelect> {
-  const [project] = await database
+  const id = randomUUID();
+  await database
     .insert(projects)
     .values({
+      id,
       workspaceId,
       businessId,
       name,
@@ -147,8 +164,11 @@ async function insertProject(
       briefing: "Projeto para tarefas",
       startDate: "2026-08-01",
       endDate: "2026-09-30",
-    })
-    .returning();
+    });
+  const [project] = await database
+    .select()
+    .from(projects)
+    .where(eq(projects.id, id));
   if (!project) throw new Error("Projeto de teste não criado.");
   return project;
 }

@@ -6,7 +6,7 @@ import {
 } from "../../avatar/avatar-options";
 import type { PublicUserProfile, SocialPost } from "$lib/social/types";
 import type { PersonalSettingsState } from "$lib/settings/types";
-import type { Database } from "../db/database";
+import { rawRows, type Database } from "../db/database";
 import { userPreferences, users } from "../db/schema";
 import { storedFileIdFromPrivateUrl } from "../files/service";
 import { personalSettingsSchema } from "../settings/validation";
@@ -114,27 +114,31 @@ async function profileRelationship(
     select
       exists (
         select 1
-        from app.user_connections connection
-        where (connection.user_a_id = ${actorUserId}::uuid
-          and connection.user_b_id = ${profileUserId}::uuid)
-           or (connection.user_b_id = ${actorUserId}::uuid
-          and connection.user_a_id = ${profileUserId}::uuid)
+        from user_connections connection
+        where (connection.user_a_id = ${actorUserId}
+          and connection.user_b_id = ${profileUserId})
+           or (connection.user_b_id = ${actorUserId}
+          and connection.user_a_id = ${profileUserId})
       ) as connected,
       pending.id as request_id,
       pending.requested_by_user_id
-    from (values (1)) as singleton(value)
+    from (select 1 as value) as singleton
     left join lateral (
       select request.id, request.requested_by_user_id
-      from app.connection_requests request
+      from connection_requests request
       where request.status = 'pending'
-        and ((request.user_a_id = ${actorUserId}::uuid
-          and request.user_b_id = ${profileUserId}::uuid)
-          or (request.user_b_id = ${actorUserId}::uuid
-          and request.user_a_id = ${profileUserId}::uuid))
+        and ((request.user_a_id = ${actorUserId}
+          and request.user_b_id = ${profileUserId})
+          or (request.user_b_id = ${actorUserId}
+          and request.user_a_id = ${profileUserId}))
       limit 1
     ) pending on true
   `);
-  const state = result.rows[0];
+  const state = rawRows<{
+    connected: boolean;
+    request_id: string | null;
+    requested_by_user_id: string | null;
+  }>(result)[0];
   if (state?.connected) {
     return { relationship: "connected", pendingRequestId: null };
   }
@@ -159,9 +163,9 @@ async function latestProfileFeedPosts(
       post.id, post.kind, post.title, post.body, post.link_url, post.created_at,
       author.id as author_id, author.name as author_name,
       author.username as author_username, author.avatar_url as author_avatar_url
-    from app.social_posts post
-    inner join app.users author on author.id = post.author_user_id
-    where post.author_user_id = ${profile.id}::uuid
+    from social_posts post
+    inner join users author on author.id = post.author_user_id
+    where post.author_user_id = ${profile.id}
       and post.kind = 'feed'
       and post.community_id is null
       and post.deleted_at is null
@@ -169,7 +173,7 @@ async function latestProfileFeedPosts(
     limit ${limit}
   `);
 
-  return (await hydratePosts(database, rows.rows, actorUserId)).map((post) => ({
+  return (await hydratePosts(database, rawRows<PostRow>(rows), actorUserId)).map((post) => ({
     ...post,
     author: {
       ...post.author,
@@ -212,16 +216,16 @@ export async function getPublicUserPortfolio(
       post.id, post.kind, post.title, post.body, post.link_url, post.created_at,
       author.id as author_id, author.name as author_name,
       author.username as author_username, author.avatar_url as author_avatar_url
-    from app.social_posts post
-    inner join app.users author on author.id = post.author_user_id
-    where post.author_user_id = ${profile.id}::uuid
+    from social_posts post
+    inner join users author on author.id = post.author_user_id
+    where post.author_user_id = ${profile.id}
       and post.kind = 'portfolio'
       and post.community_id is null
       and post.deleted_at is null
     order by post.created_at desc, post.id desc
     limit 100
   `);
-  const posts = (await hydratePosts(database, rows.rows, actorUserId)).map(
+  const posts = (await hydratePosts(database, rawRows<PostRow>(rows), actorUserId)).map(
     (post) => ({
       ...post,
       author: {

@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { PoolClient } from "pg";
 
 type SqlRow = Record<string, unknown>;
+type MysqlClient = {
+  query<T extends SqlRow[] = SqlRow[]>(
+    statement: string,
+    values?: unknown[],
+  ): Promise<[T, unknown]>;
+};
 
 export type ProjectContractSeed = {
   id: string;
@@ -73,11 +78,11 @@ function quoteIdentifier(identifier: string): string {
   if (!/^[a-z_][a-z0-9_]*$/u.test(identifier)) {
     throw new Error(`Identificador SQL invalido: ${identifier}`);
   }
-  return `"${identifier}"`;
+  return `\`${identifier}\``;
 }
 
 async function insertRows(
-  client: PoolClient,
+  client: MysqlClient,
   table: "project_installments" | "financial_entries",
   rows: SqlRow[],
 ): Promise<void> {
@@ -91,16 +96,16 @@ async function insertRows(
         columns.length !== Object.keys(row).length ||
         columns.some((column) => !(column in row))
       ) {
-        throw new Error(`Linhas inconsistentes para app.${table}.`);
+        throw new Error(`Linhas inconsistentes para ${table}.`);
       }
       const placeholders = columns.map((column) => {
         values.push(row[column]);
-        return `$${values.length}`;
+        return "?";
       });
       return `(${placeholders.join(", ")})`;
     });
     await client.query(
-      `insert into app.${quoteIdentifier(table)} (${columns.map(quoteIdentifier).join(", ")}) values ${tuples.join(", ")}`,
+      `insert into ${quoteIdentifier(table)} (${columns.map(quoteIdentifier).join(", ")}) values ${tuples.join(", ")}`,
       values,
     );
   }
@@ -175,7 +180,7 @@ function splitPositiveAmount(amountCents: number, count: number): number[] {
 }
 
 async function validateProjectContracts(
-  client: PoolClient,
+  client: MysqlClient,
   projects: ProjectContractSeed[],
 ): Promise<void> {
   if (new Set(projects.map(({ id }) => id)).size !== projects.length) {
@@ -189,7 +194,7 @@ async function validateProjectContracts(
   }
   if (!projects.length) return;
 
-  const result = await client.query<{
+  const [rows] = await client.query<{
     id: string;
     workspace_id: string;
     name: string;
@@ -202,15 +207,15 @@ async function validateProjectContracts(
             project.workspace_id,
             project.name,
             workspace.owner_user_id,
-            project.amount_cents::text,
-            project.first_due_date::text,
+            cast(project.amount_cents as char) amount_cents,
+            cast(project.first_due_date as char) first_due_date,
             project.contract_type
-       from app.projects project
-       inner join app.workspaces workspace on workspace.id = project.workspace_id
-      where project.id = any($1::uuid[])`,
-    [projects.map(({ id }) => id)],
+       from projects project
+       inner join workspaces workspace on workspace.id = project.workspace_id
+      where project.id in (${projects.map(() => "?").join(", ")})`,
+    projects.map(({ id }) => id),
   );
-  const storedById = new Map(result.rows.map((row) => [row.id, row]));
+  const storedById = new Map(rows.map((row) => [row.id, row]));
   for (const project of projects) {
     const stored = storedById.get(project.id);
     if (
@@ -230,7 +235,7 @@ async function validateProjectContracts(
 }
 
 export async function materializeProjectContracts(
-  client: PoolClient,
+  client: MysqlClient,
   projects: ProjectContractSeed[],
 ): Promise<ProjectContractSeedTotals> {
   await validateProjectContracts(client, projects);
@@ -308,7 +313,7 @@ export async function materializeProjectContracts(
 }
 
 async function validatePersonalFinanceProfiles(
-  client: PoolClient,
+  client: MysqlClient,
   profiles: PersonalFinanceSeedProfile[],
 ): Promise<void> {
   if (
@@ -332,7 +337,7 @@ async function validatePersonalFinanceProfiles(
     );
   }
 
-  const result = await client.query<{
+  const [rows] = await client.query<{
     user_id: string;
     username: string;
     workspace_id: string;
@@ -340,14 +345,14 @@ async function validatePersonalFinanceProfiles(
     `select app_user.id user_id,
             app_user.username,
             workspace.id workspace_id
-       from app.users app_user
-       inner join app.workspaces workspace
+       from users app_user
+       inner join workspaces workspace
          on workspace.owner_user_id = app_user.id
         and workspace.kind = 'personal'
-      where app_user.id = any($1::uuid[])`,
-    [profiles.map(({ userId }) => userId)],
+      where app_user.id in (${profiles.map(() => "?").join(", ")})`,
+    profiles.map(({ userId }) => userId),
   );
-  const storedByUserId = new Map(result.rows.map((row) => [row.user_id, row]));
+  const storedByUserId = new Map(rows.map((row) => [row.user_id, row]));
   for (const profile of profiles) {
     const stored = storedByUserId.get(profile.userId);
     if (
@@ -409,7 +414,7 @@ function manualFinancialRow(input: {
 }
 
 export async function seedManualUserFinances(
-  client: PoolClient,
+  client: MysqlClient,
   profiles: PersonalFinanceSeedProfile[],
 ): Promise<ManualFinanceSeedTotals> {
   await validatePersonalFinanceProfiles(client, profiles);

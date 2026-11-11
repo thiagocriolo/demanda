@@ -1,5 +1,5 @@
 import { and, eq, gt, inArray, isNull, lte } from "drizzle-orm";
-import type { Database } from "../db/database";
+import { affectedRows, type Database } from "../db/database";
 import { storedFiles, userStorageUsage } from "../db/schema";
 import { IMAGE_UPLOAD_POLICY } from "./config";
 import { logMediaEvent } from "./observability";
@@ -62,13 +62,12 @@ export async function cleanupPrivateMedia(
       const deleted = await transaction
         .update(storedFiles)
         .set({ deletedAt: now, updatedAt: now })
-        .where(and(eq(storedFiles.id, row.id), isNull(storedFiles.deletedAt)))
-        .returning({ byteSize: storedFiles.byteSize });
-      if (deleted.length === 1) {
+        .where(and(eq(storedFiles.id, row.id), isNull(storedFiles.deletedAt)));
+      if (affectedRows(deleted) === 1) {
         await decrementStorageUsage(
           transaction as Database,
           row.ownerUserId,
-          deleted[0]!.byteSize,
+          row.byteSize,
         );
       }
     });
@@ -92,13 +91,12 @@ export async function cleanupPrivateMedia(
       const deleted = await transaction
         .update(storedFiles)
         .set({ status: "deleting", deletedAt: now, updatedAt: now })
-        .where(and(eq(storedFiles.id, row.id), isNull(storedFiles.deletedAt)))
-        .returning({ byteSize: storedFiles.byteSize });
-      if (deleted.length === 1) {
+        .where(and(eq(storedFiles.id, row.id), isNull(storedFiles.deletedAt)));
+      if (affectedRows(deleted) === 1) {
         await decrementStorageUsage(
           transaction as Database,
           row.ownerUserId,
-          deleted[0]!.byteSize,
+          row.byteSize,
         );
       }
     });
@@ -132,9 +130,8 @@ export async function cleanupPrivateMedia(
         gt(userStorageUsage.storageReservedBytes, 0),
         lte(userStorageUsage.updatedAt, cutoff),
       ),
-    )
-    .returning({ userId: userStorageUsage.userId });
-  result.staleReservationUsersReleased = released.length;
+    );
+  result.staleReservationUsersReleased = affectedRows(released);
   await reconcileStorageUsage(database);
 
   return result;

@@ -73,24 +73,38 @@ async function insertUser(
   username: string,
   email = `${username}@example.test`,
 ) {
-  const [user] = await database
+  const id = randomUUID();
+  await database
     .insert(users)
-    .values({ name: username, username, email })
-    .returning();
+    .values({ id, name: username, username, email });
+  const [user] = await database
+    .select()
+    .from(users)
+    .where(eq(users.id, id));
   if (!user) throw new Error("Usuário de teste não criado.");
   return user;
 }
 
 async function insertSharedWorkspace(database: Database, ownerUserId: string) {
-  const [workspace] = await database
+  const id = randomUUID();
+  await database
     .insert(workspaces)
     .values({
+      id,
       name: `Conexões ${randomUUID()}`,
       kind: "shared",
       ownerUserId,
-    })
-    .returning();
+    });
+  const [workspace] = await database
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.id, id));
   if (!workspace) throw new Error("Workspace de teste não criado.");
+  await database.insert(workspaceMembers).values({
+    workspaceId: workspace.id,
+    userId: ownerUserId,
+    role: "owner",
+  });
   return workspace;
 }
 
@@ -100,14 +114,15 @@ describe("conexões e colaboradores de workspace", () => {
       const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
       const author = await insertUser(transaction, `profile_${suffix}`);
       const visitor = await insertUser(transaction, `visitor_${suffix}`);
-      const [feedPost] = await transaction
+      const feedPostId = randomUUID();
+      await transaction
         .insert(socialPosts)
         .values({
+          id: feedPostId,
           authorUserId: author.id,
           kind: "feed",
           body: "Publicação visível apenas para conexões",
-        })
-        .returning();
+        });
 
       const anonymous = await getPublicUserPage(transaction, author.username);
       expect(anonymous).toMatchObject({
@@ -125,7 +140,7 @@ describe("conexões e colaboradores de workspace", () => {
         relationship: "self",
         canViewPosts: true,
       });
-      expect(ownProfile?.posts.map((post) => post.id)).toEqual([feedPost!.id]);
+      expect(ownProfile?.posts.map((post) => post.id)).toEqual([feedPostId]);
 
       const unrelated = await getPublicUserPage(
         transaction,
@@ -167,7 +182,7 @@ describe("conexões e colaboradores de workspace", () => {
         relationship: "connected",
         canViewPosts: true,
       });
-      expect(connected?.posts.map((post) => post.id)).toEqual([feedPost!.id]);
+      expect(connected?.posts.map((post) => post.id)).toEqual([feedPostId]);
     }));
 
   it("mantém a área de portfólio restrita aos projetos do próprio usuário", () =>
@@ -187,37 +202,42 @@ describe("conexões e colaboradores de workspace", () => {
         "accept",
       );
 
-      const [ownPost, connectionPost] = await transaction
+      const ownPostId = randomUUID();
+      const connectionPostId = randomUUID();
+      await transaction
         .insert(socialPosts)
         .values([
           {
+            id: ownPostId,
             authorUserId: owner.id,
             kind: "portfolio",
             title: "Projeto próprio",
           },
           {
+            id: connectionPostId,
             authorUserId: connection.id,
             kind: "portfolio",
             title: "Projeto da conexão",
           },
           {
+            id: randomUUID(),
             authorUserId: connection.id,
             kind: "feed",
             body: "Publicação que não pertence ao portfólio",
           },
           {
+            id: randomUUID(),
             authorUserId: connection.id,
             kind: "portfolio",
             title: "Projeto excluído",
             deletedAt: new Date(),
           },
-        ])
-        .returning();
+        ]);
 
       const portfolio = await listPortfolios(transaction, owner.id);
-      expect(portfolio.items.map((post) => post.id)).toEqual([ownPost!.id]);
+      expect(portfolio.items.map((post) => post.id)).toEqual([ownPostId]);
       await expect(
-        getPortfolio(transaction, owner.id, connectionPost!.id),
+        getPortfolio(transaction, owner.id, connectionPostId),
       ).rejects.toMatchObject({ status: 404 });
 
       const publicPortfolio = await getPublicUserPortfolio(
@@ -226,7 +246,7 @@ describe("conexões e colaboradores de workspace", () => {
       );
       expect(publicPortfolio?.profile.username).toBe(connection.username);
       expect(publicPortfolio?.posts.map((post) => post.id)).toEqual([
-        connectionPost!.id,
+        connectionPostId,
       ]);
       expect(publicPortfolio?.posts[0]?.canInteract).toBe(false);
 

@@ -1,5 +1,9 @@
 # Arquitetura da casca
 
+> Persistência atual: MySQL 8, com `mysql2` e Drizzle no dialeto `mysql`.
+> Referências históricas a PostgreSQL descrevem o estado anterior e não devem
+> ser usadas como instruções de execução.
+
 ## Princípio principal
 
 Preferimos vários arquivos pequenos e específicos a um arquivo grande que
@@ -176,8 +180,10 @@ impedem que um bloco ultrapasse o fim do dia.
 `GET /api/cronograma` aceita intervalo e responsável opcionais. As escritas em
 `/api/cronograma/[subtaskId]` bloqueiam o workspace, conferem a versão e validam
 o estado final completo: subtarefas pendentes seguem sua ordem, responsáveis
-não se sobrepõem e cada bloco cabe em um dia e turno configurado. Assim, duas
-requisições concorrentes não podem confirmar o mesmo horário proibido.
+não se sobrepõem e cada bloco cabe no mesmo dia. A alocação manual pode sair do
+expediente; somente os blocos alterados pela reorganização automática precisam
+caber nos dias e turnos configurados. Assim, duas requisições concorrentes não
+podem confirmar o mesmo horário proibido.
 
 Cronograma e Dashboard consomem essa API. A chave
 `demanda:cronograma:schedule:v2` deixou de ser lida ou escrita, mas permanece

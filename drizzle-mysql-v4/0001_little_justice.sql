@@ -1,0 +1,3 @@
+ALTER TABLE `projects` DROP INDEX `projects_workspace_business_institutional_unique`;--> statement-breakpoint
+ALTER TABLE `projects` ADD `institutional_business_id` char(36) GENERATED ALWAYS AS (case when is_institutional then business_id else null end) VIRTUAL;--> statement-breakpoint
+ALTER TABLE `projects` ADD CONSTRAINT `projects_workspace_business_institutional_unique` UNIQUE(`workspace_id`,`institutional_business_id`);

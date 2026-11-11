@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   and,
   asc,
@@ -23,7 +24,7 @@ import {
   INSTITUTIONAL_PROJECT_NAME,
   INSTITUTIONAL_PROJECT_STATUS,
 } from "../../projects/institutional";
-import type { Database } from "../db/database";
+import { affectedRows, type Database } from "../db/database";
 import {
   businessNotes,
   businessResponsibles,
@@ -35,7 +36,7 @@ import {
   workspaces,
 } from "../db/schema";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
-import type { BusinessListQuery } from "./validation";
+import { businessMutationSchema, type BusinessListQuery } from "./validation";
 
 type BusinessDatabase = Pick<
   Database,
@@ -85,13 +86,17 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (character) => `\\${character}`);
 }
 
+function escapeLikeMySql(value: string): string {
+  return value.replace(/[!%_]/g, (character) => `!${character}`);
+}
+
 function searchCondition(query: string): SQL | undefined {
   if (!query) return undefined;
-  const pattern = `%${escapeLike(query)}%`;
+  const pattern = `%${escapeLikeMySql(query)}%`;
   return or(
-    sql`${businesses.name} ilike ${pattern} escape '\\'`,
-    sql`${businesses.categoryKey} ilike ${pattern} escape '\\'`,
-    sql`${businesses.stageKey} ilike ${pattern} escape '\\'`,
+    sql`${businesses.name} like ${pattern} escape '!'`,
+    sql`${businesses.categoryKey} like ${pattern} escape '!'`,
+    sql`${businesses.stageKey} like ${pattern} escape '!'`,
     sql`exists (
       select 1
       from ${businessResponsibles}
@@ -101,7 +106,7 @@ function searchCondition(query: string): SQL | undefined {
       where ${businessResponsibles.workspaceId} = ${businesses.workspaceId}
         and ${businessResponsibles.businessId} = ${businesses.id}
         and ${contacts.ownerUserId} = ${businesses.ownerUserId}
-        and ${contacts.name} ilike ${pattern} escape '\\'
+        and ${contacts.name} like ${pattern} escape '!'
     )`,
     sql`exists (
       select 1
@@ -111,9 +116,9 @@ function searchCondition(query: string): SQL | undefined {
       where ${businessResponsibles.workspaceId} = ${businesses.workspaceId}
         and ${businessResponsibles.businessId} = ${businesses.id}
         and (
-          ${users.name} ilike ${pattern} escape '\\'
-          or ${users.username} ilike ${pattern} escape '\\'
-          or ${users.email} ilike ${pattern} escape '\\'
+          ${users.name} like ${pattern} escape '!'
+          or ${users.username} like ${pattern} escape '!'
+          or ${users.email} like ${pattern} escape '!'
         )
     )`,
     sql`exists (
@@ -121,7 +126,7 @@ function searchCondition(query: string): SQL | undefined {
       where ${businessNotes.workspaceId} = ${businesses.workspaceId}
         and ${businessNotes.businessId} = ${businesses.id}
         and ${businessNotes.archivedAt} is null
-        and ${businessNotes.body} ilike ${pattern} escape '\\'
+        and ${businessNotes.body} like ${pattern} escape '!'
     )`,
   );
 }
@@ -500,6 +505,10 @@ function databaseConstraint(error: unknown): string | undefined {
     if ("constraint" in current && typeof current.constraint === "string") {
       return current.constraint;
     }
+    if ("sqlMessage" in current && typeof current.sqlMessage === "string") {
+      const match = /CONSTRAINT `([^`]+)`/u.exec(current.sqlMessage);
+      if (match?.[1]) return match[1];
+    }
     current = "cause" in current ? current.cause : undefined;
   }
   return undefined;
@@ -663,6 +672,7 @@ export async function createWorkspaceBusiness(
   context: RequestAuthorizationContext,
   input: BusinessMutationInput,
 ): Promise<Business> {
+  input = businessMutationSchema.parse(input);
   const ownerUserId = context.user.id;
   try {
     return await database.transaction(async (transaction) => {
@@ -677,16 +687,22 @@ export async function createWorkspaceBusiness(
         input.responsibleContactIds,
         input.responsibleUserIds ?? [],
       );
-      const [created] = await transaction
+      const id = randomUUID();
+      await transaction
         .insert(businesses)
         .values({
+          id,
           workspaceId,
           ownerUserId,
           name: input.name,
           categoryKey: input.category,
           stageKey: input.stage,
-        })
-        .returning();
+        });
+      const [created] = await transaction
+        .select()
+        .from(businesses)
+        .where(eq(businesses.id, id))
+        .limit(1);
       if (!created) throw new Error("O negocio nao pode ser criado.");
       await transaction.insert(projects).values({
         workspaceId,
@@ -743,7 +759,7 @@ export async function updateWorkspaceBusiness(
       );
 
       const now = new Date();
-      const [updated] = await transaction
+      const updated = await transaction
         .update(businesses)
         .set({
           name: input.name,
@@ -757,9 +773,8 @@ export async function updateWorkspaceBusiness(
             eq(businesses.ownerUserId, ownerUserId),
             eq(businesses.id, businessId),
           ),
-        )
-        .returning();
-      if (!updated) throw new BusinessNotFoundError();
+        );
+      if (affectedRows(updated) !== 1) throw new BusinessNotFoundError();
 
       await transaction
         .delete(businessResponsibles)
@@ -781,7 +796,7 @@ export async function updateWorkspaceBusiness(
       await insertBusinessDetails(transaction, workspaceId, businessId, input);
       const [business] = await hydrateBusinesses(
         transaction,
-        [updated],
+        [{ ...existing, name: input.name, categoryKey: input.category, stageKey: input.stage, updatedAt: now }],
         ownerUserId,
       );
       if (!business) throw new BusinessNotFoundError();
@@ -825,7 +840,7 @@ export async function archiveWorkspaceBusiness(
           eq(businesses.id, businessId),
         ),
       )
-      .returning({ id: businesses.id });
-    if (archived.length !== 1) throw new BusinessNotFoundError();
+      ;
+    if (affectedRows(archived) !== 1) throw new BusinessNotFoundError();
   });
 }

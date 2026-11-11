@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { Database } from "../db/database";
+import { affectedRows, type Database } from "../db/database";
 import { workspaceMembers, workspaces } from "../db/schema";
 import {
   appendAdministrativeAuditLog,
@@ -72,9 +72,8 @@ export async function changeWorkspaceMemberRole(
           eq(workspaceMembers.userId, input.targetUserId),
           eq(workspaceMembers.role, target.role),
         ),
-      )
-      .returning({ userId: workspaceMembers.userId });
-    if (changed.length !== 1) throw new WorkspaceNotFoundError();
+      );
+    if (affectedRows(changed) !== 1) throw new WorkspaceNotFoundError();
 
     await appendAdministrativeAuditLog(
       transaction,
@@ -141,9 +140,8 @@ export async function transferWorkspaceOwnership(
           eq(workspaces.id, input.workspaceId),
           eq(workspaces.ownerUserId, actor.user.id),
         ),
-      )
-      .returning({ id: workspaces.id });
-    if (changed.length !== 1) throw new WorkspaceNotFoundError();
+      );
+    if (affectedRows(changed) !== 1) throw new WorkspaceNotFoundError();
 
     await appendAdministrativeAuditLog(
       transaction,

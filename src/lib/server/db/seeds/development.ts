@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { avatarProfileUrl } from "../../../avatar/avatar-options";
 import type { Database } from "../database";
 import { users, workspaceMembers, workspaces } from "../schema";
@@ -12,7 +12,6 @@ export async function seedDevelopmentDatabase(
   const timestamp = new Date();
 
   await database.transaction(async (transaction) => {
-    await transaction.execute(sql`select pg_advisory_xact_lock(2026071301)`);
     await transaction
       .insert(users)
       .values({
@@ -23,8 +22,7 @@ export async function seedDevelopmentDatabase(
         avatarUrl: avatarProfileUrl("avatar-08", "#2E56FF"),
         updatedAt: timestamp,
       })
-      .onConflictDoUpdate({
-        target: users.id,
+      .onDuplicateKeyUpdate({
         set: {
           name: "Thiago",
           username: "thiago",
@@ -47,8 +45,7 @@ export async function seedDevelopmentDatabase(
         ownerUserId: DEVELOPMENT_USER_ID,
         updatedAt: timestamp,
       })
-      .onConflictDoUpdate({
-        target: workspaces.id,
+      .onDuplicateKeyUpdate({
         set: {
           name: "Pessoal",
           description: "Seus projetos e tarefas particulares.",

@@ -6,10 +6,10 @@ const databaseUrl = z
   .superRefine((value, context) => {
     try {
       const parsed = new URL(value);
-      if (!["postgres:", "postgresql:"].includes(parsed.protocol)) {
+      if (parsed.protocol !== "mysql:") {
         context.addIssue({
           code: "custom",
-          message: "deve usar o protocolo postgres ou postgresql",
+          message: "deve usar o protocolo mysql",
         });
       }
       if (!parsed.hostname || !parsed.pathname || parsed.pathname === "/") {
@@ -21,7 +21,7 @@ const databaseUrl = z
     } catch {
       context.addIssue({
         code: "custom",
-        message: "deve ser uma URL PostgreSQL válida",
+        message: "deve ser uma URL MySQL válida",
       });
     }
   });
@@ -115,7 +115,10 @@ export type ServerEnvironment = z.infer<typeof serverEnvironmentSchema>;
 export function parseServerEnvironment(
   source: Record<string, string | undefined>,
 ): ServerEnvironment {
-  const result = serverEnvironmentSchema.safeParse(source);
+  const result = serverEnvironmentSchema.safeParse({
+    ...source,
+    DATABASE_URL: source.MYSQL_URL ?? source.DATABASE_URL,
+  });
   if (result.success) return result.data;
 
   const fields = [

@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
-import type { Database } from "../db/database";
+import { affectedRows, rawRows, type Database } from "../db/database";
 import {
   authSessions,
   auditLogs,
@@ -320,20 +321,26 @@ export async function createUserWorkspace(
   input: WorkspaceInput,
 ): Promise<string> {
   return database.transaction(async (transaction) => {
-    const [created] = await transaction
+    const id = randomUUID();
+    await transaction
       .insert(workspaces)
-      .values({ ...input, kind: "shared", ownerUserId: userId })
-      .returning({ id: workspaces.id });
+      .values({ id, ...input, kind: "shared", ownerUserId: userId });
+    const created = { id };
+    await transaction.insert(workspaceMembers).values({
+      workspaceId: id,
+      userId,
+      role: "owner",
+    });
     if (!created) throw new Error("O workspace não pôde ser criado.");
     await transaction.insert(auditLogs).values({
-      workspaceId: created.id,
+      workspaceId: id,
       actorUserId: userId,
       action: "workspace.created",
       targetType: "workspace",
-      targetId: created.id,
+      targetId: id,
       metadata: {},
     });
-    return created.id;
+    return id;
   });
 }
 
@@ -356,9 +363,8 @@ export async function updateUserWorkspace(
       name: access.workspace.kind === "personal" ? "Pessoal" : input.name,
       updatedAt: new Date(),
     })
-    .where(and(eq(workspaces.id, workspaceId), isNull(workspaces.archivedAt)))
-    .returning({ id: workspaces.id });
-  if (updated.length !== 1) throw new WorkspaceNotFoundError();
+    .where(and(eq(workspaces.id, workspaceId), isNull(workspaces.archivedAt)));
+  if (affectedRows(updated) !== 1) throw new WorkspaceNotFoundError();
   await database.insert(auditLogs).values({
     workspaceId,
     actorUserId: userId,
@@ -411,15 +417,14 @@ export async function archiveUserWorkspace(
     await transaction
       .update(authSessions)
       .set({
-        activeWorkspaceId: sql`case when ${authSessions.userId} = ${userId} then ${fallback.id}::uuid else null end`,
+        activeWorkspaceId: sql`case when ${authSessions.userId} = ${userId} then ${fallback.id} else null end`,
       })
       .where(eq(authSessions.activeWorkspaceId, workspaceId));
     const archived = await transaction
       .update(workspaces)
       .set({ archivedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(workspaces.id, workspaceId), isNull(workspaces.archivedAt)))
-      .returning({ id: workspaces.id });
-    if (archived.length !== 1) throw new WorkspaceNotFoundError();
+      .where(and(eq(workspaces.id, workspaceId), isNull(workspaces.archivedAt)));
+    if (affectedRows(archived) !== 1) throw new WorkspaceNotFoundError();
   });
 }
 
@@ -446,9 +451,11 @@ export async function addWorkspaceCollaboratorByEmail(
       );
     }
 
-    await transaction.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${workspaceId}))`,
-    );
+    await transaction
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.id, workspaceId))
+      .for("update");
     const [target] = await transaction
       .select()
       .from(users)
@@ -492,17 +499,17 @@ export async function addWorkspaceCollaboratorByEmail(
     const capacity = await transaction.execute<{ total: string }>(sql`
       select (
         select count(*)
-        from app.workspace_members member
-        where member.workspace_id = ${workspaceId}::uuid
+        from workspace_members member
+        where member.workspace_id = ${workspaceId}
           and member.role <> 'owner'
       ) + (
         select count(*)
-        from app.workspace_invitations invitation
-        where invitation.workspace_id = ${workspaceId}::uuid
+        from workspace_invitations invitation
+        where invitation.workspace_id = ${workspaceId}
           and invitation.status = 'pending'
       ) as total
     `);
-    if (Number(capacity.rows[0]?.total ?? 0) >= 20) {
+    if (Number(rawRows<{ total: string }>(capacity)[0]?.total ?? 0) >= 20) {
       throw new WorkspaceOperationNotAllowedError(
         "Cada workspace aceita no máximo 20 colaboradores.",
       );
@@ -522,15 +529,21 @@ export async function addWorkspaceCollaboratorByEmail(
       return { status: "member", user: userView(target) };
     }
 
-    const [invitation] = await transaction
+    const createdInvitationId = randomUUID();
+    await transaction
       .insert(workspaceInvitations)
       .values({
+        id: createdInvitationId,
         workspaceId,
         invitedByUserId: actorUserId,
         email: normalizedEmail,
         role: input.role,
-      })
-      .returning();
+      });
+    const [invitation] = await transaction
+      .select()
+      .from(workspaceInvitations)
+      .where(eq(workspaceInvitations.id, createdInvitationId))
+      .limit(1);
     if (!invitation) throw new Error("O convite não pôde ser criado.");
     return { status: "pending", invitation: invitationView(invitation) };
   });
@@ -567,9 +580,11 @@ export async function acceptWorkspaceInvitation(
       .limit(1);
     if (!invitation) throw new WorkspaceNotFoundError();
 
-    await transaction.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${invitation.workspace.id}))`,
-    );
+    await transaction
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.id, invitation.workspace.id))
+      .for("update");
     const acceptedAt = new Date();
     const accepted = await transaction
       .update(workspaceInvitations)
@@ -584,9 +599,8 @@ export async function acceptWorkspaceInvitation(
           eq(workspaceInvitations.id, invitationId),
           eq(workspaceInvitations.status, "pending"),
         ),
-      )
-      .returning({ workspaceId: workspaceInvitations.workspaceId });
-    if (accepted.length !== 1) throw new WorkspaceNotFoundError();
+      );
+    if (affectedRows(accepted) !== 1) throw new WorkspaceNotFoundError();
 
     await transaction
       .insert(workspaceMembers)
@@ -596,7 +610,9 @@ export async function acceptWorkspaceInvitation(
         role: invitation.invitation.role,
         joinedAt: acceptedAt,
       })
-      .onConflictDoNothing();
+      .onDuplicateKeyUpdate({
+        set: { workspaceId: sql`${workspaceMembers.workspaceId}` },
+      });
     await connectWorkspaceMembers(
       transaction as Database,
       invitation.workspace.id,
@@ -635,9 +651,8 @@ export async function revokeWorkspaceInvitation(
         eq(workspaceInvitations.workspaceId, workspaceId),
         eq(workspaceInvitations.status, "pending"),
       ),
-    )
-    .returning({ id: workspaceInvitations.id });
-  if (revoked.length !== 1) throw new WorkspaceNotFoundError();
+    );
+  if (affectedRows(revoked) !== 1) throw new WorkspaceNotFoundError();
 }
 
 export async function removeWorkspaceMember(
@@ -660,7 +675,6 @@ export async function removeWorkspaceMember(
         eq(workspaceMembers.userId, targetUserId),
         ne(workspaceMembers.role, "owner"),
       ),
-    )
-    .returning({ userId: workspaceMembers.userId });
-  if (removed.length !== 1) throw new WorkspaceNotFoundError();
+    );
+  if (affectedRows(removed) !== 1) throw new WorkspaceNotFoundError();
 }

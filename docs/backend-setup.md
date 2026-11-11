@@ -3,24 +3,23 @@
 ## Pré-requisitos
 
 - Node.js 20 ou superior.
-- PostgreSQL em execução.
+- MySQL 8 em execução.
 - Um banco e um usuário exclusivos para a aplicação.
 
-O PostgreSQL 18 já está instalado e o serviço está ativo nesta máquina. O
-executável `psql.exe` está em `C:\Program Files\PostgreSQL\18\bin` caso essa
-pasta ainda não esteja no `PATH`.
+Use a instância local MySQL configurada para o banco `demanda`.
 
 ## Preparar o ambiente
 
 1. Copie `.env.example` para `.env`.
-2. Crie o usuário e o banco com um administrador do PostgreSQL:
+2. Crie o usuário e o banco com um administrador do MySQL:
 
    ```sql
-   create role demanda with login password 'uma-senha-local-forte';
-   create database demanda owner demanda;
+   create database if not exists demanda character set utf8mb4 collate utf8mb4_0900_ai_ci;
+   create user if not exists 'demanda_app'@'127.0.0.1' identified by 'uma-senha-local-forte';
+   grant all privileges on demanda.* to 'demanda_app'@'127.0.0.1';
    ```
 
-3. Atualize `DATABASE_URL` no `.env` com a senha escolhida e mantenha
+3. Atualize `MYSQL_URL` no `.env` com a senha escolhida e mantenha
    `APP_ORIGIN=http://localhost:5190` para gerar links locais confiáveis.
 4. Confira a conexão:
 
@@ -38,13 +37,12 @@ precisam ser revistas.
 npm run db:generate # gera migration SQL a partir do schema TypeScript
 npm run db:migrations:check # valida o histórico local de migrations
 npm run db:migrate  # aplica migrations pendentes
-npm run db:seed     # preenche o workspace pessoal de todos os usuários locais
-npm run db:seed:load # recria o cenário destrutivo das três contas de teste
+npm run db:seed     # cria, de forma idempotente, as contas locais e seus workspaces pessoais
 npm run db:setup    # aplica migrations e depois o seed
 npm run db:studio   # abre o navegador de dados do Drizzle
 npm run db:check    # testa a conexão sem alterar dados
 npm run db:verify   # verifica seed e invariants de usuário/workspace/owner
-npm run test:integration # testa migrations e constraints em schema descartável
+npm run test:integration # testa serviços e schema no banco MySQL configurado
 npm run verify:http:businesses # testa a API de negócios em um servidor local ativo
 npm run verify:http:projects # testa projetos, modelos, rollback e isolamento via HTTP
 npm run verify:http:tasks # testa tarefas, estados, concorrência e isolamento via HTTP
@@ -53,11 +51,12 @@ npm run media:migrate-legacy # processa legado mantendo o objeto antigo como bac
 npm test            # executa os testes unitários
 npm run check       # valida TypeScript e componentes Svelte
 npm run build       # gera o build de produção
+npm start           # inicia o build carregando as variáveis de .env
 npm run format:check # confere a formatação do repositório
 ```
 
-O build não abre conexão com o PostgreSQL. A configuração é validada somente
-quando um serviço de banco ou um dos comandos acima é realmente usado.
+O build não abre conexão com o MySQL. A configuração é validada quando um
+serviço de banco é usado; `npm start` carrega `.env` antes de iniciar o SSR.
 
 ## Arquivos privados
 
@@ -189,9 +188,11 @@ transacional.
   servidor.
 - A Agenda persiste datas, duração e ordem em `agenda_entries` e usa
   `/api/agenda`. O Cronograma persiste blocos em `cronograma_blocks`, usa
-  `/api/cronograma` e valida no servidor sequência, jornada e sobreposição por
-  responsável. A antiga chave `demanda:cronograma:schedule:v2` não recebe novas
-  leituras ou escritas e permanece intacta até a migração da BE-15.
+  `/api/cronograma` e valida no servidor sequência e sobreposição por
+  responsável. Movimentos manuais podem sair do expediente; a reorganização
+  automática continua limitada à jornada configurada. A antiga chave
+  `demanda:cronograma:schedule:v2` não recebe novas leituras ou escritas e
+  permanece intacta até a migração da BE-15.
 - O Financeiro persiste ocorrências em `financial_entries`, usa `/api/finance`
   e materializa parcelas de projeto por vínculo único. Valores usam
   `numeric(18,2)`; a antiga chave `demanda.finance.entries.v1` permanece apenas

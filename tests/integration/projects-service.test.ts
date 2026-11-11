@@ -79,14 +79,14 @@ async function insertUser(
   label: string,
 ): Promise<typeof users.$inferSelect> {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
-  const [user] = await database
-    .insert(users)
-    .values({
+  const id = randomUUID();
+  await database.insert(users).values({
+      id,
       name: label,
       username: `${label.toLowerCase()}_${suffix}`,
       email: `${label.toLowerCase()}-${suffix}@example.test`,
-    })
-    .returning();
+    });
+  const [user] = await database.select().from(users).where(eq(users.id, id));
   if (!user) throw new Error("Usuario de teste nao criado.");
   return user;
 }
@@ -96,10 +96,10 @@ async function insertWorkspace(
   ownerUserId: string,
   name: string,
 ): Promise<typeof workspaces.$inferSelect> {
-  const [workspace] = await database
-    .insert(workspaces)
-    .values({ name, kind: "shared", ownerUserId })
-    .returning();
+  const id = randomUUID();
+  await database.insert(workspaces).values({ id, name, kind: "shared", ownerUserId });
+  await database.insert(workspaceMembers).values({ workspaceId: id, userId: ownerUserId, role: "owner" });
+  const [workspace] = await database.select().from(workspaces).where(eq(workspaces.id, id));
   if (!workspace) throw new Error("Workspace de teste nao criado.");
   return workspace;
 }
@@ -117,16 +117,16 @@ async function insertBusiness(
     .limit(1);
   const resolvedOwnerUserId = ownerUserId ?? workspace?.ownerUserId;
   if (!resolvedOwnerUserId) throw new Error("Owner do negocio nao encontrado.");
-  const [business] = await database
-    .insert(businesses)
-    .values({
+  const id = randomUUID();
+  await database.insert(businesses).values({
+      id,
       workspaceId,
       ownerUserId: resolvedOwnerUserId,
       name,
       categoryKey: "cliente",
       stageKey: "ativo",
-    })
-    .returning();
+    });
+  const [business] = await database.select().from(businesses).where(eq(businesses.id, id));
   if (!business) throw new Error("Negocio de teste nao criado.");
   return business;
 }
@@ -252,17 +252,22 @@ describe("BE-07: servicos e projetos", () => {
         "Negocio institucional",
       );
       const ownerContext = context(owner, workspace, "owner");
-      const [institutional] = await database
+      const institutionalId = randomUUID();
+      await database
         .insert(projects)
         .values({
+          id: institutionalId,
           workspaceId: workspace.id,
           businessId: business.id,
           isInstitutional: true,
           name: "Institucional",
           statusKey: "execucao",
           startDate: "2026-07-17",
-        })
-        .returning();
+        });
+      const [institutional] = await database
+        .select()
+        .from(projects)
+        .where(eq(projects.id, institutionalId));
       if (!institutional) throw new Error("Projeto institucional nao criado.");
 
       const regularList = await listWorkspaceProjects(
@@ -922,10 +927,11 @@ describe("BE-07: servicos e projetos", () => {
         projectInput("Projeto movível", businessA.id, [owner.id]),
       );
       const oldTaskTimestamp = new Date("2020-01-01T00:00:00.000Z");
-      const insertedTasks = await database
+      await database
         .insert(tasks)
         .values([
           {
+            id: randomUUID(),
             workspaceId: workspace.id,
             projectId: project.id,
             businessId: businessA.id,
@@ -938,6 +944,7 @@ describe("BE-07: servicos e projetos", () => {
             updatedAt: oldTaskTimestamp,
           },
           {
+            id: randomUUID(),
             workspaceId: workspace.id,
             projectId: project.id,
             businessId: businessA.id,
@@ -950,9 +957,7 @@ describe("BE-07: servicos e projetos", () => {
             updatedAt: oldTaskTimestamp,
             archivedAt: new Date(),
           },
-        ])
-        .returning();
-      expect(insertedTasks).toHaveLength(2);
+        ]);
 
       const updatedProject = await updateWorkspaceProject(
         database,
@@ -981,9 +986,7 @@ describe("BE-07: servicos e projetos", () => {
       });
       expect(archivedTask.boardOrder).toEqual({ priority: 1 });
       expect(activeTask.updatedAt.getTime()).toBeGreaterThan(
-        insertedTasks
-          .find(({ name }) => name === "Tarefa ativa")!
-          .updatedAt.getTime(),
+        oldTaskTimestamp.getTime(),
       );
       await expect(
         archiveWorkspaceTask(database, ownerContext, activeTask.id, 3),

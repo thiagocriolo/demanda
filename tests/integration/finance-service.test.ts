@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import type { RequestAuthorizationContext } from "../../src/lib/server/authorization/workspace-context";
 import { WorkspaceNotFoundError } from "../../src/lib/server/authorization/workspace-context";
@@ -50,14 +50,19 @@ async function withRollback(
 
 async function insertUser(database: Database, label: string) {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
-  const [user] = await database
+  const id = randomUUID();
+  await database
     .insert(users)
     .values({
+      id,
       name: label,
       username: `${label.toLowerCase()}_${suffix}`,
       email: `${label.toLowerCase()}-${suffix}@example.test`,
-    })
-    .returning();
+    });
+  const [user] = await database
+    .select()
+    .from(users)
+    .where(eq(users.id, id));
   if (!user) throw new Error("Usuário financeiro não criado.");
   return user;
 }
@@ -103,40 +108,67 @@ function context(
 async function fixture(database: Database, label = "BE12") {
   const owner = await insertUser(database, `${label}Owner`);
   const outsider = await insertUser(database, `${label}Outsider`);
-  const [workspace] = await database
+  const workspaceId = randomUUID();
+  await database
     .insert(workspaces)
     .values({
+      id: workspaceId,
       name: `${label} workspace`,
       kind: "shared",
       ownerUserId: owner.id,
-    })
-    .returning();
+    });
+  const [workspace] = await database
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId));
   if (!workspace) throw new Error("Workspace financeiro não criado.");
-  const [privateWorkspace] = await database
+  await database.insert(workspaceMembers).values({
+    workspaceId: workspace.id,
+    userId: owner.id,
+    role: "owner",
+  });
+  const privateWorkspaceId = randomUUID();
+  await database
     .insert(workspaces)
     .values({
+      id: privateWorkspaceId,
       name: `${label} registros privados`,
       kind: "personal",
       ownerUserId: owner.id,
-    })
-    .returning();
+    });
+  const [privateWorkspace] = await database
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.id, privateWorkspaceId));
   if (!privateWorkspace) {
     throw new Error("Workspace privado financeiro nao criado.");
   }
-  const [business] = await database
+  await database.insert(workspaceMembers).values({
+    workspaceId: privateWorkspace.id,
+    userId: owner.id,
+    role: "owner",
+  });
+  const businessId = randomUUID();
+  await database
     .insert(businesses)
     .values({
+      id: businessId,
       workspaceId: privateWorkspace.id,
       ownerUserId: owner.id,
       name: `${label} negócio`,
       categoryKey: "cliente",
       stageKey: "ativo",
-    })
-    .returning();
+    });
+  const [business] = await database
+    .select()
+    .from(businesses)
+    .where(eq(businesses.id, businessId));
   if (!business) throw new Error("Negócio financeiro não criado.");
-  const [project] = await database
+  const projectId = randomUUID();
+  await database
     .insert(projects)
     .values({
+      id: projectId,
       workspaceId: workspace.id,
       businessId: business.id,
       name: `${label} projeto`,
@@ -145,13 +177,18 @@ async function fixture(database: Database, label = "BE12") {
       contractType: "one_off",
       firstDueDate: "2026-07-31",
       financeNotes: "Gerado pelo projeto",
-    })
-    .returning();
+    });
+  const [project] = await database
+    .select()
+    .from(projects)
+    .where(eq(projects.id, projectId));
   if (!project) throw new Error("Projeto financeiro não criado.");
-  const installments = await database
+  const installmentIds = [randomUUID(), randomUUID()];
+  await database
     .insert(projectInstallments)
     .values([
       {
+        id: installmentIds[0],
         workspaceId: workspace.id,
         projectId: project.id,
         number: 1,
@@ -160,6 +197,7 @@ async function fixture(database: Database, label = "BE12") {
         statusKey: "pending",
       },
       {
+        id: installmentIds[1],
         workspaceId: workspace.id,
         projectId: project.id,
         number: 2,
@@ -167,8 +205,14 @@ async function fixture(database: Database, label = "BE12") {
         amountCents: 5_001,
         statusKey: "pending",
       },
-    ])
-    .returning();
+    ]);
+  const installments = await database
+    .select()
+    .from(projectInstallments)
+    .where(and(
+      eq(projectInstallments.projectId, project.id),
+      eq(projectInstallments.workspaceId, workspace.id),
+    ));
   return {
     owner,
     outsider,
@@ -293,7 +337,8 @@ describe("BE-12: Financeiro persistente", () => {
             eq(financialEntries.workspaceId, data.workspace.id),
             eq(financialEntries.source, "manual"),
           ),
-        );
+        )
+        .orderBy(asc(financialEntries.amount));
       expect(stored.map(({ amount }) => amount)).toEqual(["0.10", "0.20"]);
     }));
 

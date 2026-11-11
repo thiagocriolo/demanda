@@ -52,14 +52,14 @@ async function insertUser(
   label: string,
 ): Promise<typeof users.$inferSelect> {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
-  const [user] = await database
-    .insert(users)
-    .values({
+  const id = randomUUID();
+  await database.insert(users).values({
+      id,
       name: label,
       username: `${label.toLowerCase()}_${suffix}`,
       email: `${label.toLowerCase()}-${suffix}@example.test`,
-    })
-    .returning();
+    });
+  const [user] = await database.select().from(users).where(eq(users.id, id));
   if (!user) throw new Error("Usuário de teste não criado.");
   return user;
 }
@@ -69,10 +69,10 @@ async function insertWorkspace(
   ownerUserId: string,
   name: string,
 ): Promise<typeof workspaces.$inferSelect> {
-  const [workspace] = await database
-    .insert(workspaces)
-    .values({ name, kind: "shared", ownerUserId })
-    .returning();
+  const id = randomUUID();
+  await database.insert(workspaces).values({ id, name, kind: "shared", ownerUserId });
+  await database.insert(workspaceMembers).values({ workspaceId: id, userId: ownerUserId, role: "owner" });
+  const [workspace] = await database.select().from(workspaces).where(eq(workspaces.id, id));
   if (!workspace) throw new Error("Workspace de teste não criado.");
   return workspace;
 }
@@ -82,10 +82,10 @@ async function insertPersonalWorkspace(
   ownerUserId: string,
   name: string,
 ): Promise<typeof workspaces.$inferSelect> {
-  const [workspace] = await database
-    .insert(workspaces)
-    .values({ name, kind: "personal", ownerUserId })
-    .returning();
+  const id = randomUUID();
+  await database.insert(workspaces).values({ id, name, kind: "personal", ownerUserId });
+  await database.insert(workspaceMembers).values({ workspaceId: id, userId: ownerUserId, role: "owner" });
+  const [workspace] = await database.select().from(workspaces).where(eq(workspaces.id, id));
   if (!workspace) throw new Error("Workspace pessoal de teste não criado.");
   return workspace;
 }
@@ -373,15 +373,14 @@ describe("BE-05: serviço de contatos", () => {
         ownerContext,
         input("Contato com histórico"),
       );
-      const [archivedNote] = await database
-        .insert(contactNotes)
-        .values({
+      const archivedNote = { id: randomUUID() };
+      await database.insert(contactNotes).values({
+          id: archivedNote.id,
           workspaceId: created.workspaceId,
           contactId: created.id,
           body: "Histórico que não pode ser apagado",
           archivedAt: new Date(),
-        })
-        .returning({ id: contactNotes.id });
+        });
       if (!archivedNote) throw new Error("Observação arquivada não criada.");
 
       await updateWorkspaceContact(

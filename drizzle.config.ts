@@ -5,9 +5,9 @@ import { parseServerEnvironment } from "./src/lib/server/config/env-schema";
 const environment = parseServerEnvironment(process.env);
 
 export default defineConfig({
-  dialect: "postgresql",
+  dialect: "mysql",
   schema: "./src/lib/server/db/schema/index.ts",
-  out: "./drizzle",
+  out: "./drizzle-mysql-v4",
   dbCredentials: {
     url: environment.DATABASE_URL,
   },

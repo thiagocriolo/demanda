@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseServerEnvironment } from "./env-schema";
 
-const validUrl = "postgresql://demanda:segredo@localhost:5432/demanda";
+const validUrl = "mysql://demanda:segredo@localhost:3306/demanda";
 
 describe("parseServerEnvironment", () => {
   it("aplica limites seguros por padrão", () => {
@@ -50,7 +50,7 @@ describe("parseServerEnvironment", () => {
     undefined,
     "",
     "https://usuario:segredo@example.com/demanda",
-    "postgresql://localhost",
+    "mysql://localhost",
   ])("rejeita DATABASE_URL inválida (%s)", (DATABASE_URL) => {
     expect(() => parseServerEnvironment({ DATABASE_URL })).toThrow(
       "Revise: DATABASE_URL",

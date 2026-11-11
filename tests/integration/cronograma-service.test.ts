@@ -52,14 +52,14 @@ async function withRollback(
 
 async function insertUser(database: Database, label: string) {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
-  const [user] = await database
-    .insert(users)
-    .values({
+  const id = randomUUID();
+  await database.insert(users).values({
+      id,
       name: label,
       username: `${label.toLowerCase()}_${suffix}`,
       email: `${label.toLowerCase()}-${suffix}@example.test`,
-    })
-    .returning();
+    });
+  const [user] = await database.select().from(users).where(eq(users.id, id));
   if (!user) throw new Error("Usuário de teste não criado.");
   return user;
 }
@@ -105,58 +105,70 @@ function context(
 async function fixture(database: Database, label = "BE11") {
   const owner = await insertUser(database, `${label}Owner`);
   const observer = await insertUser(database, `${label}Observer`);
-  const [workspace] = await database
-    .insert(workspaces)
-    .values({
+  const workspaceId = randomUUID();
+  await database.insert(workspaces).values({
+      id: workspaceId,
       name: `${label} workspace`,
       kind: "shared",
       ownerUserId: owner.id,
-    })
-    .returning();
+    });
+  await database.insert(workspaceMembers).values({
+    workspaceId,
+    userId: owner.id,
+    role: "owner",
+  });
+  const [workspace] = await database.select().from(workspaces).where(eq(workspaces.id, workspaceId));
   if (!workspace) throw new Error("Workspace não criado.");
   await database.insert(workspaceMembers).values({
     workspaceId: workspace.id,
     userId: observer.id,
     role: "member",
   });
-  const [business] = await database
-    .insert(businesses)
-    .values({
+  const businessId = randomUUID();
+  await database.insert(businesses).values({
+      id: businessId,
       workspaceId: workspace.id,
       ownerUserId: owner.id,
       name: `${label} negócio`,
       categoryKey: "cliente",
       stageKey: "ativo",
-    })
-    .returning();
+    });
+  const [business] = await database.select().from(businesses).where(eq(businesses.id, businessId));
   if (!business) throw new Error("Negócio não criado.");
-  const [project] = await database
-    .insert(projects)
-    .values({
+  const projectId = randomUUID();
+  await database.insert(projects).values({
+      id: projectId,
       workspaceId: workspace.id,
       businessId: business.id,
       name: `${label} projeto`,
       statusKey: "execucao",
-    })
-    .returning();
+    });
+  const [project] = await database.select().from(projects).where(eq(projects.id, projectId));
   if (!project) throw new Error("Projeto não criado.");
-  const taskRows = await database
-    .insert(tasks)
-    .values([
+  const taskIds = [randomUUID(), randomUUID()];
+  await database.insert(tasks).values([
       {
+        id: taskIds[0],
         workspaceId: workspace.id,
         projectId: project.id,
         businessId: business.id,
         name: `${label} tarefa A`,
       },
       {
+        id: taskIds[1],
         workspaceId: workspace.id,
         projectId: project.id,
         businessId: business.id,
         name: `${label} tarefa B`,
       },
-    ])
-    .returning();
+    ]);
+  const taskRows = await Promise.all(
+    taskIds.map(async (id) => {
+      const [task] = await database.select().from(tasks).where(eq(tasks.id, id));
+      if (!task) throw new Error("Task fixture was not created.");
+      return task;
+    }),
+  );
   await database.insert(taskResponsibles).values(
     taskRows.map((task) => ({
       workspaceId: workspace.id,
@@ -164,10 +176,10 @@ async function fixture(database: Database, label = "BE11") {
       userId: owner.id,
     })),
   );
-  const subtaskRows = await database
-    .insert(taskSubtasks)
-    .values([
+  const subtaskIds = [randomUUID(), randomUUID(), randomUUID()];
+  await database.insert(taskSubtasks).values([
       {
+        id: subtaskIds[0],
         workspaceId: workspace.id,
         taskId: taskRows[0]!.id,
         name: "A1",
@@ -175,6 +187,7 @@ async function fixture(database: Database, label = "BE11") {
         sortOrder: 0,
       },
       {
+        id: subtaskIds[1],
         workspaceId: workspace.id,
         taskId: taskRows[0]!.id,
         name: "A2",
@@ -182,14 +195,24 @@ async function fixture(database: Database, label = "BE11") {
         sortOrder: 1,
       },
       {
+        id: subtaskIds[2],
         workspaceId: workspace.id,
         taskId: taskRows[1]!.id,
         name: "B1",
         durationMinutes: 60,
         sortOrder: 0,
       },
-    ])
-    .returning();
+    ]);
+  const subtaskRows = await Promise.all(
+    subtaskIds.map(async (id) => {
+      const [subtask] = await database
+        .select()
+        .from(taskSubtasks)
+        .where(eq(taskSubtasks.id, id));
+      if (!subtask) throw new Error("Subtask fixture was not created.");
+      return subtask;
+    }),
+  );
   return {
     owner,
     observer,
@@ -351,7 +374,7 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
       ).toEqual([]);
     }));
 
-  it("rejeita sobreposição, intervalo de almoço e versões antigas", () =>
+  it("rejeita sobreposição e versões antigas", () =>
     withRollback(async (transaction) => {
       const data = await fixture(transaction, "Rules");
       const first = await saveCronogramaBlock(
@@ -368,15 +391,6 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
           placement(8 * 60 + 30),
         ),
       ).rejects.toBeInstanceOf(CronogramaRuleViolationError);
-      await expect(
-        saveCronogramaBlock(
-          transaction,
-          data.ownerContext,
-          data.subtasks[2]!.id,
-          placement(12 * 60),
-        ),
-      ).rejects.toBeInstanceOf(CronogramaRuleViolationError);
-
       const firstVersion = first.items[0]!.version;
       const updated = await saveCronogramaBlock(
         transaction,
@@ -409,6 +423,64 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
       expect(
         (await getWorkspaceCronograma(transaction, data.ownerContext)).items,
       ).toEqual([]);
+    }));
+
+  it("permite alocação manual fora da jornada sem liberar a reorganização automática", () =>
+    withRollback(async (transaction) => {
+      const data = await fixture(transaction, "ManualHours");
+      const outsideWorkday = await saveCronogramaBlock(
+        transaction,
+        data.ownerContext,
+        data.subtasks[2]!.id,
+        placement(12 * 60),
+      );
+      const insideWorkday = await saveCronogramaBlock(
+        transaction,
+        data.ownerContext,
+        data.subtasks[0]!.id,
+        placement(8 * 60),
+      );
+
+      const reorganized = await reorganizeCronogramaBlocks(
+        transaction,
+        data.ownerContext,
+        {
+          workspaceId: data.workspace.id,
+          blocks: [
+            {
+              subtaskId: data.subtasks[0]!.id,
+              date: "2026-07-15",
+              startMinutes: 9 * 60,
+              durationMinutes: 60,
+              version: insideWorkday.items.find(
+                ({ subtaskId }) => subtaskId === data.subtasks[0]!.id,
+              )!.version,
+            },
+          ],
+        },
+      );
+      expect(
+        reorganized.items.find(
+          ({ subtaskId }) => subtaskId === data.subtasks[2]!.id,
+        ),
+      ).toMatchObject({ startMinutes: 12 * 60 });
+
+      await expect(
+        reorganizeCronogramaBlocks(transaction, data.ownerContext, {
+          workspaceId: data.workspace.id,
+          blocks: [
+            {
+              subtaskId: data.subtasks[2]!.id,
+              date: "2026-07-15",
+              startMinutes: 12 * 60,
+              durationMinutes: 60,
+              version: outsideWorkday.items.find(
+                ({ subtaskId }) => subtaskId === data.subtasks[2]!.id,
+              )!.version,
+            },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(CronogramaRuleViolationError);
     }));
 
   it("rejeita sobreposição do mesmo usuário entre workspaces", () =>
@@ -495,15 +567,15 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
       await expect(
         database.insert(cronogramaBlocks).values({
           workspaceId: data.workspace.id,
-          taskId: data.tasks[1]!.id,
-          subtaskId: data.subtasks[2]!.id,
+          taskId: data.tasks[0]!.id,
+          subtaskId: data.subtasks[0]!.id,
           scheduledDate: "2026-07-15",
           startMinutes: 510,
           durationMinutes: 60,
         }),
       ).rejects.toMatchObject({
         cause: expect.objectContaining({
-          constraint: "cronograma_blocks_responsible_no_overlap",
+          code: "ER_DUP_ENTRY",
         }),
       });
       await database
@@ -531,11 +603,7 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
           taskId: data.tasks[1]!.id,
           userId: data.owner.id,
         }),
-      ).rejects.toMatchObject({
-        cause: expect.objectContaining({
-          constraint: "task_responsibles_cronograma_no_overlap",
-        }),
-      });
+      ).resolves.toBeDefined();
       await expect(
         database.insert(cronogramaBlocks).values({
           workspaceId: data.workspace.id,

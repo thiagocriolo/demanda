@@ -10,7 +10,7 @@ import {
   requireWorkspacePermissionForUpdate,
   WorkspaceNotFoundError,
 } from "../authorization/workspace-context";
-import type { Database } from "../db/database";
+import { affectedRows, rawRows, type Database } from "../db/database";
 import { storedFiles } from "../db/schema";
 import { IMAGE_UPLOAD_POLICY, MAX_VIDEO_UPLOAD_BYTES } from "./config";
 import { ImageProcessor } from "./image-processor";
@@ -103,72 +103,68 @@ async function authorizeRead(
   if (row.ownerUserId === context.user.id) return;
   const socialReference = await database.execute<{ allowed: boolean }>(sql`
     select true as allowed
-    from app.social_post_blocks block
-    inner join app.social_posts post on post.id = block.post_id
-    where block.file_id = ${row.id}::uuid
+    from social_post_blocks block
+    inner join social_posts post on post.id = block.post_id
+    where block.file_id = ${row.id}
       and post.deleted_at is null
       and (
         (post.community_id is null and (
-          post.author_user_id = ${context.user.id}::uuid or exists (
-            select 1 from app.user_connections connection
-            where (connection.user_a_id = ${context.user.id}::uuid
+          post.author_user_id = ${context.user.id} or exists (
+            select 1 from user_connections connection
+            where (connection.user_a_id = ${context.user.id}
               and connection.user_b_id = post.author_user_id)
-               or (connection.user_b_id = ${context.user.id}::uuid
+               or (connection.user_b_id = ${context.user.id}
               and connection.user_a_id = post.author_user_id)
           )
         ))
         or (post.community_id is not null and exists (
-          select 1 from app.community_members membership
+          select 1 from community_members membership
           where membership.community_id = post.community_id
-            and membership.user_id = ${context.user.id}::uuid
+            and membership.user_id = ${context.user.id}
         ))
       )
     limit 1
   `);
-  if (socialReference.rows[0]?.allowed) return;
+  if (rawRows<{ allowed: boolean }>(socialReference)[0]?.allowed) return;
   const communityCoverReference = await database.execute<{
     allowed: boolean;
   }>(sql`
     select true as allowed
-    from app.communities community
-    inner join app.community_members membership
+    from communities community
+    inner join community_members membership
       on membership.community_id = community.id
-      and membership.user_id = ${context.user.id}::uuid
-    where community.cover_file_id = ${row.id}::uuid
+      and membership.user_id = ${context.user.id}
+    where community.cover_file_id = ${row.id}
       and community.deleted_at is null
     limit 1
   `);
-  if (communityCoverReference.rows[0]?.allowed) return;
+  if (rawRows<{ allowed: boolean }>(communityCoverReference)[0]?.allowed) return;
   if (row.purpose === "attachment") {
     const toolReference = await database.execute<{ allowed: boolean }>(sql`
       select true as allowed
-      from app.tool_uses tool_use
-      inner join app.workspace_members membership
+      from tool_uses tool_use
+      inner join workspace_members membership
         on membership.workspace_id = tool_use.workspace_id
-       and membership.user_id = ${context.user.id}::uuid
-      where tool_use.workspace_id = ${row.workspaceId}::uuid
-        and jsonb_path_exists(
-          tool_use.content,
-          '$.**.fileId ? (@ == $fileId)',
-          jsonb_build_object('fileId', ${row.id}::text)
-        )
+       and membership.user_id = ${context.user.id}
+      where tool_use.workspace_id = ${row.workspaceId}
+        and json_search(tool_use.content, 'one', ${row.id}, null, '$**.fileId') is not null
       limit 1
     `);
-    if (toolReference.rows[0]?.allowed) return;
+    if (rawRows<{ allowed: boolean }>(toolReference)[0]?.allowed) return;
   }
   if (row.purpose !== "profile_avatar") {
     throw new StoredFileNotFoundError();
   }
   const connectedOwner = await database.execute<{ allowed: boolean }>(sql`
     select true as allowed
-    from app.user_connections connection
-    where (connection.user_a_id = ${context.user.id}::uuid
-      and connection.user_b_id = ${row.ownerUserId}::uuid)
-       or (connection.user_b_id = ${context.user.id}::uuid
-      and connection.user_a_id = ${row.ownerUserId}::uuid)
+    from user_connections connection
+    where (connection.user_a_id = ${context.user.id}
+      and connection.user_b_id = ${row.ownerUserId})
+       or (connection.user_b_id = ${context.user.id}
+      and connection.user_a_id = ${row.ownerUserId})
     limit 1
   `);
-  if (connectedOwner.rows[0]?.allowed) return;
+  if (rawRows<{ allowed: boolean }>(connectedOwner)[0]?.allowed) return;
   try {
     await requireWorkspacePermission(
       database,
@@ -281,7 +277,7 @@ export async function uploadPrivateImage(
         current.workspace.id,
         "workspace:read",
       );
-      const [inserted] = await transaction
+      await transaction
         .insert(storedFiles)
         .values({
           id,
@@ -302,8 +298,12 @@ export async function uploadPrivateImage(
           width: processed.width,
           height: processed.height,
           sha256: processed.sha256,
-        })
-        .returning();
+        });
+      const [inserted] = await transaction
+        .select()
+        .from(storedFiles)
+        .where(eq(storedFiles.id, id))
+        .limit(1);
       if (!inserted) throw new Error("Metadados do arquivo não foram criados.");
       await finalizeStorageReservation(
         transaction as Database,
@@ -414,7 +414,7 @@ export async function uploadPrivateMedia(
         current.workspace.id,
         "workspace:read",
       );
-      const [inserted] = await transaction
+      await transaction
         .insert(storedFiles)
         .values({
           id,
@@ -431,8 +431,12 @@ export async function uploadPrivateMedia(
           mimeType: validated.claimedMimeType,
           byteSize: validated.originalByteSize,
           sha256,
-        })
-        .returning();
+        });
+      const [inserted] = await transaction
+        .select()
+        .from(storedFiles)
+        .where(eq(storedFiles.id, id))
+        .limit(1);
       if (!inserted) throw new Error("Metadados do arquivo não foram criados.");
       await finalizeStorageReservation(
         transaction as Database,
@@ -503,8 +507,8 @@ export async function getPublicFileContent(
   const row = await readyRow(database, fileId);
   const reference = await database.execute<{ allowed: boolean }>(sql`
     select true as allowed
-    from app.users owner
-    where owner.id = ${row.ownerUserId}::uuid
+    from users owner
+    where owner.id = ${row.ownerUserId}
       and owner.deleted_at is null
       and (
         (${row.purpose} = 'profile_avatar'
@@ -512,16 +516,16 @@ export async function getPublicFileContent(
             owner.avatar_url = ${`/api/files/${row.id}/content`}
             or exists (
               select 1
-              from app.user_preferences preference
+              from user_preferences preference
               where preference.user_id = owner.id
-                and preference.settings #>> '{profile,cover}' = ${`/api/files/${row.id}/content`}
+                and json_unquote(json_extract(preference.settings, '$.profile.cover')) = ${`/api/files/${row.id}/content`}
             )
           ))
         or (${row.purpose} = 'attachment' and exists (
           select 1
-          from app.social_post_blocks block
-          inner join app.social_posts post on post.id = block.post_id
-          where block.file_id = ${row.id}::uuid
+          from social_post_blocks block
+          inner join social_posts post on post.id = block.post_id
+          where block.file_id = ${row.id}
             and post.author_user_id = owner.id
             and post.kind = 'portfolio'
             and post.community_id is null
@@ -530,7 +534,8 @@ export async function getPublicFileContent(
       )
     limit 1
   `);
-  if (!reference.rows[0]?.allowed) throw new StoredFileNotFoundError();
+  if (!rawRows<{ allowed: boolean }>(reference)[0]?.allowed)
+    throw new StoredFileNotFoundError();
   if (row.backend !== storage.backend) {
     throw new Error(
       `O backend ${row.backend} não está configurado neste processo.`,
@@ -600,13 +605,12 @@ export async function deletePrivateFile(
     const deleted = await transaction
       .update(storedFiles)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(storedFiles.id, row.id), isNull(storedFiles.deletedAt)))
-      .returning({ byteSize: storedFiles.byteSize });
-    if (deleted.length === 1) {
+      .where(and(eq(storedFiles.id, row.id), isNull(storedFiles.deletedAt)));
+    if (affectedRows(deleted) === 1) {
       await decrementStorageUsage(
         transaction as Database,
         row.ownerUserId,
-        deleted[0]!.byteSize,
+        row.byteSize,
       );
       await appendAdministrativeAuditLog(
         transaction,

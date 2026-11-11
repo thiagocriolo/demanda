@@ -53,14 +53,16 @@ async function withRollback(
 
 async function insertUser(database: Database, label: string): Promise<string> {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
-  const [user] = await database
+  const id = randomUUID();
+  const user = { id };
+  await database
     .insert(users)
     .values({
+      id,
       name: label,
       username: `${label.toLowerCase()}_${suffix}`,
       email: `${label.toLowerCase()}-${suffix}@example.test`,
-    })
-    .returning({ id: users.id });
+    });
   if (!user) throw new Error("Usuário de teste não criado.");
   return user.id;
 }
@@ -71,10 +73,16 @@ async function insertWorkspace(
   name: string,
   kind: "personal" | "shared" = "shared",
 ): Promise<string> {
-  const [workspace] = await database
+  const id = randomUUID();
+  const workspace = { id };
+  await database
     .insert(workspaces)
-    .values({ name, kind, ownerUserId })
-    .returning({ id: workspaces.id });
+    .values({ id, name, kind, ownerUserId });
+  await database.insert(workspaceMembers).values({
+    workspaceId: id,
+    userId: ownerUserId,
+    role: "owner",
+  });
   if (!workspace) throw new Error("Workspace de teste não criado.");
   return workspace.id;
 }
@@ -85,15 +93,17 @@ async function insertSession(
   activeWorkspaceId: string,
 ): Promise<{ id: string; token: string }> {
   const token = createOpaqueToken();
-  const [session] = await database
+  const id = randomUUID();
+  const session = { id };
+  await database
     .insert(authSessions)
     .values({
+      id,
       userId,
       activeWorkspaceId,
       tokenHash: hashOpaqueToken(token),
       expiresAt: new Date(Date.now() + 60 * 60 * 1_000),
-    })
-    .returning({ id: authSessions.id });
+    });
   if (!session) throw new Error("Sessão de teste não criada.");
   return { id: session.id, token };
 }
@@ -385,7 +395,7 @@ describe("BE-04: contexto e autorização multi-tenant", () => {
         .from(auditLogs)
         .where(eq(auditLogs.workspaceId, fixture.workspaceId));
       expect(logs).toHaveLength(2);
-      expect(logs[1]).toMatchObject({
+      expect(logs.find((log) => log.action === "workspace.ownership_transferred")).toMatchObject({
         actorUserId: fixture.ownerId,
         action: "workspace.ownership_transferred",
       });

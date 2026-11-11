@@ -18,14 +18,14 @@ npm run check
 npm run build
 ```
 
-O projeto já inclui PostgreSQL, migrations, autenticação, autorização por
+O projeto já inclui MySQL, migrations, autenticação, autorização por
 workspace e persistência compartilhada de Pessoas/Contatos, Negócios, Serviços,
 Projetos, Tarefas, Subtarefas, catálogos e modelos. Preferências pessoais e
 configurações compartilhadas também usam APIs versionadas. Todas as superfícies
 leem tarefas pela API; Agenda, Cronograma e Financeiro também persistem seus
 dados no servidor. O Financeiro usa valores decimais, séries parceladas ou
 recorrentes e operações versionadas/auditáveis. Fotos de perfil agora usam
-arquivos privados com metadados no PostgreSQL, disco persistente em
+arquivos privados com metadados no MySQL, disco persistente em
 desenvolvimento e driver S3 em produção; JPEG/PNG são processados pelo Sharp,
 limitados a 2048 px e 1 MiB, contabilizados por usuário e nunca persistidos como
 base64 nas preferências. A

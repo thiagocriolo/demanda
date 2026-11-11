@@ -102,8 +102,9 @@
   let showCurrentTime = $state(true);
   let initialized = $state(false);
   let now = $state(new Date());
-  let baseVisibleStart = $state(8 * 60);
-  let baseVisibleEnd = $state(18 * 60);
+  const visibleStart = 0;
+  const visibleEnd = 24 * 60;
+  let workdayStart = $state(8 * 60);
   let selectedTask = $state<EntityRecord>();
   let taskFormMode = $state<TaskFormMode>("view");
   let drag = $state<DragState | null>(null);
@@ -118,7 +119,7 @@
   let viewport: HTMLDivElement;
   let grid: HTMLDivElement;
   let pointerCleanup: (() => void) | undefined;
-  let lastAutoScrolledWeek = "";
+  let lastAutoScrollKey = "";
   let scheduleNoticeTimeout: number | undefined;
   let heldTaskCard = $derived(
     drag?.mode === "drag" ? toTaskCardItem(drag.task) : undefined,
@@ -140,31 +141,6 @@
           item.schedule.date <= weekEndIso,
       ),
   );
-  let visibleStart = $derived.by(() => {
-    const earliest = scheduledThisWeek.reduce(
-      (value, item) => Math.min(value, item.schedule.startMinutes),
-      baseVisibleStart,
-    );
-    return Math.max(
-      0,
-      Math.floor(earliest / MINUTES_PER_SLOT) * MINUTES_PER_SLOT,
-    );
-  });
-  let visibleEnd = $derived.by(() => {
-    const latest = scheduledThisWeek.reduce(
-      (value, item) =>
-        Math.max(
-          value,
-          item.schedule.startMinutes +
-            item.schedule.durationSlots * MINUTES_PER_SLOT,
-        ),
-      baseVisibleEnd,
-    );
-    return Math.min(
-      24 * 60,
-      Math.ceil(latest / MINUTES_PER_SLOT) * MINUTES_PER_SLOT,
-    );
-  });
   let slots = $derived(
     Array.from(
       { length: Math.max(1, (visibleEnd - visibleStart) / MINUTES_PER_SLOT) },
@@ -200,20 +176,9 @@
     const starts = settings.workdayShifts
       .map((shift) => parseTime(shift.start))
       .filter((value): value is number => value !== null);
-    const ends = settings.workdayShifts
-      .map((shift) => parseTime(shift.end))
-      .filter((value): value is number => value !== null);
     if (starts.length) {
-      baseVisibleStart =
+      workdayStart =
         Math.floor(Math.min(...starts) / MINUTES_PER_SLOT) * MINUTES_PER_SLOT;
-    }
-    if (ends.length) {
-      baseVisibleEnd =
-        Math.ceil(Math.max(...ends) / MINUTES_PER_SLOT) * MINUTES_PER_SLOT;
-    }
-    if (baseVisibleEnd <= baseVisibleStart) {
-      baseVisibleStart = 8 * 60;
-      baseVisibleEnd = 18 * 60;
     }
   }
 
@@ -260,16 +225,17 @@
 
   $effect(() => {
     const week = weekStartIso;
-    const shouldScroll = initialized && showCurrentMarker && viewport && week;
-    if (!shouldScroll || lastAutoScrolledWeek === week) return;
-    lastAutoScrolledWeek = week;
+    const scrollKey = `${week}:${showCurrentMarker ? "now" : workdayStart}`;
+    const shouldScroll = initialized && viewport && week;
+    if (!shouldScroll || lastAutoScrollKey === scrollKey) return;
+    lastAutoScrollKey = scrollKey;
     void tick().then(() => {
       const marker = viewport.querySelector<HTMLElement>("[data-now-marker]");
-      if (!marker) return;
-      viewport.scrollTop = Math.max(
-        0,
-        marker.offsetTop - viewport.clientHeight * 0.42,
-      );
+      const targetOffset = marker
+        ? marker.offsetTop - viewport.clientHeight * 0.42
+        : ((workdayStart - visibleStart) / MINUTES_PER_SLOT) * slotHeight() -
+          20;
+      viewport.scrollTop = Math.max(0, targetOffset);
     });
   });
 

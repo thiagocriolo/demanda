@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gt, isNull, sql } from "drizzle-orm";
-import type { Database } from "../db/database";
+import { affectedRows, type Database } from "../db/database";
 import {
   authSessions,
   workspaceMembers,
@@ -179,9 +179,8 @@ async function persistActiveWorkspace(
         isNull(authSessions.revokedAt),
         gt(authSessions.expiresAt, now),
       ),
-    )
-    .returning({ id: authSessions.id });
-  if (updated.length !== 1) throw new SessionNoLongerActiveError();
+    );
+  if (affectedRows(updated) !== 1) throw new SessionNoLongerActiveError();
   principal.session.activeWorkspaceId = workspaceId;
 }
 

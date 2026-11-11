@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { PoolClient } from "pg";
+
+type SqlRow = Record<string, unknown>;
+type MysqlClient = {
+  query<T extends SqlRow[] = SqlRow[]>(
+    statement: string,
+    values?: unknown[],
+  ): Promise<[T, unknown]>;
+};
 
 export type UserOfferingSeedProfile = {
   userId: string;
@@ -471,42 +478,42 @@ function assertUnique(values: string[], label: string): void {
 }
 
 async function assertPersonalProfile(
-  client: PoolClient,
+  client: MysqlClient,
   profile: UserOfferingSeedProfile,
 ): Promise<void> {
   const username = profile.username.trim();
   if (!username) throw new Error("O username do perfil não pode ficar vazio.");
 
-  const result = await client.query<{ id: string }>(
+  const [rows] = await client.query<{ id: string }[]>(
     `select workspace.id
-       from app.workspaces workspace
-       inner join app.users seed_user
-         on seed_user.id = $1
-       inner join app.workspace_members membership
+       from workspaces workspace
+       inner join users seed_user
+         on seed_user.id = ?
+       inner join workspace_members membership
          on membership.workspace_id = workspace.id
         and membership.user_id = seed_user.id
-      where workspace.id = $2
+      where workspace.id = ?
         and workspace.kind = 'personal'
         and workspace.name = 'Pessoal'
         and workspace.owner_user_id = seed_user.id
         and membership.role = 'owner'
-        and lower(seed_user.username) = lower($3)
+        and lower(seed_user.username) = lower(?)
       limit 1`,
     [profile.userId, profile.workspaceId, username],
   );
-  if (!result.rows[0]) {
+  if (!rows[0]) {
     throw new Error(
       `O workspace informado para @${username} não é o workspace pessoal do usuário.`,
     );
   }
 
-  const existing = await client.query<{ services: number; deliveries: number }>(
+  const [existing] = await client.query<{ services: number; deliveries: number }[]>(
     `select
-       (select count(*)::int from app.services where workspace_id = $1) services,
-       (select count(*)::int from app.delivery_templates where workspace_id = $1) deliveries`,
-    [profile.workspaceId],
+       (select count(*) from services where workspace_id = ?) services,
+       (select count(*) from delivery_templates where workspace_id = ?) deliveries`,
+    [profile.workspaceId, profile.workspaceId],
   );
-  if (existing.rows[0]?.services || existing.rows[0]?.deliveries) {
+  if (existing[0]?.services || existing[0]?.deliveries) {
     throw new Error(
       `O workspace pessoal de @${username} já possui serviços ou entregas.`,
     );
@@ -514,7 +521,7 @@ async function assertPersonalProfile(
 }
 
 export async function seedUserOfferings(
-  client: PoolClient,
+  client: MysqlClient,
   profiles: UserOfferingSeedProfile[],
 ): Promise<UserOfferingSeedTotals> {
   assertExactDistribution(
@@ -557,14 +564,13 @@ export async function seedUserOfferings(
         name: `${definition.name} · ${username}`,
       };
       await client.query(
-        `insert into app.services (
+        `insert into services (
            id, workspace_id, name, description, default_briefing, icon, color,
            default_status_key, default_duration_days, default_contract_type,
            default_amount_cents, default_installment_count, default_payment_method,
            default_payment_terms, default_finance_notes, sort_order, version
          ) values (
-           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-           $15, $16, 1
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1
          )`,
         [
           service.id,
@@ -586,9 +592,9 @@ export async function seedUserOfferings(
         ],
       );
       await client.query(
-        `insert into app.service_responsibles (
+        `insert into service_responsibles (
            workspace_id, service_id, user_id, sort_order
-         ) values ($1, $2, $3, 0)`,
+         ) values (?, ?, ?, 0)`,
         [profile.workspaceId, service.id, profile.userId],
       );
       services.push(service);
@@ -606,11 +612,11 @@ export async function seedUserOfferings(
         0,
       );
       await client.query(
-        `insert into app.delivery_templates (
+        `insert into delivery_templates (
            id, workspace_id, service_id, name, description, category_key,
            default_status_key, default_priority_key, default_duration_minutes,
            sort_order, version
-         ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1)`,
+         ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         [
           deliveryId,
           profile.workspaceId,
@@ -625,17 +631,17 @@ export async function seedUserOfferings(
         ],
       );
       await client.query(
-        `insert into app.delivery_template_responsibles (
+        `insert into delivery_template_responsibles (
            workspace_id, delivery_template_id, user_id, sort_order
-         ) values ($1, $2, $3, 0)`,
+         ) values (?, ?, ?, 0)`,
         [profile.workspaceId, deliveryId, profile.userId],
       );
       for (const [sortOrder, subtask] of definition.subtasks.entries()) {
         await client.query(
-          `insert into app.delivery_template_subtasks (
+          `insert into delivery_template_subtasks (
              id, workspace_id, delivery_template_id, name, duration_minutes,
              default_status_key, sort_order
-           ) values ($1, $2, $3, $4, $5, 'pendente', $6)`,
+           ) values (?, ?, ?, ?, ?, 'pendente', ?)`,
           [
             randomUUID(),
             profile.workspaceId,

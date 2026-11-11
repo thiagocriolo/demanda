@@ -42,14 +42,14 @@ async function withRollback(
 
 async function insertUser(database: Database, prefix: string) {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
-  const [user] = await database
-    .insert(users)
-    .values({
+  const id = randomUUID();
+  await database.insert(users).values({
+      id,
       name: prefix,
       username: `${prefix}_${suffix}`,
       email: `${prefix}_${suffix}@example.test`,
-    })
-    .returning();
+    });
+  const [user] = await database.select().from(users).where(eq(users.id, id));
   if (!user) throw new Error("Usuário de teste não criado.");
   return user;
 }

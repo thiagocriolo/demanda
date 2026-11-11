@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1794324947158,
+      "tag": "0000_high_weapon_omega",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1794344842488,
+      "tag": "0001_little_justice",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1794344884987,
+      "tag": "0002_far_maddog",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1794344915614,
+      "tag": "0003_illegal_pestilence",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1794345197109,
+      "tag": "0004_odd_layla_miller",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1794345197110,
+      "tag": "0005_cronograma_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1794400000000,
+      "tag": "0006_contacts_name_search_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1794400000001,
+      "tag": "0007_contacts_owner_status_archived_index",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { Pool } from "pg";
+import { createPool } from "mysql2/promise";
 
 type Session = { cookie: string };
 type JsonRecord = Record<string, unknown>;
@@ -11,7 +11,9 @@ const target = new URL(baseUrl);
 if (!["127.0.0.1", "localhost", "::1"].includes(target.hostname)) {
   throw new Error("A verificação HTTP só pode ser executada contra localhost.");
 }
-if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL não configurada.");
+if (!process.env.MYSQL_URL && !process.env.DATABASE_URL) {
+  throw new Error("MYSQL_URL não configurada.");
+}
 
 const suffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
 const ownerEmail = `be06-owner-${suffix}@example.test`;
@@ -19,7 +21,14 @@ const memberEmail = `be06-member-${suffix}@example.test`;
 const ownerUsername = `be06_owner_${suffix}`.slice(0, 40);
 const memberUsername = `be06_member_${suffix}`.slice(0, 40);
 const password = "Be06Live2026!";
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const mysqlPool = createPool({ uri: process.env.MYSQL_URL ?? process.env.DATABASE_URL });
+const pool = {
+  async query<T>(statement: string, values: unknown[] = []): Promise<{ rows: T[] }> {
+    const [rows] = await mysqlPool.query(statement, values);
+    return { rows: rows as T[] };
+  },
+  end: () => mysqlPool.end(),
+};
 let sharedWorkspaceId = "";
 
 function sessionCookie(response: Response): string {
@@ -139,12 +148,12 @@ async function idsForTemporaryUsers(): Promise<
     personal_workspace_id: string;
   }>(
     `select u.id, u.email, w.id as personal_workspace_id
-       from app.users u
-       join app.workspaces w
+       from users u
+       join workspaces w
          on w.owner_user_id = u.id and w.kind = 'personal'
-      where u.email = any($1::text[])
+      where u.email in (?, ?)
       order by u.email`,
-    [[ownerEmail, memberEmail]],
+    [ownerEmail, memberEmail],
   );
   return result.rows.map((row) => ({
     id: row.id,
@@ -155,18 +164,18 @@ async function idsForTemporaryUsers(): Promise<
 
 async function cleanup(): Promise<void> {
   const users = await pool.query<{ id: string }>(
-    `select id from app.users where email = any($1::text[])`,
-    [[ownerEmail, memberEmail]],
+    `select id from users where email in (?, ?)`,
+    [ownerEmail, memberEmail],
   );
   const ids = users.rows.map(({ id }) => id);
   if (!ids.length) return;
   await pool.query("begin");
   try {
     await pool.query(
-      `delete from app.workspaces where owner_user_id = any($1::uuid[])`,
-      [ids],
+      `delete from workspaces where owner_user_id in (${ids.map(() => "?").join(", ")})`,
+      ids,
     );
-    await pool.query(`delete from app.users where id = any($1::uuid[])`, [ids]);
+    await pool.query(`delete from users where id in (${ids.map(() => "?").join(", ")})`, ids);
     await pool.query("commit");
   } catch (error) {
     await pool.query("rollback");
@@ -192,18 +201,16 @@ async function main(): Promise<void> {
     201,
   );
 
-  const workspace = await pool.query<{ id: string }>(
-    `insert into app.workspaces (name, description, kind, owner_user_id)
-     values ($1, $2, 'shared', $3)
-     returning id`,
-    [`BE-06 HTTP ${suffix}`, "Workspace temporário", ownerUser.id],
-  );
-  sharedWorkspaceId = workspace.rows[0]?.id ?? "";
-  assert.ok(sharedWorkspaceId);
+  sharedWorkspaceId = randomUUID();
   await pool.query(
-    `insert into app.workspace_members (workspace_id, user_id, role)
-     values ($1, $2, 'member')`,
-    [sharedWorkspaceId, memberUser.id],
+    `insert into workspaces (id, name, description, kind, owner_user_id)
+     values (?, ?, ?, 'shared', ?)`,
+    [sharedWorkspaceId, `BE-06 HTTP ${suffix}`, "Workspace temporário", ownerUser.id],
+  );
+  await pool.query(
+    `insert into workspace_members (workspace_id, user_id, role)
+     values (?, ?, 'owner'), (?, ?, 'member')`,
+    [sharedWorkspaceId, ownerUser.id, sharedWorkspaceId, memberUser.id],
   );
   await switchWorkspace(owner, sharedWorkspaceId);
   await switchWorkspace(member, sharedWorkspaceId);

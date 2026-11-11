@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import type { Database } from "../db/database";
+import { affectedRows, rawRows, type Database } from "../db/database";
 import { publicProfileMediaUrl } from "../social/profile-media";
 import {
   connectionRequests,
@@ -105,17 +106,17 @@ export async function listConnectionDashboard(
       peer.name,
       peer.username,
       peer.avatar_url,
-      nullif(preference.settings #>> '{profile,cover}', '') as cover_url,
+      nullif(json_unquote(json_extract(preference.settings, '$.profile.cover')), '') as cover_url,
       connection.created_at as connected_at,
       case when connection.workspace_connected_at is not null
         then 'instant' else 'request' end as source
-    from app.user_connections connection
-    inner join app.users peer on peer.id = case
-      when connection.user_a_id = ${actorUserId}::uuid then connection.user_b_id
+    from user_connections connection
+    inner join users peer on peer.id = case
+      when connection.user_a_id = ${actorUserId} then connection.user_b_id
       else connection.user_a_id end
-    left join app.user_preferences preference on preference.user_id = peer.id
-    where connection.user_a_id = ${actorUserId}::uuid
-       or connection.user_b_id = ${actorUserId}::uuid
+    left join user_preferences preference on preference.user_id = peer.id
+    where connection.user_a_id = ${actorUserId}
+       or connection.user_b_id = ${actorUserId}
     order by peer.name asc
   `);
 
@@ -137,20 +138,22 @@ export async function listConnectionDashboard(
       peer.name as peer_name,
       peer.username as peer_username,
       peer.avatar_url as peer_avatar_url,
-      nullif(preference.settings #>> '{profile,cover}', '') as peer_cover_url
-    from app.connection_requests request
-    inner join app.users peer on peer.id = case
-      when request.user_a_id = ${actorUserId}::uuid then request.user_b_id
+      nullif(json_unquote(json_extract(preference.settings, '$.profile.cover')), '') as peer_cover_url
+    from connection_requests request
+    inner join users peer on peer.id = case
+      when request.user_a_id = ${actorUserId} then request.user_b_id
       else request.user_a_id end
-    left join app.user_preferences preference on preference.user_id = peer.id
+    left join user_preferences preference on preference.user_id = peer.id
     where request.status = 'pending'
-      and (request.user_a_id = ${actorUserId}::uuid
-        or request.user_b_id = ${actorUserId}::uuid)
+      and (request.user_a_id = ${actorUserId}
+        or request.user_b_id = ${actorUserId})
     order by request.created_at desc
   `);
 
   return {
-    connections: connections.rows.map((row) => ({
+    connections: rawRows<{
+      id: string; name: string; username: string; avatar_url: string | null; cover_url: string | null; connected_at: Date | string; source: "instant" | "request";
+    }>(connections).map((row) => ({
       id: row.id,
       name: row.name,
       username: row.username,
@@ -159,7 +162,9 @@ export async function listConnectionDashboard(
       connectedAt: toIso(row.connected_at),
       source: row.source,
     })),
-    requests: requests.rows.map((row) => ({
+    requests: rawRows<{
+      id: string; requested_by_user_id: string; created_at: Date | string; peer_id: string; peer_name: string; peer_username: string; peer_avatar_url: string | null; peer_cover_url: string | null;
+    }>(requests).map((row) => ({
       id: row.id,
       direction:
         row.requested_by_user_id === actorUserId ? "outgoing" : "incoming",
@@ -236,9 +241,11 @@ export async function requestConnection(
     }
 
     const now = new Date();
-    const [created] = await transaction
+    const id = randomUUID();
+    await transaction
       .insert(connectionRequests)
       .values({
+        id,
         ...pair,
         requestedByUserId: actorUserId,
         status: "pending",
@@ -246,8 +253,7 @@ export async function requestConnection(
         createdAt: now,
         updatedAt: now,
       })
-      .onConflictDoUpdate({
-        target: [connectionRequests.userAId, connectionRequests.userBId],
+      .onDuplicateKeyUpdate({
         set: {
           requestedByUserId: actorUserId,
           status: "pending",
@@ -255,8 +261,12 @@ export async function requestConnection(
           createdAt: now,
           updatedAt: now,
         },
-      })
-      .returning();
+      });
+    const [created] = await transaction
+      .select()
+      .from(connectionRequests)
+      .where(eq(connectionRequests.id, id))
+      .limit(1);
     if (!created)
       throw new ConnectionOperationError(
         "Não foi possível enviar a solicitação.",
@@ -311,9 +321,8 @@ export async function respondToConnectionRequest(
           userBId: request.userBId,
           manualConnectedAt: now,
         })
-        .onConflictDoUpdate({
-          target: [userConnections.userAId, userConnections.userBId],
-          set: { manualConnectedAt: now, updatedAt: now },
+        .onDuplicateKeyUpdate({
+        set: { manualConnectedAt: now, updatedAt: now },
         });
     }
     await transaction
@@ -345,9 +354,8 @@ export async function disconnectUsers(
         eq(userConnections.userAId, pair.userAId),
         eq(userConnections.userBId, pair.userBId),
       ),
-    )
-    .returning({ userAId: userConnections.userAId });
-  if (removed.length === 0) {
+    );
+  if (affectedRows(removed) === 0) {
     throw new ConnectionOperationError("Conexão não encontrada.", 404);
   }
 }
@@ -374,10 +382,9 @@ export async function connectWorkspaceMembers(
   await database
     .insert(userConnections)
     .values(pairs)
-    .onConflictDoUpdate({
-      target: [userConnections.userAId, userConnections.userBId],
-      set: {
-        workspaceConnectedAt: sql`coalesce(${userConnections.workspaceConnectedAt}, excluded.workspace_connected_at)`,
+    .onDuplicateKeyUpdate({
+        set: {
+        workspaceConnectedAt: sql`coalesce(${userConnections.workspaceConnectedAt}, values(workspace_connected_at))`,
         updatedAt: connectedAt,
       },
     });
@@ -417,8 +424,8 @@ export async function searchConnectionUsers(
           when lower(candidate.email) like ${`${query}%`} then 80
           else 70
         end as relevance
-      from app.users candidate
-      where candidate.id <> ${actorUserId}::uuid
+      from users candidate
+      where candidate.id <> ${actorUserId}
         and candidate.deleted_at is null
         and ${partialCondition}
     )
@@ -428,14 +435,14 @@ export async function searchConnectionUsers(
       name,
       email,
       avatar_url,
-      max(relevance)::integer as relevance
+      max(relevance) as relevance
     from candidates
     group by id, username, name, email, avatar_url
     order by max(relevance) desc, username asc
     limit ${limit}
   `);
 
-  const users: ConnectionSearchResult[] = result.rows.map((row) => ({
+  const users: ConnectionSearchResult[] = rawRows<SearchRow>(result).map((row) => ({
     kind: "user",
     id: row.id,
     username: row.username,

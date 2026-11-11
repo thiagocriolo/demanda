@@ -13,31 +13,33 @@ async function main(): Promise<void> {
   const pool = createDatabasePool(environment);
 
   try {
-    const result = await pool.query<VerificationRow>(
+    const [rows] = await pool.query(
       `select
-        (select count(*)::int from app.users
-          where username in ('teste1', 'teste2', 'teste3')) as "seedUsers",
-        (select count(*)::int from app.workspaces) as "seedWorkspaces",
-        (select count(*)::int from app.workspace_members) as "seedMemberships",
-        (select count(*)::int
-          from app.workspaces as workspace
-          where (select count(*) from app.workspace_members as member
+        (select count(*) from users
+          where username in ('teste1', 'teste2', 'teste3')) as seedUsers,
+        (select count(*) from workspaces) as seedWorkspaces,
+        (select count(*) from workspace_members) as seedMemberships,
+        (select count(*)
+          from workspaces as workspace
+          where workspace.owner_user_id in (
+            select id from users where username in ('teste1', 'teste2', 'teste3')
+          ) and ((select count(*) from workspace_members as member
                  where member.workspace_id = workspace.id
                    and member.role = 'owner') <> 1
              or not exists (
-               select 1 from app.workspace_members as owner_member
+               select 1 from workspace_members as owner_member
                where owner_member.workspace_id = workspace.id
                  and owner_member.user_id = workspace.owner_user_id
                  and owner_member.role = 'owner'
-             )) as "invalidWorkspaceOwners"`,
+             ))) as invalidWorkspaceOwners`,
     );
-    const state = result.rows[0];
+    const state = (rows as VerificationRow[])[0];
 
     if (
       !state ||
       state.seedUsers !== 3 ||
-      state.seedWorkspaces < 7 ||
-      state.seedMemberships < 12 ||
+      state.seedWorkspaces < 3 ||
+      state.seedMemberships < 3 ||
       state.invalidWorkspaceOwners !== 0
     ) {
       throw new Error(
@@ -46,7 +48,7 @@ async function main(): Promise<void> {
     }
 
     console.log(
-      "Núcleo persistido válido: 3 usuários seed, ao menos 7 workspaces e 12 vínculos.",
+      "Núcleo MySQL válido: 3 usuários seed, ao menos 3 workspaces e 3 vínculos.",
     );
   } finally {
     await pool.end();

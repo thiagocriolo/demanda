@@ -12,7 +12,7 @@ import {
   requireActiveWorkspacePermission,
   requireWorkspacePermission,
 } from "../authorization/workspace-context";
-import type { Database } from "../db/database";
+import { rawRows, type Database } from "../db/database";
 
 type MetricRow = {
   overdueTasks: number;
@@ -107,86 +107,87 @@ export async function getDashboardSnapshot(
   const snapshot = await database.transaction(async (transaction) => {
     const metricsResult = await transaction.execute(sql`
       select
-        (select count(*)::int from app.tasks where workspace_id = ${workspaceId} and archived_at is null and completed_at is null and due_date < ${input.date}::date) as "overdueTasks",
-        (select count(*)::int from app.projects where workspace_id = ${workspaceId} and archived_at is null and status_key <> 'concluido' and end_date < ${input.date}::date) as "overdueProjects",
-        (select count(*)::int from app.tasks where workspace_id = ${workspaceId} and archived_at is null and completed_at is null) as "activeTasks",
-        (select count(*)::int from app.projects where workspace_id = ${workspaceId} and archived_at is null and status_key <> 'concluido') as "activeProjects",
-        (select count(*)::int from app.financial_entries where workspace_id = ${workspaceId} and deleted_at is null and status = 'open' and due_date < ${input.date}::date) as "overduePayments",
-        (select count(distinct cb.task_id)::int from app.cronograma_blocks cb join app.tasks t on t.workspace_id = cb.workspace_id and t.id = cb.task_id where cb.workspace_id = ${workspaceId} and cb.scheduled_date = ${input.date}::date and t.archived_at is null and t.completed_at is null) as "todayTasks",
-        (select count(distinct cb.task_id)::int from app.cronograma_blocks cb join app.tasks t on t.workspace_id = cb.workspace_id and t.id = cb.task_id where cb.workspace_id = ${workspaceId} and cb.scheduled_date between ${range.from}::date and ${range.to}::date and t.archived_at is null and t.completed_at is null) as "periodTasks",
-        (select count(*)::int from app.projects where workspace_id = ${workspaceId} and archived_at is null and status_key <> 'concluido' and end_date = ${input.date}::date) as "todayProjects",
-        (select count(*)::int from app.projects where workspace_id = ${workspaceId} and archived_at is null and status_key <> 'concluido' and end_date between ${range.from}::date and ${range.to}::date) as "periodProjects",
-        (select count(*)::int from app.tasks where workspace_id = ${workspaceId} and archived_at is null and completed_at >= ${range.from}::date and completed_at < (${range.to}::date + interval '1 day')) as "completedTasks",
-        (select count(distinct cb.task_id)::int from app.cronograma_blocks cb join app.tasks t on t.workspace_id = cb.workspace_id and t.id = cb.task_id where cb.workspace_id = ${workspaceId} and cb.scheduled_date between ${input.date}::date and ${range.to}::date and t.archived_at is null and t.completed_at is null) as "upcomingTasks",
-        (select coalesce(sum(duration_minutes), 0)::int from app.cronograma_blocks where workspace_id = ${workspaceId} and scheduled_date between ${range.from}::date and ${range.to}::date) as "plannedMinutes",
-        (select coalesce(round(sum(amount) * 100), 0)::bigint::text from app.financial_entries where workspace_id = ${workspaceId} and deleted_at is null and status = 'open' and type = 'revenue' and due_date between ${range.from}::date and ${range.to}::date) as "receivableCents",
-        (select coalesce(round(sum(amount) * 100), 0)::bigint::text from app.financial_entries where workspace_id = ${workspaceId} and deleted_at is null and status = 'open' and type = 'expense' and due_date between ${range.from}::date and ${range.to}::date) as "payableCents",
-        (select coalesce(round(sum(case when type = 'revenue' then amount else -amount end) * 100), 0)::bigint::text from app.financial_entries where workspace_id = ${workspaceId} and deleted_at is null and status = 'settled') as "currentBalanceCents"
+        (select count(*) from tasks where workspace_id = ${workspaceId} and archived_at is null and completed_at is null and due_date < ${input.date}) as "overdueTasks",
+        (select count(*) from projects where workspace_id = ${workspaceId} and archived_at is null and status_key <> 'concluido' and end_date < ${input.date}) as "overdueProjects",
+        (select count(*) from tasks where workspace_id = ${workspaceId} and archived_at is null and completed_at is null) as "activeTasks",
+        (select count(*) from projects where workspace_id = ${workspaceId} and archived_at is null and status_key <> 'concluido') as "activeProjects",
+        (select count(*) from financial_entries where workspace_id = ${workspaceId} and deleted_at is null and status = 'open' and due_date < ${input.date}) as "overduePayments",
+        (select count(distinct cb.task_id) from cronograma_blocks cb join tasks t on t.workspace_id = cb.workspace_id and t.id = cb.task_id where cb.workspace_id = ${workspaceId} and cb.scheduled_date = ${input.date} and t.archived_at is null and t.completed_at is null) as "todayTasks",
+        (select count(distinct cb.task_id) from cronograma_blocks cb join tasks t on t.workspace_id = cb.workspace_id and t.id = cb.task_id where cb.workspace_id = ${workspaceId} and cb.scheduled_date between ${range.from} and ${range.to} and t.archived_at is null and t.completed_at is null) as "periodTasks",
+        (select count(*) from projects where workspace_id = ${workspaceId} and archived_at is null and status_key <> 'concluido' and end_date = ${input.date}) as "todayProjects",
+        (select count(*) from projects where workspace_id = ${workspaceId} and archived_at is null and status_key <> 'concluido' and end_date between ${range.from} and ${range.to}) as "periodProjects",
+        (select count(*) from tasks where workspace_id = ${workspaceId} and archived_at is null and completed_at >= ${range.from} and completed_at < date_add(${range.to}, interval 1 day)) as "completedTasks",
+        (select count(distinct cb.task_id) from cronograma_blocks cb join tasks t on t.workspace_id = cb.workspace_id and t.id = cb.task_id where cb.workspace_id = ${workspaceId} and cb.scheduled_date between ${input.date} and ${range.to} and t.archived_at is null and t.completed_at is null) as "upcomingTasks",
+        (select cast(coalesce(sum(duration_minutes), 0) as signed) from cronograma_blocks where workspace_id = ${workspaceId} and scheduled_date between ${range.from} and ${range.to}) as "plannedMinutes",
+        (select coalesce(round(sum(amount) * 100), 0) from financial_entries where workspace_id = ${workspaceId} and deleted_at is null and status = 'open' and type = 'revenue' and due_date between ${range.from} and ${range.to}) as "receivableCents",
+        (select coalesce(round(sum(amount) * 100), 0) from financial_entries where workspace_id = ${workspaceId} and deleted_at is null and status = 'open' and type = 'expense' and due_date between ${range.from} and ${range.to}) as "payableCents",
+        (select coalesce(round(sum(case when type = 'revenue' then amount else -amount end) * 100), 0) from financial_entries where workspace_id = ${workspaceId} and deleted_at is null and status = 'settled') as "currentBalanceCents"
     `);
-    const metrics = metricsResult.rows[0] as unknown as MetricRow;
+    const metrics = rawRows<MetricRow>(metricsResult)[0]!;
 
     const workloadResult = await transaction.execute(sql`
-      select scheduled_date::text as date,
-             count(distinct task_id)::int as "taskCount",
-             sum(duration_minutes)::int as "plannedMinutes"
-      from app.cronograma_blocks
+      select scheduled_date as date,
+             count(distinct task_id) as "taskCount",
+             cast(sum(duration_minutes) as signed) as "plannedMinutes"
+      from cronograma_blocks
       where workspace_id = ${workspaceId}
-        and scheduled_date between ${range.from}::date and ${range.to}::date
+        and scheduled_date between ${range.from} and ${range.to}
       group by scheduled_date
       order by scheduled_date
     `);
 
     const scheduleResult = await transaction.execute(sql`
       with scheduled as (
-        select 'cronograma:' || cb.id::text as id, 'task'::text as kind,
+        select concat('cronograma:', cb.id) as id, 'task' as kind,
+               concat(ts.name, ' / ', t.name) as title, /*
                ts.name || ' · ' || t.name as title, p.name as context,
-               cb.start_minutes as "startMinutes", cb.duration_minutes as "durationMinutes",
+               */ p.name as context, cb.start_minutes as startMinutes, cb.duration_minutes as durationMinutes,
                cb.start_minutes as sort_time
-        from app.cronograma_blocks cb
-        join app.tasks t on t.workspace_id = cb.workspace_id and t.id = cb.task_id
-        join app.task_subtasks ts on ts.workspace_id = cb.workspace_id and ts.id = cb.subtask_id
-        join app.projects p on p.workspace_id = t.workspace_id and p.id = t.project_id
-        where cb.workspace_id = ${workspaceId} and cb.scheduled_date = ${input.date}::date
+        from cronograma_blocks cb
+        join tasks t on t.workspace_id = cb.workspace_id and t.id = cb.task_id
+        join task_subtasks ts on ts.workspace_id = cb.workspace_id and ts.id = cb.subtask_id
+        join projects p on p.workspace_id = t.workspace_id and p.id = t.project_id
+        where cb.workspace_id = ${workspaceId} and cb.scheduled_date = ${input.date}
           and t.archived_at is null and ts.archived_at is null
         union all
-        select 'agenda:' || ae.id::text, ae.entity_kind,
+        select concat('agenda:', ae.id), ae.entity_kind,
                coalesce(t.name, p.name), case when ae.entity_kind = 'task' then coalesce(tp.name, 'Tarefa') else 'Projeto' end,
-               null::integer, ae.duration_minutes, 10000 + ae.position
-        from app.agenda_entries ae
-        left join app.tasks t on t.workspace_id = ae.workspace_id and t.id = ae.task_id
-        left join app.projects tp on tp.workspace_id = t.workspace_id and tp.id = t.project_id
-        left join app.projects p on p.workspace_id = ae.workspace_id and p.id = ae.project_id
-        where ae.workspace_id = ${workspaceId} and ae.scheduled_date = ${input.date}::date
-          and not exists (select 1 from app.cronograma_blocks cb where cb.workspace_id = ae.workspace_id and cb.task_id = ae.task_id and cb.scheduled_date = ae.scheduled_date)
+               null, ae.duration_minutes, 10000 + ae.position
+        from agenda_entries ae
+        left join tasks t on t.workspace_id = ae.workspace_id and t.id = ae.task_id
+        left join projects tp on tp.workspace_id = t.workspace_id and tp.id = t.project_id
+        left join projects p on p.workspace_id = ae.workspace_id and p.id = ae.project_id
+        where ae.workspace_id = ${workspaceId} and ae.scheduled_date = ${input.date}
+          and not exists (select 1 from cronograma_blocks cb where cb.workspace_id = ae.workspace_id and cb.task_id = ae.task_id and cb.scheduled_date = ae.scheduled_date)
       )
-      select id, kind, title, context, "startMinutes", "durationMinutes"
+      select id, kind, title, context, startMinutes, durationMinutes
       from scheduled order by sort_time, id limit 12
     `);
 
     const activityResult = await transaction.execute(sql`
       with events as (
-        select 'audit:' || al.id::text as id, al.created_at as occurred_at,
+        select concat('audit:', al.id) as id, al.created_at as occurred_at,
                coalesce(u.name, 'Sistema') as actor_name, u.avatar_url as actor_avatar_url,
                al.action, coalesce(fe.title, tu.name, pu.name, bu.name, cu.name, al.target_type) as target,
                al.target_type
-        from app.audit_logs al
-        left join app.users u on u.id = al.actor_user_id
-        left join app.financial_entries fe on al.target_type = 'financial_entry' and al.target_id = fe.id::text
-        left join app.tasks tu on al.target_type = 'task' and al.target_id = tu.id::text
-        left join app.projects pu on al.target_type = 'project' and al.target_id = pu.id::text
-        left join app.businesses bu on al.target_type = 'business' and al.target_id = bu.id::text and bu.owner_user_id = ${context.user.id}
-        left join app.contacts cu on al.target_type = 'contact' and al.target_id = cu.id::text and cu.owner_user_id = ${context.user.id}
+        from audit_logs al
+        left join users u on u.id = al.actor_user_id
+        left join financial_entries fe on al.target_type = 'financial_entry' and al.target_id = fe.id
+        left join tasks tu on al.target_type = 'task' and al.target_id = tu.id
+        left join projects pu on al.target_type = 'project' and al.target_id = pu.id
+        left join businesses bu on al.target_type = 'business' and al.target_id = bu.id and bu.owner_user_id = ${context.user.id}
+        left join contacts cu on al.target_type = 'contact' and al.target_id = cu.id and cu.owner_user_id = ${context.user.id}
         where al.workspace_id = ${workspaceId}
         union all
-        select 'contact:' || id::text, created_at, 'Você', null::text, 'contact.created', name, 'contact' from app.contacts where owner_user_id = ${context.user.id}
+        select concat('contact:', id), created_at, 'Você', null, 'contact.created', name, 'contact' from contacts where owner_user_id = ${context.user.id}
         union all
-        select 'business:' || id::text, created_at, 'Você', null::text, 'business.created', name, 'business' from app.businesses where owner_user_id = ${context.user.id}
+        select concat('business:', id), created_at, 'Você', null, 'business.created', name, 'business' from businesses where owner_user_id = ${context.user.id}
         union all
-        select 'project:' || id::text, created_at, 'Equipe', null::text, 'project.created', name, 'project' from app.projects where workspace_id = ${workspaceId}
+        select concat('project:', id), created_at, 'Equipe', null, 'project.created', name, 'project' from projects where workspace_id = ${workspaceId}
         union all
-        select 'task:' || id::text, created_at, 'Equipe', null::text, 'task.created', name, 'task' from app.tasks where workspace_id = ${workspaceId}
+        select concat('task:', id), created_at, 'Equipe', null, 'task.created', name, 'task' from tasks where workspace_id = ${workspaceId}
         union all
-        select 'task-completed:' || id::text, completed_at, 'Equipe', null::text, 'task.completed', name, 'task' from app.tasks where workspace_id = ${workspaceId} and completed_at is not null
+        select concat('task-completed:', id), completed_at, 'Equipe', null, 'task.completed', name, 'task' from tasks where workspace_id = ${workspaceId} and completed_at is not null
       )
       select id, actor_name as "actorName", actor_avatar_url as "actorAvatarUrl", action, target,
              target_type as "targetType", occurred_at as "occurredAt"
@@ -195,9 +196,9 @@ export async function getDashboardSnapshot(
 
     return {
       metrics,
-      workload: workloadResult.rows as unknown as WorkloadRow[],
-      schedule: scheduleResult.rows as unknown as ScheduleRow[],
-      activities: activityResult.rows as unknown as ActivityRow[],
+      workload: rawRows<WorkloadRow>(workloadResult),
+      schedule: rawRows<ScheduleRow>(scheduleResult),
+      activities: rawRows<ActivityRow>(activityResult),
     };
   });
 
@@ -239,7 +240,7 @@ export async function getDashboardSnapshot(
   };
 }
 
-type SearchAggregateRow = { total: number; items: GlobalSearchResult[] };
+type SearchRow = GlobalSearchResult & { total: number };
 
 export async function searchWorkspace(
   database: Database,
@@ -262,50 +263,48 @@ export async function searchWorkspace(
   );
   const normalized = input.query.trim().toLocaleLowerCase("pt-BR");
   const prefix = `${normalized}%`;
+  const contains = `%${normalized}%`;
   const offset = (input.page - 1) * input.pageSize;
   const result = await database.execute(sql`
     with matches as (
-      select 'contact'::text as kind, c.id, c.name as title,
+      select 'contact' as kind, c.id, c.name as title,
              coalesce(c.profession, c.contact_type) as subtitle, c.status as status,
-             ''::text as href,
-             c.updated_at as "updatedAt",
-             case when lower(c.name) = ${normalized} then 0 when lower(c.name) like ${prefix} then 1 else 2 end as rank
-      from app.contacts c where c.owner_user_id = ${context.user.id} and c.archived_at is null
+             '' as href,
+             c.updated_at as updatedAt,
+             case when lower(c.name) = ${normalized} then 0 when lower(c.name) like ${prefix} then 1 else 2 end as match_rank
+      from contacts c where c.owner_user_id = ${context.user.id} and c.archived_at is null
         and ${input.scope} in ('all', 'contact')
-        and to_tsvector('simple', lower(c.name)) @@ plainto_tsquery('simple', ${normalized})
+        and lower(c.name) like ${contains}
       union all
       select 'business', b.id, b.name, b.category_key, b.stage_key,
-             ''::text, b.updated_at,
+             '', b.updated_at,
              case when lower(b.name) = ${normalized} then 0 when lower(b.name) like ${prefix} then 1 else 2 end
-      from app.businesses b where b.owner_user_id = ${context.user.id} and b.archived_at is null
+      from businesses b where b.owner_user_id = ${context.user.id} and b.archived_at is null
         and ${input.scope} in ('all', 'business')
-        and to_tsvector('simple', lower(b.name)) @@ plainto_tsquery('simple', ${normalized})
+        and lower(b.name) like ${contains}
       union all
       select 'project', p.id, p.name, b.name, p.status_key,
-             ''::text, p.updated_at,
+             '', p.updated_at,
              case when lower(p.name) = ${normalized} then 0 when lower(p.name) like ${prefix} then 1 else 2 end
-      from app.projects p join app.businesses b on b.id = p.business_id
+      from projects p join businesses b on b.id = p.business_id
       where p.workspace_id = ${workspaceId} and p.archived_at is null
         and ${input.scope} in ('all', 'project')
-        and to_tsvector('simple', lower(p.name)) @@ plainto_tsquery('simple', ${normalized})
+        and lower(p.name) like ${contains}
       union all
       select 'task', t.id, t.name, p.name, t.status_key,
-             ''::text, t.updated_at,
+             '', t.updated_at,
              case when lower(t.name) = ${normalized} then 0 when lower(t.name) like ${prefix} then 1 else 2 end
-      from app.tasks t join app.projects p on p.workspace_id = t.workspace_id and p.id = t.project_id
+      from tasks t join projects p on p.workspace_id = t.workspace_id and p.id = t.project_id
       where t.workspace_id = ${workspaceId} and t.archived_at is null
         and ${input.scope} in ('all', 'task')
-        and to_tsvector('simple', lower(t.name)) @@ plainto_tsquery('simple', ${normalized})
-    ), page as (
-      select kind, id, title, subtitle, status, href, "updatedAt"
-      from matches order by rank, lower(title), "updatedAt" desc, id
-      limit ${input.pageSize} offset ${offset}
+        and lower(t.name) like ${contains}
     )
-    select (select count(*)::int from matches) as total,
-           coalesce((select jsonb_agg(to_jsonb(page)) from page), '[]'::jsonb) as items
+      select count(*) over() as total, kind, id, title, subtitle, status, href, updatedAt
+      from matches order by match_rank, lower(title), updatedAt desc, id
+      limit ${input.pageSize} offset ${offset}
   `);
-  const row = result.rows[0] as unknown as SearchAggregateRow;
-  const items = row.items.map((item) => ({
+  const rows = rawRows<SearchRow>(result);
+  const items = rows.map((item) => ({
     ...item,
     href: `/registros/${
       item.kind === "contact"
@@ -324,8 +323,8 @@ export async function searchWorkspace(
     scope: input.scope,
     page: input.page,
     pageSize: input.pageSize,
-    total: row.total,
-    totalPages: Math.max(1, Math.ceil(row.total / input.pageSize)),
+    total: rows[0]?.total ?? 0,
+    totalPages: Math.max(1, Math.ceil((rows[0]?.total ?? 0) / input.pageSize)),
     items,
     meta: { queryMs: Math.round((performance.now() - started) * 100) / 100 },
   };

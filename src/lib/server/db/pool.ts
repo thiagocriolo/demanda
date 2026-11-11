@@ -1,19 +1,15 @@
-import { Pool } from "pg";
+import { createPool, type Pool } from "mysql2/promise";
 import type { ServerEnvironment } from "../config/env-schema";
 
 export function createDatabasePool(environment: ServerEnvironment): Pool {
-  const pool = new Pool({
-    connectionString: environment.DATABASE_URL,
-    max: environment.DATABASE_POOL_MAX,
-    connectionTimeoutMillis: environment.DATABASE_CONNECT_TIMEOUT_MS,
-    idleTimeoutMillis: environment.DATABASE_IDLE_TIMEOUT_MS,
-    application_name: "demanda",
-    keepAlive: true,
+  const pool = createPool({
+    uri: environment.DATABASE_URL,
+    connectionLimit: environment.DATABASE_POOL_MAX,
+    connectTimeout: environment.DATABASE_CONNECT_TIMEOUT_MS,
+    idleTimeout: environment.DATABASE_IDLE_TIMEOUT_MS,
+    enableKeepAlive: true,
   });
 
-  pool.on("error", (error) => {
-    console.error("[database] Erro inesperado em conexão ociosa:", error);
-  });
 
   return pool;
 }

@@ -1,5 +1,6 @@
 import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
-import type { Database } from "../db/database";
+import { randomUUID } from "node:crypto";
+import { affectedRows, type Database } from "../db/database";
 import {
   auditLogs,
   authSessions,
@@ -25,7 +26,7 @@ export const REMEMBERED_SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1_000;
 export const PASSWORD_RESET_DURATION_MS = 30 * 60 * 1_000;
 const LAST_SEEN_WRITE_INTERVAL_MS = 5 * 60 * 1_000;
 
-type AuthExecutor = Pick<Database, "insert" | "update">;
+type AuthExecutor = Database;
 
 export type AuthenticatedUser = {
   id: string;
@@ -114,9 +115,11 @@ async function issueSession(
   const now = options.now ?? new Date();
   const token = createOpaqueToken();
   const expiresAt = sessionExpiry(options.remembered, now);
-  const [session] = await database
+  const sessionId = randomUUID();
+  await database
     .insert(authSessions)
     .values({
+      id: sessionId,
       userId: user.id,
       activeWorkspaceId: options.activeWorkspaceId ?? null,
       tokenHash: hashOpaqueToken(token),
@@ -125,8 +128,12 @@ async function issueSession(
       createdAt: now,
       lastSeenAt: now,
       expiresAt,
-    })
-    .returning();
+    });
+  const [session] = await database
+    .select()
+    .from(authSessions)
+    .where(eq(authSessions.id, sessionId))
+    .limit(1);
 
   if (!session) throw new Error("A sessão não pôde ser criada.");
 
@@ -164,15 +171,21 @@ export async function registerAccount(
 
   try {
     return await database.transaction(async (transaction) => {
-      const [createdUser] = await transaction
+      const userId = randomUUID();
+      await transaction
         .insert(users)
         .values({
+          id: userId,
           username: input.username,
           name: input.username,
           email: input.email,
           avatarUrl,
-        })
-        .returning();
+        });
+      const [createdUser] = await transaction
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
 
       if (!createdUser) throw new Error("O usuário não pôde ser criado.");
 
@@ -181,17 +194,28 @@ export async function registerAccount(
         passwordHash,
       });
 
-      const [personalWorkspace] = await transaction
+      const workspaceId = randomUUID();
+      await transaction
         .insert(workspaces)
         .values({
+          id: workspaceId,
           name: "Pessoal",
           description: "Seus projetos e tarefas particulares.",
           icon: "house",
           color: "blue",
           kind: "personal",
           ownerUserId: createdUser.id,
-        })
-        .returning({ id: workspaces.id });
+        });
+      await transaction.insert(workspaceMembers).values({
+        workspaceId,
+        userId: createdUser.id,
+        role: "owner",
+      });
+      const [personalWorkspace] = await transaction
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(eq(workspaces.id, workspaceId))
+        .limit(1);
 
       if (!personalWorkspace) {
         throw new Error("O workspace pessoal não pôde ser criado.");
@@ -239,7 +263,7 @@ export async function registerAccount(
             role: invitation.role,
             joinedAt: acceptedAt,
           })
-          .onConflictDoNothing();
+          .onDuplicateKeyUpdate({ set: { role: invitation.role } });
         await connectWorkspaceMembers(
           transaction as unknown as Database,
           workspaceId,
@@ -487,7 +511,20 @@ export async function resetPassword(
   const tokenHash = hashOpaqueToken(token);
 
   await database.transaction(async (transaction) => {
-    const [consumed] = await transaction
+    const [candidate] = await transaction
+      .select({ userId: passwordResetTokens.userId })
+      .from(passwordResetTokens)
+      .where(
+        and(
+          eq(passwordResetTokens.tokenHash, tokenHash),
+          isNull(passwordResetTokens.usedAt),
+          isNull(passwordResetTokens.revokedAt),
+          gt(passwordResetTokens.expiresAt, now),
+        ),
+      )
+      .limit(1);
+    if (!candidate) throw new InvalidPasswordResetTokenError();
+    const consumeResult = await transaction
       .update(passwordResetTokens)
       .set({ usedAt: now })
       .where(
@@ -497,10 +534,9 @@ export async function resetPassword(
           isNull(passwordResetTokens.revokedAt),
           gt(passwordResetTokens.expiresAt, now),
         ),
-      )
-      .returning({ userId: passwordResetTokens.userId });
-
-    if (!consumed) throw new InvalidPasswordResetTokenError();
+      );
+    if (affectedRows(consumeResult) !== 1) throw new InvalidPasswordResetTokenError();
+    const consumed = candidate;
 
     const [activeUser] = await transaction
       .select({ id: users.id })
@@ -518,8 +554,7 @@ export async function resetPassword(
         createdAt: now,
         updatedAt: now,
       })
-      .onConflictDoUpdate({
-        target: userCredentials.userId,
+      .onDuplicateKeyUpdate({
         set: {
           passwordHash: replacementHash,
           passwordChangedAt: now,
@@ -585,10 +620,9 @@ export async function changePassword(
         eq(userCredentials.userId, input.userId),
         eq(userCredentials.passwordHash, credential.passwordHash),
       ),
-    )
-    .returning({ userId: userCredentials.userId });
+    );
 
-  if (changed.length !== 1) throw new InvalidCredentialsError();
+  if (affectedRows(changed) !== 1) throw new InvalidCredentialsError();
   await revokeAllSessions(database, input.userId, {
     exceptSessionId: input.keepSessionId,
     now,

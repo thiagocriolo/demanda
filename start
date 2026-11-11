@@ -9,8 +9,8 @@ http://localhost:5190
 1. Verificar os pre-requisitos
 
 - Node.js 20 ou superior.
-- PostgreSQL em execucao.
-- Arquivo .env existente na raiz, com DATABASE_URL configurada.
+- MySQL em execucao.
+- Arquivo .env existente na raiz, com MYSQL_URL configurada.
 - Dependencias instaladas em node_modules.
 
 2. Abrir o PowerShell no diretorio do projeto
@@ -21,12 +21,12 @@ Set-Location "C:\danger\Demanda"
 
 npm install
 
-4. Verificar a conexao com o PostgreSQL
+4. Verificar a conexao com o MySQL
 
 npm run db:check
 
-Se a verificacao falhar, confirmar se o servico PostgreSQL esta ativo e se a
-DATABASE_URL do arquivo .env esta correta antes de continuar.
+Se a verificacao falhar, confirmar se o servico MySQL esta ativo e se a
+MYSQL_URL do arquivo .env esta correta antes de continuar.
 
 5. Aplicar migrations pendentes
 

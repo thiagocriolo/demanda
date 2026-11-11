@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { Database } from "../db/database";
+import { affectedRows, rawRows, type Database } from "../db/database";
 import {
   socialCommentLikes,
   socialPostBlocks,
@@ -132,6 +133,10 @@ export async function hydratePosts(
 
 type InteractionState = SocialPostInteraction & { canInteract: boolean };
 
+function mysqlBoolean(value: boolean | number | string | null | undefined): boolean {
+  return Number(value) === 1;
+}
+
 async function interactionsForPosts(
   database: Database,
   postIds: string[],
@@ -143,47 +148,53 @@ async function interactionsForPosts(
     post_id: string;
     like_count: number | string;
     comment_count: number | string;
-    liked_by_current_user: boolean;
-    can_interact: boolean;
+    liked_by_current_user: boolean | number | string;
+    can_interact: boolean | number | string;
   }>(sql`
     select
       post.id as post_id,
-      (select count(*)::integer from app.social_post_likes post_like
+      (select count(*) from social_post_likes post_like
         where post_like.post_id = post.id) as like_count,
-      (select count(*)::integer from app.social_post_comments comment
+      (select count(*) from social_post_comments comment
         where comment.post_id = post.id and comment.deleted_at is null) as comment_count,
-      (${actorUserId ?? null}::uuid is not null and exists (
-        select 1 from app.social_post_likes current_like
+      (${actorUserId ?? null} is not null and exists (
+        select 1 from social_post_likes current_like
         where current_like.post_id = post.id
-          and current_like.user_id = ${actorUserId ?? null}::uuid
+          and current_like.user_id = ${actorUserId ?? null}
       )) as liked_by_current_user,
-      (${actorUserId ?? null}::uuid is not null and (
-        post.author_user_id = ${actorUserId ?? null}::uuid
+      (${actorUserId ?? null} is not null and (
+        post.author_user_id = ${actorUserId ?? null}
         or exists (
-          select 1 from app.user_connections connection
-          where (connection.user_a_id = ${actorUserId ?? null}::uuid
+          select 1 from user_connections connection
+          where (connection.user_a_id = ${actorUserId ?? null}
             and connection.user_b_id = post.author_user_id)
-             or (connection.user_b_id = ${actorUserId ?? null}::uuid
+             or (connection.user_b_id = ${actorUserId ?? null}
             and connection.user_a_id = post.author_user_id)
         )
         or exists (
-          select 1 from app.community_members membership
+          select 1 from community_members membership
           where membership.community_id = post.community_id
-            and membership.user_id = ${actorUserId ?? null}::uuid
+            and membership.user_id = ${actorUserId ?? null}
         )
       )) as can_interact
-    from app.social_posts post
+    from social_posts post
     where post.id in ${sql`(${sql.join(
-      postIds.map((id) => sql`${id}::uuid`),
+      postIds.map((id) => sql`${id}`),
       sql`, `,
     )})`}
   `);
-  for (const row of result.rows) {
+  for (const row of rawRows<{
+    post_id: string;
+    like_count: number | string;
+    comment_count: number | string;
+    liked_by_current_user: boolean | number | string;
+    can_interact: boolean | number | string;
+  }>(result)) {
     grouped.set(row.post_id, {
       likeCount: Number(row.like_count),
       commentCount: Number(row.comment_count),
-      likedByCurrentUser: row.liked_by_current_user,
-      canInteract: row.can_interact,
+      likedByCurrentUser: mysqlBoolean(row.liked_by_current_user),
+      canInteract: mysqlBoolean(row.can_interact),
     });
   }
   return grouped;
@@ -201,27 +212,27 @@ async function visiblePostRows(
       post.id, post.kind, post.title, post.body, post.link_url, post.created_at,
       author.id as author_id, author.name as author_name,
       author.username as author_username, author.avatar_url as author_avatar_url
-    from app.social_posts post
-    inner join app.users author on author.id = post.author_user_id
+    from social_posts post
+    inner join users author on author.id = post.author_user_id
     where post.deleted_at is null
       and post.community_id is null
-      and (${kind ?? null}::text is null or post.kind = ${kind ?? null})
-      and (${cursor?.toISOString() ?? null}::timestamptz is null
-        or post.created_at < ${cursor?.toISOString() ?? null}::timestamptz)
+      and (${kind ?? null} is null or post.kind = ${kind ?? null})
+      and (${cursor?.toISOString() ?? null} is null
+        or post.created_at < ${cursor?.toISOString() ?? null})
       and (
-        post.author_user_id = ${actorUserId}::uuid
+        post.author_user_id = ${actorUserId}
         or exists (
-          select 1 from app.user_connections connection
-          where (connection.user_a_id = ${actorUserId}::uuid
+          select 1 from user_connections connection
+          where (connection.user_a_id = ${actorUserId}
             and connection.user_b_id = post.author_user_id)
-             or (connection.user_b_id = ${actorUserId}::uuid
+             or (connection.user_b_id = ${actorUserId}
             and connection.user_a_id = post.author_user_id)
         )
       )
     order by post.created_at desc, post.id desc
     limit ${limit}
   `);
-  return result.rows;
+  return rawRows<PostRow>(result);
 }
 
 async function ownPortfolioRows(
@@ -235,18 +246,18 @@ async function ownPortfolioRows(
       post.id, post.kind, post.title, post.body, post.link_url, post.created_at,
       author.id as author_id, author.name as author_name,
       author.username as author_username, author.avatar_url as author_avatar_url
-    from app.social_posts post
-    inner join app.users author on author.id = post.author_user_id
+    from social_posts post
+    inner join users author on author.id = post.author_user_id
     where post.deleted_at is null
       and post.community_id is null
       and post.kind = 'portfolio'
-      and post.author_user_id = ${authorUserId}::uuid
-      and (${cursor?.toISOString() ?? null}::timestamptz is null
-        or post.created_at < ${cursor?.toISOString() ?? null}::timestamptz)
+      and post.author_user_id = ${authorUserId}
+      and (${cursor?.toISOString() ?? null} is null
+        or post.created_at < ${cursor?.toISOString() ?? null})
     order by post.created_at desc, post.id desc
     limit ${limit}
   `);
-  return result.rows;
+  return rawRows<PostRow>(result);
 }
 
 export async function createSocialPost(
@@ -329,17 +340,23 @@ export async function createSocialPost(
       }
     }
 
-    const [created] = await transaction
+    const id = randomUUID();
+    await transaction
       .insert(socialPosts)
       .values({
+        id,
         authorUserId,
         communityId: communityId ?? null,
         kind: input.kind,
         title,
         body,
         linkUrl,
-      })
-      .returning();
+      });
+    const [created] = await transaction
+      .select()
+      .from(socialPosts)
+      .where(eq(socialPosts.id, id))
+      .limit(1);
     if (!created)
       throw new SocialOperationError("Não foi possível publicar.", 500);
     if (input.blocks.length > 0) {
@@ -367,13 +384,13 @@ export async function createSocialPost(
         post.id, post.kind, post.title, post.body, post.link_url, post.created_at,
         author.id as author_id, author.name as author_name,
         author.username as author_username, author.avatar_url as author_avatar_url
-      from app.social_posts post
-      inner join app.users author on author.id = post.author_user_id
+      from social_posts post
+      inner join users author on author.id = post.author_user_id
       where post.id = ${created.id}
     `);
     const [post] = await hydratePosts(
       transaction as Database,
-      rows.rows,
+      rawRows<PostRow>(rows),
       authorUserId,
     );
     if (!post)
@@ -408,14 +425,14 @@ export async function getPortfolio(
       post.id, post.kind, post.title, post.body, post.link_url, post.created_at,
       author.id as author_id, author.name as author_name,
       author.username as author_username, author.avatar_url as author_avatar_url
-    from app.social_posts post
-    inner join app.users author on author.id = post.author_user_id
-    where post.id = ${postId}::uuid and post.kind = 'portfolio'
+    from social_posts post
+    inner join users author on author.id = post.author_user_id
+    where post.id = ${postId} and post.kind = 'portfolio'
       and post.deleted_at is null
       and post.community_id is null
-      and post.author_user_id = ${actorUserId}::uuid
+      and post.author_user_id = ${actorUserId}
   `);
-  const [post] = await hydratePosts(database, result.rows, actorUserId);
+  const [post] = await hydratePosts(database, rawRows<PostRow>(result), actorUserId);
   if (!post) throw new SocialOperationError("Portfólio não encontrado.", 404);
   return post;
 }
@@ -430,28 +447,28 @@ export async function getSocialPost(
       post.id, post.kind, post.title, post.body, post.link_url, post.created_at,
       author.id as author_id, author.name as author_name,
       author.username as author_username, author.avatar_url as author_avatar_url
-    from app.social_posts post
-    inner join app.users author on author.id = post.author_user_id
-    where post.id = ${postId}::uuid
+    from social_posts post
+    inner join users author on author.id = post.author_user_id
+    where post.id = ${postId}
       and post.deleted_at is null
       and (
-        post.author_user_id = ${actorUserId}::uuid
+        post.author_user_id = ${actorUserId}
         or (post.community_id is null and post.kind = 'portfolio')
         or (post.community_id is null and exists (
-          select 1 from app.user_connections connection
-          where (connection.user_a_id = ${actorUserId}::uuid
+          select 1 from user_connections connection
+          where (connection.user_a_id = ${actorUserId}
             and connection.user_b_id = post.author_user_id)
-             or (connection.user_b_id = ${actorUserId}::uuid
+             or (connection.user_b_id = ${actorUserId}
             and connection.user_a_id = post.author_user_id)
         ))
         or exists (
-          select 1 from app.community_members membership
+          select 1 from community_members membership
           where membership.community_id = post.community_id
-            and membership.user_id = ${actorUserId}::uuid
+            and membership.user_id = ${actorUserId}
         )
       )
   `);
-  const [post] = await hydratePosts(database, result.rows, actorUserId);
+  const [post] = await hydratePosts(database, rawRows<PostRow>(result), actorUserId);
   if (!post) throw new SocialOperationError("Publicação não encontrada.", 404);
   return post;
 }
@@ -512,7 +529,7 @@ export async function deleteSocialPost(
   actorUserId: string,
   postId: string,
 ): Promise<void> {
-  const [deleted] = await database
+  const deleted = await database
     .update(socialPosts)
     .set({ deletedAt: new Date(), updatedAt: new Date() })
     .where(
@@ -521,9 +538,8 @@ export async function deleteSocialPost(
         eq(socialPosts.authorUserId, actorUserId),
         isNull(socialPosts.deletedAt),
       ),
-    )
-    .returning({ id: socialPosts.id });
-  if (!deleted) {
+    );
+  if (affectedRows(deleted) !== 1) {
     throw new SocialOperationError(
       "Você só pode excluir suas próprias publicações.",
       403,
@@ -561,49 +577,49 @@ export async function listFeed(
     actor_avatar_url: string | null;
   }>(sql`
     with connected_users as (
-      select case when connection.user_a_id = ${actorUserId}::uuid
+      select case when connection.user_a_id = ${actorUserId}
         then connection.user_b_id else connection.user_a_id end as user_id
-      from app.user_connections connection
-      where connection.user_a_id = ${actorUserId}::uuid
-         or connection.user_b_id = ${actorUserId}::uuid
+      from user_connections connection
+      where connection.user_a_id = ${actorUserId}
+         or connection.user_b_id = ${actorUserId}
     ), visible_workspaces as (
       select distinct workspace.id
-      from app.workspaces workspace
-      inner join app.workspace_members member on member.workspace_id = workspace.id
-      where member.user_id = ${actorUserId}::uuid
+      from workspaces workspace
+      inner join workspace_members member on member.workspace_id = workspace.id
+      where member.user_id = ${actorUserId}
          or member.user_id in (select user_id from connected_users)
     ), events as (
-      select 'workspace:' || workspace.id::text as id, 'workspace'::text as entity,
-        workspace.name as title, null::text as context, workspace.updated_at as occurred_at,
+      select concat('workspace:', workspace.id) as id, 'workspace' as entity,
+        workspace.name as title, null as context, workspace.updated_at as occurred_at,
         workspace.id as workspace_id
-      from app.workspaces workspace
+      from workspaces workspace
       where workspace.id in (select id from visible_workspaces) and workspace.kind = 'shared'
       union all
-      select 'project:' || project.id::text, 'project', project.name, workspace.name,
+      select concat('project:', project.id), 'project', project.name, workspace.name,
         project.updated_at, project.workspace_id
-      from app.projects project
-      inner join app.workspaces workspace on workspace.id = project.workspace_id
+      from projects project
+      inner join workspaces workspace on workspace.id = project.workspace_id
       where project.workspace_id in (select id from visible_workspaces) and project.archived_at is null
       union all
-      select 'task:' || task.id::text, 'task', task.name, project.name,
+      select concat('task:', task.id), 'task', task.name, project.name,
         task.updated_at, task.workspace_id
-      from app.tasks task
-      inner join app.projects project on project.id = task.project_id and project.workspace_id = task.workspace_id
+      from tasks task
+      inner join projects project on project.id = task.project_id and project.workspace_id = task.workspace_id
       where task.workspace_id in (select id from visible_workspaces) and task.archived_at is null
     )
     select event.*, actor.id as actor_id, actor.name as actor_name,
       actor.username as actor_username, actor.avatar_url as actor_avatar_url
     from events event
     left join lateral (
-      select candidate.* from app.workspace_members member
-      inner join app.users candidate on candidate.id = member.user_id
+      select candidate.* from workspace_members member
+      inner join users candidate on candidate.id = member.user_id
       where member.workspace_id = event.workspace_id
-        and (candidate.id = ${actorUserId}::uuid
+        and (candidate.id = ${actorUserId}
           or candidate.id in (select user_id from connected_users))
-      order by (candidate.id = ${actorUserId}::uuid) desc, member.joined_at desc
+      order by (candidate.id = ${actorUserId}) desc, member.joined_at desc
       limit 1
     ) actor on true
-    where (${cursorIso}::timestamptz is null or event.occurred_at < ${cursorIso}::timestamptz)
+    where (${cursorIso} is null or event.occurred_at < ${cursorIso})
     order by event.occurred_at desc
     limit 30
   `);
@@ -621,27 +637,37 @@ export async function listFeed(
     b_avatar_url: string | null;
   }>(sql`
     with connected_users as (
-      select case when connection.user_a_id = ${actorUserId}::uuid
+      select case when connection.user_a_id = ${actorUserId}
         then connection.user_b_id else connection.user_a_id end as user_id
-      from app.user_connections connection
-      where connection.user_a_id = ${actorUserId}::uuid
-         or connection.user_b_id = ${actorUserId}::uuid
+      from user_connections connection
+      where connection.user_a_id = ${actorUserId}
+         or connection.user_b_id = ${actorUserId}
     )
-    select 'connection:' || connection.user_a_id::text || ':' || connection.user_b_id::text as id,
+    select concat('connection:', connection.user_a_id, ':', connection.user_b_id) as id,
       connection.created_at as occurred_at,
       a.id as a_id, a.name as a_name, a.username as a_username, a.avatar_url as a_avatar_url,
       b.id as b_id, b.name as b_name, b.username as b_username, b.avatar_url as b_avatar_url
-    from app.user_connections connection
-    inner join app.users a on a.id = connection.user_a_id
-    inner join app.users b on b.id = connection.user_b_id
+    from user_connections connection
+    inner join users a on a.id = connection.user_a_id
+    inner join users b on b.id = connection.user_b_id
     where connection.user_a_id in (select user_id from connected_users)
       and connection.user_b_id in (select user_id from connected_users)
-      and (${cursorIso}::timestamptz is null or connection.created_at < ${cursorIso}::timestamptz)
+      and (${cursorIso} is null or connection.created_at < ${cursorIso})
     order by connection.created_at desc
     limit 30
   `);
 
-  const activities: FeedActivityItem[] = activityRows.rows.map((row) => ({
+  const activities: FeedActivityItem[] = rawRows<{
+    id: string;
+    entity: "workspace" | "project" | "task";
+    title: string;
+    context: string | null;
+    occurred_at: Date | string;
+    actor_id: string | null;
+    actor_name: string | null;
+    actor_username: string | null;
+    actor_avatar_url: string | null;
+  }>(activityRows).map((row) => ({
     id: row.id,
     kind: "activity",
     occurredAt: toIso(row.occurred_at),
@@ -657,7 +683,18 @@ export async function listFeed(
         }
       : null,
   }));
-  const connectionItems: FeedConnectionItem[] = connectionRows.rows.map(
+  const connectionItems: FeedConnectionItem[] = rawRows<{
+    id: string;
+    occurred_at: Date | string;
+    a_id: string;
+    a_name: string;
+    a_username: string;
+    a_avatar_url: string | null;
+    b_id: string;
+    b_name: string;
+    b_username: string;
+    b_avatar_url: string | null;
+  }>(connectionRows).map(
     (row) => ({
       id: row.id,
       kind: "connection",
@@ -707,27 +744,27 @@ async function assertCanInteractWithPost(
   const result = await database.execute<{ allowed: boolean }>(sql`
     select exists (
       select 1
-      from app.social_posts post
-      where post.id = ${postId}::uuid
+      from social_posts post
+      where post.id = ${postId}
         and post.deleted_at is null
         and (
-          post.author_user_id = ${actorUserId}::uuid
+          post.author_user_id = ${actorUserId}
           or exists (
-            select 1 from app.user_connections connection
-            where (connection.user_a_id = ${actorUserId}::uuid
+            select 1 from user_connections connection
+            where (connection.user_a_id = ${actorUserId}
               and connection.user_b_id = post.author_user_id)
-               or (connection.user_b_id = ${actorUserId}::uuid
+               or (connection.user_b_id = ${actorUserId}
               and connection.user_a_id = post.author_user_id)
           )
           or exists (
-            select 1 from app.community_members membership
+            select 1 from community_members membership
             where membership.community_id = post.community_id
-              and membership.user_id = ${actorUserId}::uuid
+              and membership.user_id = ${actorUserId}
           )
         )
     ) as allowed
   `);
-  if (!result.rows[0]?.allowed) {
+  if (!rawRows<{ allowed: boolean }>(result)[0]?.allowed) {
     throw new SocialOperationError(
       "Somente conexões ou membros da comunidade podem interagir com esta publicação.",
       403,
@@ -761,7 +798,9 @@ export async function setPostLike(
     await database
       .insert(socialPostLikes)
       .values({ postId, userId: actorUserId })
-      .onConflictDoNothing();
+      .onDuplicateKeyUpdate({
+        set: { postId: sql`${socialPostLikes.postId}` },
+      });
   } else {
     await database
       .delete(socialPostLikes)
@@ -801,7 +840,7 @@ async function readPostComments(
     author_username: string;
     author_avatar_url: string | null;
     like_count: number | string;
-    liked_by_current_user: boolean;
+    liked_by_current_user: boolean | number | string;
   }>(sql`
     select
       comment.id,
@@ -814,27 +853,40 @@ async function readPostComments(
       author.name as author_name,
       author.username as author_username,
       author.avatar_url as author_avatar_url,
-      (select count(*)::integer from app.social_comment_likes comment_like
+      (select count(*) from social_comment_likes comment_like
         where comment_like.comment_id = comment.id) as like_count,
       exists (
-        select 1 from app.social_comment_likes current_like
+        select 1 from social_comment_likes current_like
         where current_like.comment_id = comment.id
-          and current_like.user_id = ${actorUserId}::uuid
+          and current_like.user_id = ${actorUserId}
       ) as liked_by_current_user
-    from app.social_post_comments comment
-    inner join app.users author on author.id = comment.author_user_id
-    where comment.post_id = ${postId}::uuid
+    from social_post_comments comment
+    inner join users author on author.id = comment.author_user_id
+    where comment.post_id = ${postId}
     order by comment.created_at asc, comment.id asc
     limit 500
   `);
-  const comments = result.rows.map((row) => ({
+  const comments = rawRows<{
+    id: string;
+    body: string;
+    parent_comment_id: string | null;
+    depth: number;
+    created_at: Date | string;
+    deleted_at: Date | string | null;
+    author_id: string;
+    author_name: string;
+    author_username: string;
+    author_avatar_url: string | null;
+    like_count: number | string;
+    liked_by_current_user: boolean;
+  }>(result).map((row) => ({
     id: row.id,
     body: row.deleted_at ? "Comentário excluído" : row.body,
     createdAt: toIso(row.created_at),
     parentCommentId: row.parent_comment_id,
     depth: row.depth,
     likeCount: Number(row.like_count),
-    likedByCurrentUser: row.liked_by_current_user,
+    likedByCurrentUser: mysqlBoolean(row.liked_by_current_user),
     canDelete: !row.deleted_at && row.author_id === actorUserId,
     deleted: Boolean(row.deleted_at),
     author: {
@@ -916,17 +968,19 @@ export async function createPostComment(
       }
       depth = parent.depth + 1;
     }
-    const [created] = await transaction
+    const id = randomUUID();
+    await transaction
       .insert(socialPostComments)
       .values({
+        id,
         postId,
         parentCommentId: parentCommentId ?? null,
         authorUserId: actorUserId,
         body: body.trim(),
         depth,
       })
-      .returning({ id: socialPostComments.id });
-    if (!created) {
+      ;
+    if (!id) {
       throw new SocialOperationError("Não foi possível comentar.", 500);
     }
     const comments = await readPostComments(
@@ -935,7 +989,7 @@ export async function createPostComment(
       postId,
     );
     return {
-      comment: comments.find((comment) => comment.id === created.id)!,
+      comment: comments.find((comment) => comment.id === id)!,
       interaction: await interactionForPost(
         transaction as Database,
         actorUserId,
@@ -951,7 +1005,7 @@ export async function deletePostComment(
   postId: string,
   commentId: string,
 ): Promise<{ comments: SocialComment[]; interaction: SocialPostInteraction }> {
-  const [deleted] = await database
+  const deleted = await database
     .update(socialPostComments)
     .set({ deletedAt: new Date(), updatedAt: new Date() })
     .where(
@@ -961,9 +1015,8 @@ export async function deletePostComment(
         eq(socialPostComments.authorUserId, actorUserId),
         isNull(socialPostComments.deletedAt),
       ),
-    )
-    .returning({ id: socialPostComments.id });
-  if (!deleted) {
+    );
+  if (affectedRows(deleted) !== 1) {
     throw new SocialOperationError(
       "Você só pode excluir seus próprios comentários.",
       403,
@@ -982,18 +1035,26 @@ async function commentLikeState(
 ): Promise<{ likeCount: number; likedByCurrentUser: boolean }> {
   const result = await database.execute<{
     like_count: number | string;
-    liked_by_current_user: boolean;
+    liked_by_current_user: boolean | number | string;
   }>(sql`
     select
-      count(*)::integer as like_count,
-      coalesce(bool_or(comment_like.user_id = ${actorUserId}::uuid), false)
+      count(*) as like_count,
+      coalesce(max(comment_like.user_id = ${actorUserId}), false)
         as liked_by_current_user
-    from app.social_comment_likes comment_like
-    where comment_like.comment_id = ${commentId}::uuid
+    from social_comment_likes comment_like
+    where comment_like.comment_id = ${commentId}
   `);
   return {
-    likeCount: Number(result.rows[0]?.like_count ?? 0),
-    likedByCurrentUser: result.rows[0]?.liked_by_current_user ?? false,
+    likeCount: Number(
+      rawRows<{ like_count: number | string; liked_by_current_user: boolean }>(result)[0]
+        ?.like_count ?? 0,
+    ),
+    likedByCurrentUser: mysqlBoolean(
+      rawRows<{
+        like_count: number | string;
+        liked_by_current_user: boolean | number | string;
+      }>(result)[0]?.liked_by_current_user,
+    ),
   };
 }
 
@@ -1023,7 +1084,9 @@ export async function setCommentLike(
     await database
       .insert(socialCommentLikes)
       .values({ commentId, userId: actorUserId })
-      .onConflictDoNothing();
+      .onDuplicateKeyUpdate({
+        set: { commentId: sql`${socialCommentLikes.commentId}` },
+      });
   } else {
     await database
       .delete(socialCommentLikes)

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   and,
   asc,
@@ -20,7 +21,7 @@ import type {
   ContactPhone,
   ContactStatus,
 } from "../../contacts/types";
-import type { Database } from "../db/database";
+import { affectedRows, type Database } from "../db/database";
 import {
   contactEmails,
   contactNotes,
@@ -102,30 +103,34 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (character) => `\\${character}`);
 }
 
+function escapeLikeMySql(value: string): string {
+  return value.replace(/[!%_]/g, (character) => `!${character}`);
+}
+
 function searchCondition(query: string): SQL | undefined {
   if (!query) return undefined;
-  const pattern = `%${escapeLike(query)}%`;
+  const pattern = `%${escapeLikeMySql(query)}%`;
   const conditions: SQL[] = [
-    sql`${contacts.name} ilike ${pattern} escape '\\'`,
-    sql`${contacts.profession} ilike ${pattern} escape '\\'`,
+    sql`${contacts.name} like ${pattern} escape '!'`,
+    sql`${contacts.profession} like ${pattern} escape '!'`,
     sql`exists (
       select 1 from ${contactPhones}
       where ${contactPhones.workspaceId} = ${contacts.workspaceId}
         and ${contactPhones.contactId} = ${contacts.id}
-        and ${contactPhones.number} ilike ${pattern} escape '\\'
+        and ${contactPhones.number} like ${pattern} escape '!'
     )`,
     sql`exists (
       select 1 from ${contactEmails}
       where ${contactEmails.workspaceId} = ${contacts.workspaceId}
         and ${contactEmails.contactId} = ${contacts.id}
-        and ${contactEmails.address} ilike ${pattern} escape '\\'
+        and ${contactEmails.address} like ${pattern} escape '!'
     )`,
     sql`exists (
       select 1 from ${contactNotes}
       where ${contactNotes.workspaceId} = ${contacts.workspaceId}
         and ${contactNotes.contactId} = ${contacts.id}
         and ${contactNotes.archivedAt} is null
-        and ${contactNotes.body} ilike ${pattern} escape '\\'
+        and ${contactNotes.body} like ${pattern} escape '!'
     )`,
   ];
   const digits = query.replace(/\D/g, "");
@@ -344,6 +349,10 @@ function databaseConstraint(error: unknown): string | undefined {
     if ("constraint" in current && typeof current.constraint === "string") {
       return current.constraint;
     }
+    if ("sqlMessage" in current && typeof current.sqlMessage === "string") {
+      const match = /CONSTRAINT `([^`]+)`/u.exec(current.sqlMessage);
+      if (match?.[1]) return match[1];
+    }
     current = "cause" in current ? current.cause : undefined;
   }
   return undefined;
@@ -470,9 +479,11 @@ export async function createWorkspaceContact(
         context.user.id,
       );
       await assertLinkedUserIsValid(transaction, input.linkedUserId);
-      const [created] = await transaction
+      const id = randomUUID();
+      await transaction
         .insert(contacts)
         .values({
+          id,
           workspaceId,
           ownerUserId: context.user.id,
           linkedUserId: input.linkedUserId,
@@ -480,8 +491,12 @@ export async function createWorkspaceContact(
           contactType: input.contactType,
           status: input.status,
           profession: input.profession,
-        })
-        .returning();
+        });
+      const [created] = await transaction
+        .select()
+        .from(contacts)
+        .where(eq(contacts.id, id))
+        .limit(1);
       if (!created) throw new Error("O contato não pôde ser criado.");
       await insertContactDetails(transaction, workspaceId, created.id, input);
       const [contact] = await hydrateContacts(transaction, [created]);
@@ -512,7 +527,7 @@ export async function updateWorkspaceContact(
       const workspaceId = existing.workspaceId;
 
       const now = new Date();
-      const [updated] = await transaction
+      const updated = await transaction
         .update(contacts)
         .set({
           linkedUserId: input.linkedUserId,
@@ -527,9 +542,8 @@ export async function updateWorkspaceContact(
             eq(contacts.ownerUserId, context.user.id),
             eq(contacts.id, contactId),
           ),
-        )
-        .returning();
-      if (!updated) throw new ContactNotFoundError();
+        );
+      if (affectedRows(updated) !== 1) throw new ContactNotFoundError();
 
       await transaction
         .delete(contactPhones)
@@ -557,7 +571,7 @@ export async function updateWorkspaceContact(
           ),
         );
       await insertContactDetails(transaction, workspaceId, contactId, input);
-      const [contact] = await hydrateContacts(transaction, [updated]);
+      const [contact] = await hydrateContacts(transaction, [{ ...existing, linkedUserId: input.linkedUserId, name: input.name, contactType: input.contactType, status: input.status, profession: input.profession, updatedAt: now }]);
       if (!contact) throw new ContactNotFoundError();
       return contact;
     });
@@ -590,7 +604,7 @@ export async function archiveWorkspaceContact(
           eq(contacts.id, contactId),
         ),
       )
-      .returning({ id: contacts.id });
-    if (archived.length !== 1) throw new ContactNotFoundError();
+      ;
+    if (affectedRows(archived) !== 1) throw new ContactNotFoundError();
   });
 }

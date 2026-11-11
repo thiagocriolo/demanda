@@ -1,5 +1,5 @@
 import { and, eq, gte, isNull, or, sql } from "drizzle-orm";
-import type { Database } from "../db/database";
+import { affectedRows, type Database } from "../db/database";
 import { userStorageUsage } from "../db/schema";
 
 export class StorageQuotaExceededError extends Error {
@@ -18,7 +18,7 @@ async function ensureUsageRow(
   await database
     .insert(userStorageUsage)
     .values({ userId })
-    .onConflictDoNothing({ target: userStorageUsage.userId });
+    .onDuplicateKeyUpdate({ set: { userId: sql`${userStorageUsage.userId}` } });
 }
 
 export async function reserveStorage(
@@ -45,9 +45,8 @@ export async function reserveStorage(
             ),
           ),
         ),
-      )
-      .returning({ userId: userStorageUsage.userId });
-    if (reserved.length !== 1) throw new StorageQuotaExceededError();
+      );
+    if (affectedRows(reserved) !== 1) throw new StorageQuotaExceededError();
   });
 }
 
@@ -69,9 +68,8 @@ export async function finalizeStorageReservation(
         eq(userStorageUsage.userId, userId),
         gte(userStorageUsage.storageReservedBytes, reservedBytes),
       ),
-    )
-    .returning({ userId: userStorageUsage.userId });
-  if (updated.length !== 1) {
+    );
+  if (affectedRows(updated) !== 1) {
     throw new Error("A reserva de armazenamento não pôde ser confirmada.");
   }
 }
@@ -132,21 +130,21 @@ export async function getUserStorageUsage(
 /** Recalcula o uso real a partir dos metadados ativos, sem tocar em reservas. */
 export async function reconcileStorageUsage(database: Database): Promise<void> {
   await database.execute(sql`
-    insert into app.user_storage_usage (
+    insert into user_storage_usage (
       user_id,
       storage_used_bytes,
       storage_reserved_bytes,
       updated_at
     )
     select users.id,
-           coalesce(sum(files.byte_size) filter (where files.deleted_at is null), 0),
+           coalesce(sum(case when files.deleted_at is null then files.byte_size else 0 end), 0),
            0,
-           now()
-    from app.users as users
-    left join app.stored_files as files on files.owner_user_id = users.id
+           current_timestamp(3)
+    from users as users
+    left join stored_files as files on files.owner_user_id = users.id
     group by users.id
-    on conflict (user_id) do update
-    set storage_used_bytes = excluded.storage_used_bytes,
-        updated_at = now()
+    on duplicate key update
+      storage_used_bytes = values(storage_used_bytes),
+      updated_at = current_timestamp(3)
   `);
 }

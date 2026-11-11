@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   and,
   asc,
@@ -5,7 +6,6 @@ import {
   desc,
   eq,
   gte,
-  ilike,
   inArray,
   isNotNull,
   isNull,
@@ -14,7 +14,7 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
-import type { Database } from "../db/database";
+import { affectedRows, type Database } from "../db/database";
 import {
   businesses,
   projects,
@@ -126,10 +126,6 @@ function iso(value: Date | null): string | null {
   return value?.toISOString() ?? null;
 }
 
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
-}
-
 function databaseConstraint(error: unknown): string | undefined {
   const visited = new Set<unknown>();
   let current = error;
@@ -137,6 +133,10 @@ function databaseConstraint(error: unknown): string | undefined {
     visited.add(current);
     if ("constraint" in current && typeof current.constraint === "string") {
       return current.constraint;
+    }
+    if ("sqlMessage" in current && typeof current.sqlMessage === "string") {
+      const match = /CONSTRAINT `([^`]+)`/u.exec(current.sqlMessage);
+      if (match?.[1]) return match[1];
     }
     current = "cause" in current ? current.cause : undefined;
   }
@@ -475,9 +475,8 @@ async function resolveAndLockTags(
   const createdTags = await database
     .insert(tags)
     .values(normalized.map(({ key, label }) => ({ workspaceId, key, label })))
-    .onConflictDoNothing({ target: [tags.workspaceId, tags.key] })
-    .returning({ id: tags.id });
-  if (createdTags.length) {
+    .onDuplicateKeyUpdate({ set: { key: sql`${tags.key}` } });
+  if (affectedRows(createdTags)) {
     await touchWorkspaceConfiguration(database, workspaceId);
   }
   const rows = await database
@@ -589,27 +588,27 @@ async function insertSubtasks(
 
 function taskSearchCondition(query: string): SQL | undefined {
   if (!query) return undefined;
-  const pattern = `%${escapeLike(query)}%`;
+  const pattern = `%${query.replace(/[!%_]/g, (character) => `!${character}`)}%`;
   return or(
-    ilike(tasks.name, pattern),
-    ilike(tasks.description, pattern),
+    sql<boolean>`${tasks.name} like ${pattern} escape '!'`,
+    sql<boolean>`${tasks.description} like ${pattern} escape '!'`,
     sql<boolean>`exists (
       select 1 from ${projects}
       where ${projects.workspaceId} = ${tasks.workspaceId}
         and ${projects.id} = ${tasks.projectId}
-        and ${projects.name} ilike ${pattern} escape '\\'
+        and ${projects.name} like ${pattern} escape '!'
     )`,
     sql<boolean>`exists (
       select 1 from ${businesses}
       where ${businesses.id} = ${tasks.businessId}
-        and ${businesses.name} ilike ${pattern} escape '\\'
+        and ${businesses.name} like ${pattern} escape '!'
     )`,
     sql<boolean>`exists (
       select 1 from ${taskSubtasks}
       where ${taskSubtasks.workspaceId} = ${tasks.workspaceId}
         and ${taskSubtasks.taskId} = ${tasks.id}
         and ${taskSubtasks.archivedAt} is null
-        and ${taskSubtasks.name} ilike ${pattern} escape '\\'
+        and ${taskSubtasks.name} like ${pattern} escape '!'
     )`,
     sql<boolean>`exists (
       select 1 from ${taskTags}
@@ -618,14 +617,14 @@ function taskSearchCondition(query: string): SQL | undefined {
        and ${tags.id} = ${taskTags.tagId}
       where ${taskTags.workspaceId} = ${tasks.workspaceId}
         and ${taskTags.taskId} = ${tasks.id}
-        and ${tags.label} ilike ${pattern} escape '\\'
+        and ${tags.label} like ${pattern} escape '!'
     )`,
     sql<boolean>`exists (
       select 1 from ${taskResponsibles}
       inner join ${users} on ${users.id} = ${taskResponsibles.userId}
       where ${taskResponsibles.workspaceId} = ${tasks.workspaceId}
         and ${taskResponsibles.taskId} = ${tasks.id}
-        and ${users.name} ilike ${pattern} escape '\\'
+        and ${users.name} like ${pattern} escape '!'
     )`,
   );
 }
@@ -824,9 +823,11 @@ export async function createWorkspaceTask(
         input.tagLabels,
       );
       const now = new Date();
-      const createdRows = await transaction
+      const id = randomUUID();
+      await transaction
         .insert(tasks)
         .values({
+          id,
           workspaceId,
           projectId: project.projectId,
           businessId: project.businessId,
@@ -841,8 +842,13 @@ export async function createWorkspaceTask(
           completedAt: input.status === TASK_COMPLETED_STATUS ? now : null,
           createdAt: now,
           updatedAt: now,
-        })
-        .returning();
+        });
+      const [createdRaw] = await transaction
+        .select()
+        .from(tasks)
+        .where(eq(tasks.id, id))
+        .limit(1);
+      const createdRows = createdRaw ? [createdRaw] : [];
       if (createdRows.length !== 1) {
         throw new Error("A tarefa não pôde ser criada.");
       }
@@ -954,8 +960,8 @@ async function synchronizeSubtasks(
           isNull(taskSubtasks.archivedAt),
         ),
       )
-      .returning({ id: taskSubtasks.id });
-    if (updated.length !== 1) throw new TaskRelationsInvalidError();
+      ;
+    if (affectedRows(updated) !== 1) throw new TaskRelationsInvalidError();
   }
   if (additions.length) {
     await database.insert(taskSubtasks).values(
@@ -1072,10 +1078,14 @@ export async function updateWorkspaceTask(
             eq(tasks.id, taskId),
             eq(tasks.version, input.version),
           ),
-        )
-        .returning();
-      if (taskRows.length !== 1) throw new TaskVersionConflictError();
-      const updated = taskRows[0]!;
+        );
+      if (affectedRows(taskRows) !== 1) throw new TaskVersionConflictError();
+      const [updated] = await transaction
+        .select()
+        .from(tasks)
+        .where(eq(tasks.id, taskId))
+        .limit(1);
+      if (!updated) throw new TaskNotFoundError();
 
       await transaction
         .delete(taskTags)
@@ -1345,10 +1355,15 @@ export async function updateWorkspaceTaskBoard(
               eq(tasks.version, update.version),
               isNull(tasks.archivedAt),
             ),
-          )
-          .returning();
-        if (changedRows.length !== 1) throw new TaskVersionConflictError();
-        updatedRows.push(changedRows[0]!);
+          );
+        if (affectedRows(changedRows) !== 1) throw new TaskVersionConflictError();
+        const [changed] = await transaction
+          .select()
+          .from(tasks)
+          .where(eq(tasks.id, update.id))
+          .limit(1);
+        if (!changed) throw new TaskNotFoundError();
+        updatedRows.push(changed);
       }
 
       const items = await hydrateTasks(
@@ -1451,10 +1466,14 @@ export async function setWorkspaceTaskState(
           eq(tasks.id, taskId),
           eq(tasks.version, input.version),
         ),
-      )
-      .returning();
-    if (changedRows.length !== 1) throw new TaskVersionConflictError();
-    const updated = changedRows[0]!;
+      );
+    if (affectedRows(changedRows) !== 1) throw new TaskVersionConflictError();
+    const [updated] = await transaction
+      .select()
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    if (!updated) throw new TaskNotFoundError();
     const [task] = await hydrateTasks(transaction, [updated], context.user.id);
     if (!task) throw new TaskNotFoundError();
     return task;
@@ -1529,9 +1548,8 @@ export async function setWorkspaceSubtaskState(
           eq(taskSubtasks.id, subtaskId),
           isNull(taskSubtasks.archivedAt),
         ),
-      )
-      .returning({ id: taskSubtasks.id });
-    if (changedSubtask.length !== 1) throw new TaskSubtaskNotFoundError();
+      );
+    if (affectedRows(changedSubtask) !== 1) throw new TaskSubtaskNotFoundError();
     const updatedTaskRows = await transaction
       .update(tasks)
       .set({
@@ -1544,10 +1562,14 @@ export async function setWorkspaceSubtaskState(
           eq(tasks.id, taskId),
           eq(tasks.version, input.version),
         ),
-      )
-      .returning();
-    if (updatedTaskRows.length !== 1) throw new TaskVersionConflictError();
-    const updatedTask = updatedTaskRows[0]!;
+      );
+    if (affectedRows(updatedTaskRows) !== 1) throw new TaskVersionConflictError();
+    const [updatedTask] = await transaction
+      .select()
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    if (!updatedTask) throw new TaskNotFoundError();
     const [task] = await hydrateTasks(
       transaction,
       [updatedTask],
@@ -1605,10 +1627,14 @@ export async function archiveWorkspaceTask(
           eq(tasks.id, taskId),
           eq(tasks.version, version),
         ),
-      )
-      .returning();
-    if (archivedRows.length !== 1) throw new TaskVersionConflictError();
-    const updated = archivedRows[0]!;
+      );
+    if (affectedRows(archivedRows) !== 1) throw new TaskVersionConflictError();
+    const [updated] = await transaction
+      .select()
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    if (!updated) throw new TaskNotFoundError();
     const [task] = await hydrateTasks(transaction, [updated], context.user.id);
     if (!task) throw new TaskNotFoundError();
     return task;
