@@ -39,10 +39,10 @@ export const timestamp = (
 
 export const createdAt = () =>
   timestamp("created_at", { withTimezone: true, precision: 3 })
-    .defaultNow()
+    .$defaultFn(() => new Date())
     .notNull();
 
 export const updatedAt = () =>
   timestamp("updated_at", { withTimezone: true, precision: 3 })
-    .defaultNow()
+    .$defaultFn(() => new Date())
     .notNull();
