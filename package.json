@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "npm run db:migrate && svelte-kit sync && vite build",
-    "deploy": "npm run build",
+    "build": "svelte-kit sync && vite build",
     "start": "npm run db:migrate && node --env-file=.env build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
