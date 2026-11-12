@@ -182,8 +182,17 @@ async function deletePersonalWorkspaceData(
   database: Database,
   workspaceId: string,
 ): Promise<void> {
-  const byWorkspace = (table: any) =>
-    database.delete(table).where(eq(table.workspaceId, workspaceId));
+  const byWorkspace = async (table: any) => {
+    try {
+      await database.delete(table).where(eq(table.workspaceId, workspaceId));
+    } catch (cause) {
+      // A aplicaÃ§Ã£o pode ser publicada antes de migrations opcionais serem
+      // aplicadas no banco gerenciado. Nesse caso a tabela simplesmente ainda
+      // nÃ£o existe e nÃ£o hÃ¡ dados nela a apagar.
+      if (isMissingTableError(cause)) return;
+      throw cause;
+    }
+  };
 
   // Delete in dependency order for restrictive foreign keys, such as uses
   // pointing to tool models.
@@ -223,4 +232,28 @@ async function deletePersonalWorkspaceData(
   await byWorkspace(workspaceCatalogEntries);
   await byWorkspace(workspaceConfigurations);
   await byWorkspace(auditLogs);
+}
+
+function isMissingTableError(cause: unknown): boolean {
+  const visited = new Set<unknown>();
+  let current: unknown = cause;
+  while (current && typeof current === "object" && !visited.has(current)) {
+    visited.add(current);
+    const error = current as {
+      code?: unknown;
+      errno?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+    if (
+      error.code === "ER_NO_SUCH_TABLE" ||
+      error.errno === 1146 ||
+      (typeof error.message === "string" &&
+        /table.+(?:doesn't exist|not found)/iu.test(error.message))
+    ) {
+      return true;
+    }
+    current = error.cause;
+  }
+  return false;
 }
