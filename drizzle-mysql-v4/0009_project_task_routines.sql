@@ -1,4 +1,4 @@
-CREATE TABLE `project_task_routines` (
+CREATE TABLE IF NOT EXISTS `project_task_routines` (
   `id` char(36) NOT NULL,
   `workspace_id` char(36) NOT NULL,
   `project_id` char(36) NOT NULL,
@@ -26,5 +26,5 @@ CREATE TABLE `project_task_routines` (
 ALTER TABLE `tasks`
   ADD COLUMN `project_routine_id` char(36) NULL,
   ADD COLUMN `routine_occurrence_date` date NULL,
-  ADD CONSTRAINT `tasks_workspace_project_routine_foreign_key` FOREIGN KEY (`workspace_id`,`project_routine_id`) REFERENCES `project_task_routines` (`workspace_id`,`id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `tasks_workspace_project_routine_foreign_key` FOREIGN KEY (`workspace_id`,`project_routine_id`) REFERENCES `project_task_routines` (`workspace_id`,`id`) ON DELETE RESTRICT,
   ADD UNIQUE KEY `tasks_workspace_routine_occurrence_unique` (`workspace_id`,`project_routine_id`,`routine_occurrence_date`);

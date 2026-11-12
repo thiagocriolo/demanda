@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     AlignLeft,
+    BriefcaseBusiness,
     CheckCircle2,
     Circle,
     Clock3,
@@ -49,6 +50,7 @@
   );
   let StatusIcon = $derived(status.icon);
   let visualLevel = $derived(scheduleCardLevel(schedule?.durationSlots ?? 2));
+  let businessName = $derived(task.negocio?.trim() || "Negócio não informado");
 
   function handleKeydown(event: KeyboardEvent): void {
     if (muted) return;
@@ -71,7 +73,7 @@
   class:muted
   class={`task-card tone-${status.tone}`}
   {style}
-  aria-label={`${task.nome}. ${status.label}`}
+  aria-label={`${task.nome}. Negócio: ${businessName}. Status: ${status.label}`}
   aria-disabled={muted}
   data-task-id={task.id}
   data-schedule-card
@@ -83,11 +85,20 @@
   <div class="card-body">
     <header>
       <h3>{task.nome}</h3>
-      <span class="status" title={status.label} aria-label={status.label}>
-        <StatusIcon size={13} strokeWidth={2.1} />
-        <span>{status.label}</span>
+      <span
+        class="business"
+        title={businessName}
+        aria-label={`Negócio: ${businessName}`}
+      >
+        <BriefcaseBusiness size={13} strokeWidth={2.1} aria-hidden="true" />
+        <span>{businessName}</span>
       </span>
     </header>
+
+    <p class="meta task-name">
+      <ListTodo size={13} aria-hidden="true" />
+      <span>{task.taskNome}</span>
+    </p>
 
     {#if task.projeto}
       <p class="meta project">
@@ -96,9 +107,9 @@
       </p>
     {/if}
 
-    <p class="meta task-name">
-      <ListTodo size={13} aria-hidden="true" />
-      <span>{task.taskNome}</span>
+    <p class="meta status-detail" title={status.label}>
+      <StatusIcon size={13} strokeWidth={2.1} aria-hidden="true" />
+      <span>{status.label}</span>
     </p>
 
     {#if task.descricao}
@@ -113,12 +124,6 @@
         <span class="footer-fact">
           <Clock3 size={13} />
           <span class="footer-copy">
-            <small>Duração</small>
-            <strong>{formatDuration(schedule.durationSlots)}</strong>
-          </span>
-        </span>
-        <span class="footer-fact">
-          <span class="footer-copy">
             <small>Início</small>
             <strong
               >{String(Math.floor(schedule.startMinutes / 60)).padStart(
@@ -126,6 +131,12 @@
                 "0",
               )}:{String(schedule.startMinutes % 60).padStart(2, "0")}</strong
             >
+          </span>
+        </span>
+        <span class="footer-fact">
+          <span class="footer-copy">
+            <small>Duração</small>
+            <strong>{formatDuration(schedule.durationSlots)}</strong>
           </span>
         </span>
       </footer>
@@ -239,9 +250,10 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
-  .status {
+  .business {
     display: inline-flex;
-    min-width: 22px;
+    max-width: 48%;
+    min-width: 0;
     height: 22px;
     flex: 0 0 auto;
     align-items: center;
@@ -256,8 +268,10 @@
     font-weight: 600;
     white-space: nowrap;
   }
-  .status span {
-    display: none;
+  .business span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .meta {
     display: none;
@@ -273,6 +287,19 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .status-detail {
+    color: var(--ink-600);
+    font-weight: 600;
+  }
+  .tone-blue .status-detail {
+    color: #3155c9;
+  }
+  .tone-amber .status-detail {
+    color: #9a6700;
+  }
+  .tone-green .status-detail {
+    color: #28764d;
   }
   footer {
     display: none;
@@ -346,17 +373,21 @@
     display: none;
   }
   .task-card.attached[data-schedule-lines="1"] .card-body {
-    display: block;
-    padding: 5px 7px;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 7px;
+  }
+  .task-card.attached[data-schedule-lines="1"] header {
+    width: 100%;
+    align-items: center;
   }
   .task-card.attached[data-schedule-lines="1"] h3 {
     font-size: 11px;
     line-height: 1.15;
     line-clamp: 1;
     -webkit-line-clamp: 1;
-  }
-  .task-card.attached[data-schedule-lines="1"] .status {
-    display: none;
   }
   .task-card.attached .description span {
     display: -webkit-box;
@@ -366,42 +397,63 @@
     -webkit-line-clamp: 1;
   }
   .task-card.attached[data-card-level="3"] .card-body {
-    gap: 4px;
-    padding: 7px 8px 18px;
+    gap: 3px;
+    padding: 6px 8px 12px;
   }
-  .task-card.attached[data-card-level="3"] header {
+  .task-card.attached[data-card-level="3"] header,
+  .task-card.attached[data-card-level="4"] header {
     align-items: flex-start;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
+  }
+  .task-card.attached:is(
+      [data-card-level="3"],
+      [data-card-level="4"]
+    )
+    .business {
+    max-width: 100%;
   }
   .task-card.attached[data-card-level="3"] h3 {
-    width: 100%;
-    flex: 0 0 auto;
     font-size: 12px;
     line-clamp: 1;
     -webkit-line-clamp: 1;
   }
-  .task-card.attached[data-card-level="3"] .status {
-    width: fit-content;
-    height: 20px;
-    min-width: 0;
-    padding-inline: 7px;
-    font-size: 10px;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-  }
-  .task-card.attached[data-card-level="3"] .status span {
-    display: inline;
-  }
   .task-card.attached[data-card-level="4"] .card-body {
-    gap: 7px;
-    padding: 9px 9px 18px;
+    display: flex;
+    min-height: 100%;
+    box-sizing: border-box;
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px 9px 11px;
   }
-  .task-card.attached[data-card-level="4"] h3 {
+  .task-card.attached:is(
+      [data-card-level="4"],
+      [data-card-level="5"],
+      [data-card-level="6"],
+      [data-card-level="7"],
+      [data-card-level="8"],
+      [data-card-level="9"],
+      [data-card-level="10"]
+    )
+    header {
+    display: contents;
+  }
+  .task-card.attached:is(
+      [data-card-level="4"],
+      [data-card-level="5"],
+      [data-card-level="6"]
+    )
+    h3 {
     font-size: 14px;
+    line-clamp: 1;
+    -webkit-line-clamp: 1;
   }
   .task-card.attached:is([data-card-level="5"], [data-card-level="6"])
     .card-body {
+    display: flex;
+    min-height: 100%;
+    box-sizing: border-box;
+    flex-direction: column;
     gap: 9px;
     padding: 12px 11px 18px;
   }
@@ -410,6 +462,10 @@
   }
   .task-card.attached:is([data-card-level="7"], [data-card-level="8"])
     .card-body {
+    display: flex;
+    min-height: 100%;
+    box-sizing: border-box;
+    flex-direction: column;
     gap: 10px;
     padding: 14px 13px 18px;
   }
@@ -418,6 +474,10 @@
   }
   .task-card.attached:is([data-card-level="9"], [data-card-level="10"])
     .card-body {
+    display: flex;
+    min-height: 100%;
+    box-sizing: border-box;
+    flex-direction: column;
     gap: 12px;
     padding: 16px 15px 18px;
   }
@@ -433,22 +493,17 @@
       [data-card-level="9"],
       [data-card-level="10"]
     )
-    .project,
+    .task-name,
   .task-card.attached:is(
+      [data-card-level="4"],
+      [data-card-level="5"],
       [data-card-level="6"],
       [data-card-level="7"],
       [data-card-level="8"],
       [data-card-level="9"],
       [data-card-level="10"]
     )
-    .task-name,
-  .task-card.attached:is(
-      [data-card-level="7"],
-      [data-card-level="8"],
-      [data-card-level="9"],
-      [data-card-level="10"]
-    )
-    .description,
+    .business,
   .task-card.attached:is(
       [data-card-level="5"],
       [data-card-level="6"],
@@ -457,8 +512,85 @@
       [data-card-level="9"],
       [data-card-level="10"]
     )
+    .project,
+  .task-card.attached:is(
+      [data-card-level="8"],
+      [data-card-level="9"],
+      [data-card-level="10"]
+    )
+    .description,
+  .task-card.attached:is(
+      [data-card-level="6"],
+      [data-card-level="7"],
+      [data-card-level="8"],
+      [data-card-level="9"],
+      [data-card-level="10"]
+    )
+    .status-detail,
+  .task-card.attached:is(
+      [data-card-level="7"],
+      [data-card-level="8"],
+      [data-card-level="9"],
+      [data-card-level="10"]
+    )
     footer {
     display: flex;
+  }
+  .task-card.attached:is(
+      [data-card-level="4"],
+      [data-card-level="5"],
+      [data-card-level="6"],
+      [data-card-level="7"],
+      [data-card-level="8"],
+      [data-card-level="9"],
+      [data-card-level="10"]
+    )
+    h3 {
+    width: 100%;
+    flex: 0 0 auto;
+    order: 1;
+  }
+  .task-card.attached:is(
+      [data-card-level="4"],
+      [data-card-level="5"],
+      [data-card-level="6"],
+      [data-card-level="7"],
+      [data-card-level="8"],
+      [data-card-level="9"],
+      [data-card-level="10"]
+    )
+    .business {
+    width: 100%;
+    min-height: 30px;
+    max-width: none;
+    height: auto;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    justify-content: flex-start;
+    gap: 5px;
+    padding: 6px 7px;
+    border-color: rgba(148, 163, 184, 0.24);
+    border-radius: 5px;
+    color: var(--ink-500);
+    background: rgba(255, 255, 255, 0.5);
+    font-size: var(--text-xs);
+    font-weight: 400;
+    order: 5;
+  }
+  .task-card.attached .status-detail {
+    order: 2;
+  }
+  .task-card.attached .task-name {
+    order: 3;
+  }
+  .task-card.attached .project {
+    order: 4;
+  }
+  .task-card.attached footer {
+    order: 6;
+  }
+  .task-card.attached .description {
+    order: 7;
   }
   .task-card.attached:is(
       [data-card-level="8"],
@@ -474,19 +606,6 @@
     span {
     line-clamp: 2;
     -webkit-line-clamp: 2;
-  }
-  @container schedule-card (min-width: 184px) {
-    .task-card.attached:is(
-        [data-card-level="6"],
-        [data-card-level="7"],
-        [data-card-level="8"],
-        [data-card-level="9"],
-        [data-card-level="10"]
-      )
-      .status
-      span {
-      display: inline;
-    }
   }
   .task-card.compact {
     position: relative;

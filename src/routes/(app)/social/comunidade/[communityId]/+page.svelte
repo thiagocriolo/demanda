@@ -437,7 +437,6 @@
     width: min(100%, var(--social-content-width));
     gap: 16px;
     margin-inline: auto;
-    padding-bottom: 30px;
   }
   button {
     font: inherit;

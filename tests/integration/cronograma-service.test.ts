@@ -432,7 +432,7 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
         transaction,
         data.ownerContext,
         data.subtasks[2]!.id,
-        placement(12 * 60),
+        placement(6 * 60),
       );
       const insideWorkday = await saveCronogramaBlock(
         transaction,
@@ -463,7 +463,7 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
         reorganized.items.find(
           ({ subtaskId }) => subtaskId === data.subtasks[2]!.id,
         ),
-      ).toMatchObject({ startMinutes: 12 * 60 });
+      ).toMatchObject({ startMinutes: 6 * 60 });
 
       await expect(
         reorganizeCronogramaBlocks(transaction, data.ownerContext, {
@@ -472,7 +472,7 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
             {
               subtaskId: data.subtasks[2]!.id,
               date: "2026-07-15",
-              startMinutes: 12 * 60,
+              startMinutes: 6 * 60,
               durationMinutes: 60,
               version: outsideWorkday.items.find(
                 ({ subtaskId }) => subtaskId === data.subtasks[2]!.id,

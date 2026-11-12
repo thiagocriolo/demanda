@@ -18,6 +18,7 @@
   import GlobalSelector, {
     type GlobalSelectorItem,
   } from "$lib/ui/GlobalSelector.svelte";
+  import { recordPageHrefForEntity } from "$lib/records/record-page";
   import { Archive, Pencil, Save, Trash2, X } from "@lucide/svelte";
   import { onMount } from "svelte";
   import {
@@ -61,6 +62,16 @@
         ? config.editTitle
         : config.createTitle,
   );
+  let recordHref = $derived(
+    record?.id ? recordPageHrefForEntity(config.key, record.id) : undefined,
+  );
+  let modalTitle = $derived(viewOnly && record?.nome ? record.nome : title);
+
+  function closeBeforePageNavigation(event: MouseEvent): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
+    oncancel();
+  }
 
   $effect(() => {
     form = Object.fromEntries(
@@ -420,7 +431,17 @@
     aria-labelledby="entity-form-title"
   >
     <header>
-      <h2 id="entity-form-title">{title}</h2>
+      <h2 id="entity-form-title">
+        {#if viewOnly && recordHref}
+          <a
+            class="record-page-link"
+            href={recordHref}
+            onclick={closeBeforePageNavigation}>{modalTitle}</a
+          >
+        {:else}
+          {modalTitle}
+        {/if}
+      </h2>
       <button
         class="close"
         type="button"
@@ -671,6 +692,15 @@
     font-weight: 600;
     line-height: 1.25;
     letter-spacing: 0;
+  }
+  .record-page-link {
+    color: inherit;
+  }
+  .record-page-link:hover,
+  .record-page-link:focus-visible {
+    color: var(--brand-600);
+    text-decoration: underline;
+    outline: 0;
   }
   .close {
     display: inline-flex;

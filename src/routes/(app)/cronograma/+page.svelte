@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { autoScheduleWeek } from "$lib/cronograma/auto-schedule";
   import {
@@ -9,7 +10,9 @@
     MAX_DURATION_SLOTS,
     MIN_DURATION_SLOTS,
     MINUTES_PER_SLOT,
+    addDays,
     buildWeekDays,
+    isoDate,
     layoutScheduleGroup,
     minutesToTime,
     resolveWeekStart,
@@ -91,6 +94,15 @@
     clientY: number;
   };
 
+  type ViewportPanState = {
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startScrollTop: number;
+    startScrollLeft: number;
+    moved: boolean;
+  };
+
   let tasks = $state<ScheduleTask[]>([]);
   let schedules = $state<ScheduleMap>({});
   let allTasks = $state<ScheduleTask[]>([]);
@@ -102,12 +114,14 @@
   let showCurrentTime = $state(true);
   let initialized = $state(false);
   let now = $state(new Date());
-  const visibleStart = 0;
+  const defaultVisibleStart = 7 * 60;
   const visibleEnd = 24 * 60;
-  let workdayStart = $state(8 * 60);
+  const timeColumnWidth = 104;
+  const horizontalBufferDays = 8;
   let selectedTask = $state<EntityRecord>();
   let taskFormMode = $state<TaskFormMode>("view");
   let drag = $state<DragState | null>(null);
+  let viewportPan = $state<ViewportPanState | null>(null);
   let activeDropTarget = $state<string>();
   let scheduleError = $state<string>();
   let tasksLoading = $state(false);
@@ -118,8 +132,14 @@
   let tasksAbortController: AbortController | undefined;
   let viewport: HTMLDivElement;
   let grid: HTMLDivElement;
+  let dayColumnWidth = $state(210);
   let pointerCleanup: (() => void) | undefined;
+  let viewportPanCleanup: (() => void) | undefined;
+  let viewportPanSnapTimeout: number | undefined;
+  let viewportPanSnapping = $state(false);
   let lastAutoScrollKey = "";
+  let lastHorizontalPositionKey = "";
+  let preservedViewportScrollTop: number | undefined;
   let scheduleNoticeTimeout: number | undefined;
   let heldTaskCard = $derived(
     drag?.mode === "drag" ? toTaskCardItem(drag.task) : undefined,
@@ -129,17 +149,38 @@
     resolveWeekStart(page.url.searchParams.get("week"), now),
   );
   let days = $derived(buildWeekDays(weekStart, now, includeSaturday));
+  let bufferedDays = $derived(
+    buildWeekDays(
+      addDays(weekStart, -horizontalBufferDays),
+      now,
+      includeSaturday,
+      days.length + horizontalBufferDays * 2,
+    ),
+  );
   let weekStartIso = $derived(days[0]?.iso ?? "");
-  let weekEndIso = $derived(days.at(-1)?.iso ?? "");
-  let scheduledThisWeek = $derived(
+  let bufferedStartIso = $derived(bufferedDays[0]?.iso ?? "");
+  let bufferedEndIso = $derived(bufferedDays.at(-1)?.iso ?? "");
+  let scheduledInBuffer = $derived(
     tasks
       .map((task) => ({ task, schedule: schedules[task.id] }))
       .filter(
         (item): item is { task: ScheduleTask; schedule: ScheduleEntry } =>
           !!item.schedule &&
-          item.schedule.date >= weekStartIso &&
-          item.schedule.date <= weekEndIso,
+          item.schedule.date >= bufferedStartIso &&
+          item.schedule.date <= bufferedEndIso,
       ),
+  );
+  let visibleStart = $derived(
+    Math.min(
+      defaultVisibleStart,
+      ...scheduledInBuffer.map((item) => item.schedule.startMinutes),
+    ),
+  );
+  let autoScheduleDays = $derived(
+    days
+      .filter((day) => day.date.getDay() !== 0)
+      .filter((day) => includeSaturday || day.date.getDay() !== 6)
+      .map((day) => day.iso),
   );
   let slots = $derived(
     Array.from(
@@ -151,15 +192,15 @@
     nextUnscheduledSubtasksForWorkspace(tasks, schedules, activeWorkspaceId),
   );
   let positionedByDay = $derived(
-    days.map(
+    bufferedDays.map(
       (day) =>
         layoutScheduleGroup(
-          scheduledThisWeek.filter((item) => item.schedule.date === day.iso),
+          scheduledInBuffer.filter((item) => item.schedule.date === day.iso),
         ) as PositionedTask[],
     ),
   );
   let currentMinutes = $derived(now.getHours() * 60 + now.getMinutes());
-  let currentDayIndex = $derived(days.findIndex((day) => day.isToday));
+  let currentDayIndex = $derived(bufferedDays.findIndex((day) => day.isToday));
   let showCurrentMarker = $derived(
     showCurrentTime &&
       currentDayIndex >= 0 &&
@@ -173,13 +214,6 @@
     drawerOpen = settings.cronogramaDrawerDefault === "expanded";
     includeSaturday = settings.cronogramaDays === "saturday";
     showCurrentTime = settings.cronogramaShowCurrentTime;
-    const starts = settings.workdayShifts
-      .map((shift) => parseTime(shift.start))
-      .filter((value): value is number => value !== null);
-    if (starts.length) {
-      workdayStart =
-        Math.floor(Math.min(...starts) / MINUTES_PER_SLOT) * MINUTES_PER_SLOT;
-    }
   }
 
   onMount(() => {
@@ -194,6 +228,9 @@
     const stopWorkspaces = observeWorkspaces(() => void refreshTasks());
     const minuteTimer = window.setInterval(() => (now = new Date()), 60_000);
     const autoSchedule = () => void autoOrganizeSchedule();
+    const resizeObserver = new ResizeObserver(syncDayColumnWidth);
+    resizeObserver.observe(viewport);
+    syncDayColumnWidth();
     window.addEventListener(
       CRONOGRAMA_AUTO_SCHEDULE_REQUEST_EVENT,
       autoSchedule,
@@ -203,6 +240,7 @@
       tasksAbortController?.abort();
       stopTasks();
       stopWorkspaces();
+      resizeObserver.disconnect();
       window.clearInterval(minuteTimer);
       if (scheduleNoticeTimeout) window.clearTimeout(scheduleNoticeTimeout);
       window.removeEventListener(
@@ -211,8 +249,17 @@
       );
       publishCronogramaAutoScheduleState({ ready: false, busy: false });
       pointerCleanup?.();
+      viewportPanCleanup?.();
+      if (viewportPanSnapTimeout) {
+        window.clearTimeout(viewportPanSnapTimeout);
+      }
       clearInteractionCursor();
     };
+  });
+
+  $effect(() => {
+    const dayCount = days.length;
+    if (initialized && viewport && dayCount) syncDayColumnWidth();
   });
 
   $effect(() => {
@@ -225,32 +272,49 @@
 
   $effect(() => {
     const week = weekStartIso;
-    const scrollKey = `${week}:${showCurrentMarker ? "now" : workdayStart}`;
+    const scrollKey = `${week}:${visibleStart}`;
     const shouldScroll = initialized && viewport && week;
     if (!shouldScroll || lastAutoScrollKey === scrollKey) return;
     lastAutoScrollKey = scrollKey;
     void tick().then(() => {
-      const marker = viewport.querySelector<HTMLElement>("[data-now-marker]");
-      const targetOffset = marker
-        ? marker.offsetTop - viewport.clientHeight * 0.42
-        : ((workdayStart - visibleStart) / MINUTES_PER_SLOT) * slotHeight() -
-          20;
-      viewport.scrollTop = Math.max(0, targetOffset);
+      if (preservedViewportScrollTop !== undefined) {
+        viewport.scrollTop = preservedViewportScrollTop;
+        preservedViewportScrollTop = undefined;
+        return;
+      }
+      viewport.scrollTop = 0;
     });
   });
 
-  function parseTime(value: string): number | null {
-    if (!/^\d{2}:\d{2}$/.test(value)) return null;
-    const [hours, minutes] = value.split(":").map(Number);
-    return Number.isFinite(hours) && Number.isFinite(minutes)
-      ? hours * 60 + minutes
-      : null;
-  }
+  $effect(() => {
+    const key = `${weekStartIso}:${dayColumnWidth}`;
+    if (!initialized || !viewport || !grid || !key) return;
+    if (lastHorizontalPositionKey === key) return;
+    lastHorizontalPositionKey = key;
+    void tick().then(alignViewportHorizontally);
+  });
 
   function taskDurationSlots(value: string): number {
     const slots = Math.round(Number(value) * (60 / MINUTES_PER_SLOT));
     if (!Number.isFinite(slots)) return 2;
     return Math.max(MIN_DURATION_SLOTS, Math.min(MAX_DURATION_SLOTS, slots));
+  }
+
+  function syncDayColumnWidth(): void {
+    if (!viewport || !days.length) return;
+    dayColumnWidth = Math.max(
+      210,
+      (viewport.clientWidth - timeColumnWidth) / days.length,
+    );
+  }
+
+  function horizontalRestPosition(): number {
+    return horizontalBufferDays * dayColumnWidth;
+  }
+
+  function alignViewportHorizontally(): void {
+    if (!viewport) return;
+    viewport.scrollLeft = horizontalRestPosition();
   }
 
   function assignedToCurrentUser(task: ScheduleTask): boolean {
@@ -697,7 +761,117 @@
     document.documentElement.classList.remove(
       "cronograma-dragging",
       "cronograma-resizing",
+      "cronograma-panning",
     );
+  }
+
+  function startViewportPan(event: PointerEvent): void {
+    if (
+      event.button !== 0 ||
+      drag ||
+      viewportPan ||
+      viewportPanSnapping ||
+      scheduleSaving ||
+      autoScheduling ||
+      event.target !== event.currentTarget ||
+      !viewport
+    ) {
+      return;
+    }
+
+    viewportPan = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startScrollTop: viewport.scrollTop,
+      startScrollLeft: viewport.scrollLeft,
+      moved: false,
+    };
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== viewportPan?.pointerId) return;
+      moveViewportPan(moveEvent);
+    };
+    const handleUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId !== viewportPan?.pointerId) return;
+      finishViewportPan(false);
+    };
+    const handleCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId !== viewportPan?.pointerId) return;
+      finishViewportPan(true);
+    };
+
+    window.addEventListener("pointermove", handleMove, true);
+    window.addEventListener("pointerup", handleUp, true);
+    window.addEventListener("pointercancel", handleCancel, true);
+    viewportPanCleanup = () => {
+      window.removeEventListener("pointermove", handleMove, true);
+      window.removeEventListener("pointerup", handleUp, true);
+      window.removeEventListener("pointercancel", handleCancel, true);
+      viewportPanCleanup = undefined;
+    };
+  }
+
+  function moveViewportPan(event: PointerEvent): void {
+    if (!viewportPan || !viewport) return;
+    const deltaX = event.clientX - viewportPan.startX;
+    const deltaY = event.clientY - viewportPan.startY;
+    if (!viewportPan.moved && Math.hypot(deltaX, deltaY) < 5) return;
+
+    event.preventDefault();
+    if (!viewportPan.moved) {
+      document.documentElement.classList.add("cronograma-panning");
+      viewportPan = { ...viewportPan, moved: true };
+    }
+
+    // No eixo vertical o conteúdo acompanha o ponteiro. O eixo horizontal é
+    // confirmado ao soltar para manter a troca de dias magnética e previsível.
+    viewport.scrollTop = Math.max(0, viewportPan.startScrollTop - deltaY);
+    viewport.scrollLeft = Math.max(0, viewportPan.startScrollLeft - deltaX);
+  }
+
+  function finishViewportPan(cancelled: boolean): void {
+    if (!viewportPan) return;
+    viewportPanCleanup?.();
+    viewportPan = null;
+    clearInteractionCursor();
+    const movedColumns = cancelled
+      ? 0
+      : Math.round(
+          (viewport.scrollLeft - horizontalRestPosition()) / dayColumnWidth,
+        );
+    snapViewportPan(movedColumns);
+  }
+
+  function snapViewportPan(movedColumns: number): void {
+    if (!viewport) return;
+    const maximumScroll = viewport.scrollWidth - viewport.clientWidth;
+    const targetScrollLeft = Math.max(
+      0,
+      Math.min(
+        maximumScroll,
+        horizontalRestPosition() + movedColumns * dayColumnWidth,
+      ),
+    );
+    viewportPanSnapping = true;
+    viewport.scrollTo({ left: targetScrollLeft, behavior: "smooth" });
+    if (viewportPanSnapTimeout) window.clearTimeout(viewportPanSnapTimeout);
+    viewportPanSnapTimeout = window.setTimeout(() => {
+      viewportPanSnapping = false;
+      viewportPanSnapTimeout = undefined;
+      if (movedColumns) moveVisibleDays(movedColumns);
+    }, 180);
+  }
+
+  function moveVisibleDays(amount: number): void {
+    if (!viewport) return;
+    const next = new URL(page.url);
+    next.searchParams.set("week", isoDate(addDays(weekStart, amount)));
+    preservedViewportScrollTop = viewport.scrollTop;
+    void goto(`${next.pathname}${next.search}${next.hash}`, {
+      keepFocus: true,
+      noScroll: true,
+    }).then(() => void tick().then(alignViewportHorizontally));
   }
 
   function autoScroll(clientX: number, clientY: number): void {
@@ -787,7 +961,7 @@
           tasks: allTasks,
           candidateTaskIds: workspaceTasks.map((task) => task.id),
           schedules: calculatedSchedules,
-          days: days.map((day) => day.iso),
+          days: autoScheduleDays,
           shifts: settings.workdayShifts,
           now,
         });
@@ -907,11 +1081,11 @@
       <div
         class="schedule-grid"
         bind:this={grid}
-        style={`--slot-count: ${slots.length}; --day-count: ${days.length}; --days-min-width: ${116 + days.length * 210}px`}
+        style={`--slot-count: ${slots.length}; --day-count: ${bufferedDays.length}; --day-column-width: ${dayColumnWidth}px; --days-min-width: ${timeColumnWidth + bufferedDays.length * dayColumnWidth}px`}
       >
         <div class="grid-head grid-head-time">Horário</div>
 
-        {#each days as day}
+        {#each bufferedDays as day}
           <div
             class:today={day.isToday}
             class="grid-head grid-head-day"
@@ -935,7 +1109,7 @@
           {/each}
         </div>
 
-        {#each days as day}
+        {#each bufferedDays as day, index}
           <div
             class:today={day.isToday}
             class:drop-target={activeDropTarget === day.iso &&
@@ -944,9 +1118,14 @@
             class:conflict-target={activeDropTarget === day.iso &&
               (!!drag?.conflict || !!drag?.sequenceError)}
             class="schedule-day"
+            role="presentation"
             data-schedule-day
+            data-first-visible-day={index === horizontalBufferDays
+              ? true
+              : undefined}
             data-date={day.iso}
             style={`grid-column: ${day.index + 2}`}
+            onpointerdown={startViewportPan}
           >
             {#if showCurrentMarker && currentDayIndex === day.index}
               <span
@@ -1083,6 +1262,11 @@
     cursor: ns-resize !important;
     user-select: none;
   }
+  :global(html.cronograma-panning),
+  :global(html.cronograma-panning body) {
+    cursor: grabbing !important;
+    user-select: none;
+  }
   .cronograma-page {
     display: flex;
     width: 100%;
@@ -1113,13 +1297,12 @@
   }
   .schedule-grid {
     --time-column-width: 104px;
-    --day-column-min: 210px;
     --slot-height: 35px;
     display: grid;
     min-width: var(--days-min-width);
     grid-template-columns: var(--time-column-width) repeat(
         var(--day-count),
-        minmax(var(--day-column-min), 1fr)
+        var(--day-column-width)
       );
     grid-template-rows: auto auto;
     background: var(--panel);
@@ -1244,6 +1427,8 @@
       rgba(203, 213, 225, 0.68) var(--slot-height)
     );
     grid-row: 2;
+    cursor: grab;
+    touch-action: none;
   }
   .schedule-day.today {
     background:
@@ -1416,7 +1601,6 @@
   @media (max-width: 920px) {
     .schedule-grid {
       --time-column-width: 104px;
-      --day-column-min: 190px;
       --slot-height: 34px;
     }
   }

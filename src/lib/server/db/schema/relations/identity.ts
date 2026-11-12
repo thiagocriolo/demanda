@@ -13,6 +13,7 @@ import {
 import { communities, communityMembers, socialPosts } from "../social";
 import { toolModels, toolResponses, toolUses } from "../tools";
 import { contacts } from "../crm";
+import { taskComments } from "../tasks";
 import { userCredentials, userPreferences, users } from "../identity";
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -53,6 +54,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     relationName: "businessResponsibleUser",
   }),
   storedFiles: many(storedFiles),
+  taskComments: many(taskComments),
 }));
 
 export const userPreferencesRelations = relations(

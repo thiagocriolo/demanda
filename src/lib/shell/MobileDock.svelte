@@ -1,15 +1,22 @@
 <script lang="ts">
   import { page } from "$app/state";
   import MobileDockItem from "./MobileDockItem.svelte";
-  import { getNavigation } from "./navigation";
+  import { getNavigation, type NavigationMode } from "./navigation";
 
-  let navigation = $derived(getNavigation(page.url.pathname));
+  let { selectedMode, onSelectMode } = $props<{
+    selectedMode: NavigationMode | null;
+    onSelectMode: (mode: NavigationMode) => void;
+  }>();
+
+  let navigation = $derived(
+    getNavigation(page.url.pathname, selectedMode ?? undefined),
+  );
   let items = $derived(navigation.secondary);
 </script>
 
 <nav aria-label="Navegação móvel">
   {#each items as item (item.href)}
-    <MobileDockItem {item} />
+    <MobileDockItem {item} activeMode={navigation.mode} {onSelectMode} />
   {/each}
 </nav>
 

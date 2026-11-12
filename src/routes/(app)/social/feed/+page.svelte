@@ -273,7 +273,6 @@
     align-items: start;
     gap: 20px;
     margin-inline: auto;
-    padding-bottom: 30px;
   }
   .feed-column,
   .stream {

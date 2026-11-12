@@ -548,7 +548,6 @@
     width: min(100%, var(--social-content-width));
     gap: 18px;
     margin-inline: auto;
-    padding-bottom: 30px;
   }
   .portfolio-header {
     display: flex;

@@ -22,6 +22,7 @@ export type ScheduleTask = {
   subtaskCount: number;
   nome: string;
   duracao: string;
+  negocio?: string;
   projeto?: string;
   responsavel?: string;
   responsavelId?: string;

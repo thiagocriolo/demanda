@@ -42,6 +42,7 @@
     loadFinancialSnapshot,
   } from "$lib/finance/client";
   import { formatMoney, type FinanceEntry } from "$lib/finance/finance";
+  import { currentSettings } from "$lib/settings/client";
   import {
     acceptWorkspaceInvitation,
     GLOBAL_WORKSPACE_ID,
@@ -65,7 +66,7 @@
   } from "$lib/tasks/client";
 
   type Tone = "danger" | "info" | "success" | "warning" | "neutral";
-  type DashboardTab = "pendencias" | "operacao" | "entregas" | "carga";
+  type DashboardTab = "hoje" | "pendencias" | "operacao" | "entregas" | "carga";
   type Metric = {
     value: string;
     label: string;
@@ -73,12 +74,19 @@
     icon: Component;
     href: string;
   };
+  type TodaySignal = {
+    title: string;
+    description: string;
+    tone: Tone;
+    href: string;
+  };
   const PERSONAL_TASK_TITLE_MAX_LENGTH = 80;
   const tabs: { id: DashboardTab; label: string }[] = [
-    { id: "pendencias", label: "Pendências" },
-    { id: "operacao", label: "Operação" },
+    { id: "hoje", label: "Hoje" },
     { id: "entregas", label: "Entregas" },
+    { id: "operacao", label: "Operação" },
     { id: "carga", label: "Carga de trabalho" },
+    { id: "pendencias", label: "Pendências" },
   ];
 
   let projects = $state<EntityRecord[]>([]);
@@ -87,7 +95,7 @@
   let schedule = $state<ScheduleMap>({});
   let financeEntries = $state<FinanceEntry[]>([]);
   let activeWorkspaceId = $state(PERSONAL_WORKSPACE_ID);
-  let activeTab = $state<DashboardTab>("operacao");
+  let activeTab = $state<DashboardTab>("hoje");
   let personalTasks = $state<PersonalTask[]>([]);
   let personalTaskTitle = $state("");
   let projectsLoading = $state(false);
@@ -376,6 +384,117 @@
       (entry) => !entry.settled && !entry.paused && entry.date < today,
     ),
   );
+
+  const scheduledToday = $derived(
+    scheduleTasks
+      .flatMap((task) => {
+        const entry = schedule[task.id];
+        return entry?.date === today && !isScheduleComplete(task)
+          ? [{ task, entry }]
+          : [];
+      })
+      .sort(
+        (left, right) => left.entry.startMinutes - right.entry.startMinutes,
+      ),
+  );
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const currentScheduledSubtask = $derived(
+    scheduledToday.find(({ entry }) => {
+      const end = entry.startMinutes + entry.durationSlots * 30;
+      return entry.startMinutes <= nowMinutes && end > nowMinutes;
+    }),
+  );
+  const nextScheduledSubtask = $derived(
+    scheduledToday.find(({ entry }) => entry.startMinutes >= nowMinutes),
+  );
+  const todayFocus = $derived(currentScheduledSubtask ?? nextScheduledSubtask);
+  const todayDueTasks = $derived(
+    openTasks.filter((task) => recordDate(task, "task") === today),
+  );
+  const todayDueProjects = $derived(
+    activeProjects.filter(
+      (project) => recordDate(project, "project") === today,
+    ),
+  );
+  const todayTasksWithoutExecution = $derived(
+    todayDueTasks.filter(
+      (task) =>
+        !scheduledToday.some(
+          ({ task: scheduled }) => scheduled.taskId === task.id,
+        ),
+    ),
+  );
+  const remainingWorkday = $derived.by(() => {
+    const shifts = currentSettings().workdayShifts;
+    const availableMinutes = shifts.reduce((total, shift) => {
+      const [startHour, startMinute] = shift.start.split(":").map(Number);
+      const [endHour, endMinute] = shift.end.split(":").map(Number);
+      const start = startHour * 60 + startMinute;
+      const end = endHour * 60 + endMinute;
+      return total + Math.max(0, end - Math.max(start, nowMinutes));
+    }, 0);
+    const reservedMinutes = scheduledToday.reduce((total, { entry }) => {
+      const end = entry.startMinutes + entry.durationSlots * 30;
+      return (
+        total + Math.max(0, end - Math.max(entry.startMinutes, nowMinutes))
+      );
+    }, 0);
+    return {
+      availableMinutes,
+      reservedMinutes,
+      freeMinutes: Math.max(0, availableMinutes - reservedMinutes),
+    };
+  });
+  const todaySignals = $derived<TodaySignal[]>([
+    ...(todayTasksWithoutExecution.length
+      ? [
+          {
+            title: `${todayTasksWithoutExecution.length} ${todayTasksWithoutExecution.length === 1 ? "entrega sem execução" : "entregas sem execução"}`,
+            description:
+              "Tarefas com prazo hoje ainda não têm subtarefa reservada no Cronograma.",
+            tone: "warning" as Tone,
+            href: "/cronograma",
+          },
+        ]
+      : []),
+    ...(overdueTasks.length
+      ? [
+          {
+            title: `${overdueTasks.length} ${overdueTasks.length === 1 ? "tarefa atrasada" : "tarefas atrasadas"}`,
+            description:
+              "Revise prioridade, prazo ou o próximo passo na Pauta.",
+            tone: "danger" as Tone,
+            href: "/pauta",
+          },
+        ]
+      : []),
+    ...(remainingWorkday.availableMinutes > 0 &&
+    remainingWorkday.freeMinutes === 0
+      ? [
+          {
+            title: "Sem capacidade livre hoje",
+            description:
+              "O tempo restante da sua jornada já está reservado no Cronograma.",
+            tone: "info" as Tone,
+            href: "/cronograma",
+          },
+        ]
+      : []),
+  ]);
+
+  function formatDuration(minutes: number): string {
+    if (minutes <= 0) return "0 min";
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    if (!hours) return `${remainder} min`;
+    return remainder ? `${hours}h ${remainder}min` : `${hours}h`;
+  }
+
+  function timeFromMinutes(minutes: number): string {
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return `${String(hours).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+  }
 
   const alertMetrics = $derived<Metric[]>([
     {
@@ -764,7 +883,123 @@
       mobileMinHeight="316px"
       onchange={(value) => selectTab(value as DashboardTab)}
     >
-      {#if activeTab === "operacao" || activeTab === "entregas"}
+      {#if activeTab === "hoje"}
+        <div class="today-dashboard">
+          <section class="today-focus" aria-labelledby="today-focus-title">
+            <div class="today-section-head">
+              <span class="today-eyebrow">Cronograma</span>
+              <a href="/cronograma">Abrir <ArrowUpRight size={14} /></a>
+            </div>
+            {#if todayFocus}
+              <div class="today-focus-copy">
+                <span class="today-focus-state">
+                  {#if currentScheduledSubtask}
+                    Em execução agora
+                  {:else}
+                    Próxima subtarefa
+                  {/if}
+                </span>
+                <strong id="today-focus-title">{todayFocus.task.nome}</strong>
+                <p>
+                  {todayFocus.task.taskNome}
+                  {#if todayFocus.task.projeto}
+                    · {todayFocus.task.projeto}
+                  {/if}
+                </p>
+              </div>
+              <div class="today-focus-meta">
+                <span>
+                  {#if currentScheduledSubtask}
+                    Até {timeFromMinutes(
+                      todayFocus.entry.startMinutes +
+                        todayFocus.entry.durationSlots * 30,
+                    )}
+                  {:else}
+                    Às {timeFromMinutes(todayFocus.entry.startMinutes)}
+                  {/if}
+                </span>
+                <span
+                  >{formatDuration(todayFocus.entry.durationSlots * 30)}</span
+                >
+              </div>
+            {:else}
+              <div class="today-focus-copy today-focus-copy--empty">
+                <span class="today-focus-state">Cronograma</span>
+                <strong id="today-focus-title"
+                  >Sem execução programada agora</strong
+                >
+                <p>
+                  Reserve uma subtarefa para transformar uma demanda em ação.
+                </p>
+              </div>
+              <a class="today-focus-action" href="/cronograma">
+                Planejar execução <ArrowUpRight size={15} />
+              </a>
+            {/if}
+          </section>
+
+          <section
+            class="today-summary"
+            aria-label="Entregas e capacidade de hoje"
+          >
+            <a class="today-stat tone-warning" href="/agenda">
+              <span>Entregas hoje</span>
+              <strong>{todayDueTasks.length + todayDueProjects.length}</strong>
+              <small
+                >{todayDueTasks.length} tarefa{todayDueTasks.length === 1
+                  ? ""
+                  : "s"} e {todayDueProjects.length} projeto{todayDueProjects.length ===
+                1
+                  ? ""
+                  : "s"}</small
+              >
+            </a>
+            <a class="today-stat tone-info" href="/cronograma">
+              <span>Capacidade livre</span>
+              <strong>{formatDuration(remainingWorkday.freeMinutes)}</strong>
+              <small
+                >{formatDuration(remainingWorkday.reservedMinutes)} reservado no restante
+                do dia</small
+              >
+            </a>
+          </section>
+
+          <section class="today-signals" aria-labelledby="today-signals-title">
+            <div class="today-section-head">
+              <div>
+                <span class="today-eyebrow">Atenção</span>
+                <h2 id="today-signals-title">Decisões para hoje</h2>
+              </div>
+              <a href="/pauta">Ver pauta <ArrowUpRight size={14} /></a>
+            </div>
+            {#if todaySignals.length}
+              <div class="today-signal-list">
+                {#each todaySignals as signal (signal.title)}
+                  <a class="today-signal tone-{signal.tone}" href={signal.href}>
+                    <span class="today-signal-dot" aria-hidden="true"></span>
+                    <span>
+                      <strong>{signal.title}</strong>
+                      <small>{signal.description}</small>
+                    </span>
+                    <ArrowUpRight size={15} aria-hidden="true" />
+                  </a>
+                {/each}
+              </div>
+            {:else}
+              <div class="today-all-clear">
+                <Check size={16} aria-hidden="true" />
+                <span>Não há riscos operacionais identificados para hoje.</span>
+              </div>
+            {/if}
+          </section>
+
+          <nav class="today-actions" aria-label="Ações de planejamento">
+            <a href="/cronograma"><CalendarCheck2 size={16} />Cronograma</a>
+            <a href="/agenda"><CalendarDays size={16} />Agenda</a>
+            <a href="/pauta"><ListTodo size={16} />Pauta</a>
+          </nav>
+        </div>
+      {:else if activeTab === "operacao" || activeTab === "entregas"}
         {@const visibleMetrics =
           activeTab === "operacao" ? operationMetrics : deliveryMetrics}
         <div class="control-metrics">
@@ -1317,6 +1552,273 @@
       color-mix(in srgb, #ffffff 90%, rgba(93, 172, 131, 0.16)) 100%
     );
     box-shadow: 0 18px 40px rgba(46, 86, 255, 0.06);
+  }
+
+  .today-dashboard {
+    min-height: 274px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(190px, 0.8fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .today-focus,
+  .today-summary,
+  .today-signals,
+  .today-actions {
+    min-width: 0;
+  }
+
+  .today-focus {
+    min-height: 128px;
+    padding: 14px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto 1fr auto;
+    gap: 9px;
+    border: 1px solid rgba(46, 86, 255, 0.28);
+    border-radius: 12px;
+    background: linear-gradient(135deg, #edf2ff, #ffffff 68%);
+  }
+
+  .today-section-head {
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .today-section-head a,
+  .today-focus-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+    color: #2047e7;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .today-eyebrow,
+  .today-focus-state {
+    display: block;
+    color: #4861bb;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .today-focus-copy {
+    min-width: 0;
+    align-self: center;
+    grid-column: 1 / -1;
+  }
+
+  .today-focus-copy strong {
+    display: block;
+    margin-top: 4px;
+    overflow: hidden;
+    color: #081631;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.16;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .today-focus-copy p {
+    margin-top: 4px;
+    overflow: hidden;
+    color: #475569;
+    font-size: 12px;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .today-focus-copy--empty p {
+    max-width: 380px;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .today-focus-meta {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: 7px;
+    color: #3554ad;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .today-focus-meta span {
+    padding: 4px 7px;
+    border: 1px solid rgba(46, 86, 255, 0.16);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.62);
+  }
+
+  .today-focus-action {
+    grid-column: 1 / -1;
+  }
+
+  .today-summary {
+    display: grid;
+    gap: 10px;
+  }
+
+  .today-stat {
+    --tone: #2e56ff;
+    --tone-ink: #2047e7;
+    --tone-bg: rgba(46, 86, 255, 0.08);
+    --tone-border: rgba(46, 86, 255, 0.22);
+    min-width: 0;
+    padding: 12px;
+    display: grid;
+    gap: 3px;
+    border: 1px solid var(--tone-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--tone-bg) 56%, #fff);
+  }
+
+  .today-stat > span {
+    color: var(--tone-ink);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .today-stat strong {
+    overflow: hidden;
+    color: #081631;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.08;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .today-stat small {
+    color: #64748b;
+    font-size: 10px;
+    line-height: 1.3;
+  }
+
+  .today-signals {
+    grid-column: 1 / -1;
+    min-height: 0;
+    padding: 12px;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.76);
+  }
+
+  .today-signals h2 {
+    margin: 2px 0 0;
+    color: #17233b;
+    font-size: 14px;
+    line-height: 1.15;
+  }
+
+  .today-signal-list {
+    display: grid;
+    gap: 6px;
+    margin-top: 9px;
+  }
+
+  .today-signal {
+    --tone: #2e56ff;
+    --tone-ink: #2047e7;
+    --tone-bg: rgba(46, 86, 255, 0.08);
+    --tone-border: rgba(46, 86, 255, 0.22);
+    min-width: 0;
+    padding: 8px 9px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--tone-border);
+    border-radius: 9px;
+    color: var(--tone-ink);
+    background: color-mix(in srgb, var(--tone-bg) 54%, #fff);
+  }
+
+  .today-signal-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--tone);
+  }
+
+  .today-signal > span:nth-child(2) {
+    min-width: 0;
+  }
+
+  .today-signal strong,
+  .today-signal small {
+    display: block;
+  }
+
+  .today-signal strong {
+    overflow: hidden;
+    color: #17233b;
+    font-size: 11px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .today-signal small {
+    margin-top: 2px;
+    overflow: hidden;
+    color: #64748b;
+    font-size: 10px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .today-all-clear {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 10px;
+    padding: 9px;
+    border-radius: 8px;
+    color: #216642;
+    background: rgba(93, 172, 131, 0.1);
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  .today-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+  }
+
+  .today-actions a {
+    display: inline-flex;
+    min-height: 30px;
+    align-items: center;
+    gap: 5px;
+    padding: 0 9px;
+    border: 1px solid rgba(15, 23, 42, 0.13);
+    border-radius: 8px;
+    color: #334155;
+    background: #fff;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .today-actions a:hover,
+  .today-signal:hover,
+  .today-stat:hover {
+    border-color: color-mix(in srgb, var(--tone, #2e56ff) 48%, transparent);
   }
 
   .control-metrics {
@@ -1889,6 +2391,21 @@
       grid-template-rows: auto;
     }
 
+    .today-dashboard {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto;
+    }
+
+    .today-focus,
+    .today-signals,
+    .today-actions {
+      grid-column: auto;
+    }
+
+    .today-summary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .control-card,
     .control-card.featured {
       grid-column: auto;
@@ -1901,6 +2418,10 @@
   }
 
   @media (max-width: 430px) {
+    .today-summary {
+      grid-template-columns: 1fr;
+    }
+
     .week-grid {
       grid-template-columns: 1fr;
     }

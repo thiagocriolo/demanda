@@ -45,13 +45,16 @@ export function addDays(value: Date, amount: number): Date {
 }
 
 export function resolveWeekStart(value: string | null, now = new Date()): Date {
-  return startOfWeek(parseIsoDate(value) ?? now);
+  // A data na URL representa o primeiro dia efetivamente visível. Quando não
+  // há uma data escolhida, a visualização inicial continua começando na segunda.
+  return parseIsoDate(value) ?? startOfWeek(now);
 }
 
 export function buildWeekDays(
   weekStart: Date,
   now = new Date(),
   includeSaturday = true,
+  count = includeSaturday ? 6 : 5,
 ): WeekDay[] {
   const full = [
     "Segunda-feira",
@@ -65,16 +68,18 @@ export function buildWeekDays(
   const short = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
   const todayIso = isoDate(now);
 
-  return Array.from({ length: includeSaturday ? 6 : 5 }, (_, index) => {
+  return Array.from({ length: count }, (_, index) => {
     const date = addDays(weekStart, index);
     const iso = isoDate(date);
+    const weekday = date.getDay();
+    const labelIndex = weekday === 0 ? 0 : weekday - 1;
     return {
       index,
       date,
       iso,
-      fullLabel: full[index],
-      mediumLabel: medium[index],
-      shortLabel: short[index],
+      fullLabel: weekday === 0 ? "Domingo" : full[labelIndex]!,
+      mediumLabel: weekday === 0 ? "Domingo" : medium[labelIndex]!,
+      shortLabel: weekday === 0 ? "Dom" : short[labelIndex]!,
       dateLabel: `${String(date.getDate()).padStart(2, "0")}.${String(
         date.getMonth() + 1,
       ).padStart(2, "0")}`,

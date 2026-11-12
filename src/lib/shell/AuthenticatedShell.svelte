@@ -2,6 +2,7 @@
   import { browser } from "$app/environment";
   import { type Snippet } from "svelte";
   import EntityCreateProvider from "$lib/entities/EntityCreateProvider.svelte";
+  import RecordAssistant from "$lib/assistant/RecordAssistant.svelte";
   import { initializeSettingsSession } from "$lib/settings/client";
   import { mergeSettingsScopes } from "$lib/settings/defaults";
   import type { SettingsSnapshot } from "$lib/settings/types";
@@ -44,4 +45,5 @@
 
 <EntityCreateProvider>
   <AppShell {initialSettings}>{@render children()}</AppShell>
+  <RecordAssistant />
 </EntityCreateProvider>

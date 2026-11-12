@@ -34,6 +34,7 @@ export function toScheduleSubtasks(records: EntityRecord[]): ScheduleTask[] {
       subtaskCount: subtasks.length,
       nome: subtask.nome,
       duracao: subtask.duracao,
+      negocio: record.negocio || record.business_name || "",
       status: subtask.status,
       taskStatus: record.status,
       priority: record.prioridade || record.priority || "normal",

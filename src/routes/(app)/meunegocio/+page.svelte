@@ -12,10 +12,14 @@
     saveWorkspaceSettings,
     workspaceSettingsAccess,
   } from "$lib/settings/client";
-  import { freshSettings } from "$lib/settings/defaults";
+  import { mergeSettingsScopes } from "$lib/settings/defaults";
   import type { SettingsState } from "$lib/settings/types";
   import type { TabItem } from "$lib/ui/Tabs.svelte";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import type { PageData } from "./$types";
+
+  type Props = { data: PageData };
+  let { data }: Props = $props();
 
   const tabs: TabItem[] = [
     { id: "servicos", label: "Serviços" },
@@ -40,12 +44,22 @@
     ],
   };
 
-  let settings = $state<SettingsState>(freshSettings());
+  const initialSettings = untrack(() =>
+    mergeSettingsScopes(
+      data.settingsSnapshot.personal.settings,
+      data.settingsSnapshot.workspace.settings,
+    ),
+  );
+  const initialCanManage = untrack(
+    () => data.settingsSnapshot.workspace.canManage,
+  );
+  let settings = $state<SettingsState>(initialSettings);
   let activeTab = $state("servicos");
   let activeFilter = $state("");
-  let savedSettings = $state("");
+  let savedSettings = $state(JSON.stringify(initialSettings));
   let settingsMessage = $state("");
-  let canManage = $state(false);
+  let canManage = $state(initialCanManage);
+  let templateSaveTimeout: ReturnType<typeof setTimeout> | undefined;
   let filters = $derived(filtersByTab[activeTab] ?? []);
   let hasUnsavedChanges = $derived(
     savedSettings !== "" && JSON.stringify(settings) !== savedSettings,
@@ -82,9 +96,18 @@
       throw error;
     }
   }
+
+  function saveTemplates(): void {
+    if (!canManage) return;
+    if (templateSaveTimeout) clearTimeout(templateSaveTimeout);
+    templateSaveTimeout = setTimeout(() => {
+      templateSaveTimeout = undefined;
+      void save().catch(() => undefined);
+    }, 350);
+  }
 </script>
 
-<svelte:head><title>Meu negócio · Demanda</title></svelte:head>
+<svelte:head><title>Modelos · Demanda</title></svelte:head>
 
 <ConfigSaveController dirty={canManage && hasUnsavedChanges} onsave={save} />
 
@@ -97,6 +120,7 @@
     <ServiceTemplatesEditor
       bind:templates={settings.serviceTemplates}
       bind:deliveries={settings.deliveryTemplates}
+      onchange={saveTemplates}
     />
   {:else if activeTab === "entregas"}
     <DeliveryTemplatesEditor
@@ -104,6 +128,7 @@
       bind:services={settings.serviceTemplates}
       categories={settings.taskCategories}
       defaultDuration={settings.defaultTaskDuration}
+      onchange={saveTemplates}
     />
   {:else if activeTab === "status" && activeFilter === "contatos"}
     <SettingsCard

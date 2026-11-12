@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { NavigationItem } from "./navigation";
+  import type { NavigationItem, NavigationMode } from "./navigation";
   import SidebarItem from "./SidebarItem.svelte";
 
   let {
@@ -7,17 +7,27 @@
     items,
     collapsed,
     variant = "primary",
+    activeMode,
+    onSelectMode,
   } = $props<{
     label: string;
     items: NavigationItem[];
     collapsed: boolean;
     variant?: "primary" | "secondary";
+    activeMode?: NavigationMode;
+    onSelectMode?: (mode: NavigationMode) => void;
   }>();
 </script>
 
 <nav aria-label={label}>
   {#each items as item (item.href)}
-    <SidebarItem {item} {collapsed} {variant} />
+    <SidebarItem
+      {item}
+      {collapsed}
+      {variant}
+      {activeMode}
+      {onSelectMode}
+    />
   {/each}
 </nav>
 

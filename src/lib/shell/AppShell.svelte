@@ -15,7 +15,7 @@
   import { cardScale } from "$lib/ui/card-scale";
   import { refreshWorkspaceSnapshot } from "$lib/workspaces/workspace-storage";
   import MobileDock from "./MobileDock.svelte";
-  import { isConfigPath } from "./navigation";
+  import { navigationMode, type NavigationMode } from "./navigation";
   import Sidebar from "./Sidebar.svelte";
   import Topbar from "./Topbar.svelte";
 
@@ -29,6 +29,9 @@
   }
 
   let collapsed = $state(initiallyCollapsed());
+  // Selecting an area is a local navigation decision. It deliberately does
+  // not change the route, so the current content remains visible.
+  let selectedNavigationMode = $state<NavigationMode | null>(null);
   let configSaveState = $state<ConfigSaveState>({
     active: false,
     dirty: false,
@@ -38,16 +41,11 @@
   let configSaveHandler: (() => void | Promise<void>) | undefined;
   let configSaveRegistration: symbol | undefined;
   let saveFeedbackTimeout: ReturnType<typeof setTimeout> | undefined;
-  let hasCardDrawer = $derived(
+  // A página estrutural é naturalmente fluida e sempre recebe o espaçamento da
+  // casca. Apenas experiências que ocupam o viewport inteiro (Agenda e
+  // Cronograma) preservam uma altura definida para seus painéis internos.
+  let hasFixedViewportContent = $derived(
     ["/agenda", "/cronograma"].includes(page.url.pathname.replace(/\/$/, "")),
-  );
-  let normalizedPath = $derived(page.url.pathname.replace(/\/$/, ""));
-  let hasFlowingContent = $derived(
-    normalizedPath === "/registros" ||
-      normalizedPath.startsWith("/registros/") ||
-      normalizedPath === "/workspaces" ||
-      normalizedPath.startsWith("/ferramentas") ||
-      isConfigPath(normalizedPath),
   );
 
   const configSaveContext: ConfigSaveContext = {
@@ -111,6 +109,13 @@
   setContext(CONFIG_SAVE_CONTEXT, configSaveContext);
   setContext(GLOBAL_FILTERS_CONTEXT, globalFilters);
 
+  // A conventional navigation (a deep link, browser history, or a link in the
+  // content) should still reveal the menu belonging to its destination. Area
+  // selection itself leaves the URL untouched, so it does not re-run this.
+  $effect(() => {
+    selectedNavigationMode = navigationMode(page.url.pathname);
+  });
+
   onMount(() => {
     cardScale.set(initialSettings.recordsCardLevel);
     void refreshWorkspaceSnapshot();
@@ -126,16 +131,24 @@
     settings.sidebarDefault = collapsed ? "collapsed" : "expanded";
     void savePersonalSettings(settings);
   }
+
+  function selectNavigationMode(mode: NavigationMode): void {
+    selectedNavigationMode = mode;
+  }
 </script>
 
 <div class:collapsed class="app-shell">
-  <Sidebar {collapsed} onToggle={toggleSidebar} />
+  <Sidebar
+    {collapsed}
+    onToggle={toggleSidebar}
+    selectedMode={selectedNavigationMode}
+    onSelectMode={selectNavigationMode}
+  />
 
   <div class="workspace">
     <Topbar initialProfile={initialSettings.profile} />
     <main
-      class:card-drawer-page={hasCardDrawer}
-      class:flowing-content-page={hasFlowingContent}
+      class:fixed-viewport-page={hasFixedViewportContent}
       id="conteudo-principal"
       tabindex="-1"
     >
@@ -143,7 +156,10 @@
     </main>
   </div>
 
-  <MobileDock />
+  <MobileDock
+    selectedMode={selectedNavigationMode}
+    onSelectMode={selectNavigationMode}
+  />
 </div>
 
 <style>
@@ -165,22 +181,26 @@
     flex-direction: column;
   }
   main {
+    --shell-content-padding: var(--main-padding);
+    --shell-content-padding-block-end: var(--main-padding);
+
     min-height: 0;
     flex: 1;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: var(--main-padding);
     background: var(--main-background);
     scroll-behavior: smooth;
   }
   .page-width {
+    box-sizing: border-box;
     width: 100%;
-    height: 100%;
-    min-width: 0;
-  }
-  main.flowing-content-page .page-width {
-    height: auto;
     min-height: 100%;
+    min-width: 0;
+    padding: var(--shell-content-padding);
+    padding-bottom: var(--shell-content-padding-block-end);
+  }
+  main.fixed-viewport-page .page-width {
+    height: 100%;
   }
   @media (max-width: 920px) {
     .app-shell,
@@ -188,13 +208,10 @@
       grid-template-columns: minmax(0, 1fr);
     }
     main {
-      padding: 10px;
-      padding-bottom: calc(86px + env(safe-area-inset-bottom));
-    }
-  }
-  @media (min-width: 921px) {
-    main.card-drawer-page {
-      padding-bottom: 0;
+      --shell-content-padding: 10px;
+      --shell-content-padding-block-end: calc(
+        86px + env(safe-area-inset-bottom)
+      );
     }
   }
 </style>

@@ -78,23 +78,25 @@
   ondrop={handleDrop}
 >
   <header>
+    <div class="drawer-controls">
+      <span
+        class="count"
+        aria-label={countLabel ? `${items.length} ${countLabel}` : undefined}
+        >{items.length}</span
+      >
+      <button
+        type="button"
+        role="switch"
+        aria-checked={open}
+        aria-label={toggleAriaLabel}
+        onclick={ontoggle}><span aria-hidden="true"></span></button
+      >
+    </div>
     <span class="drawer-icon" aria-hidden="true"><DrawerIcon size={16} /></span>
     <div class="drawer-copy">
       <strong>{title}</strong>
       <span>{description}</span>
     </div>
-    <span
-      class="count"
-      aria-label={countLabel ? `${items.length} ${countLabel}` : undefined}
-      >{items.length}</span
-    >
-    <button
-      type="button"
-      role="switch"
-      aria-checked={open}
-      aria-label={toggleAriaLabel}
-      onclick={ontoggle}><span aria-hidden="true"></span></button
-    >
   </header>
 
   {#if open}
@@ -121,6 +123,7 @@
     height: 50px;
     flex: 0 0 auto;
     grid-template-rows: 49px minmax(0, 1fr);
+    margin-block-end: calc(-1 * var(--shell-content-padding-block-end, 0px));
     padding: 0 14px;
     overflow: hidden;
     border: 1px solid var(--border);
@@ -146,6 +149,12 @@
   header {
     display: flex;
     min-width: 0;
+    align-items: center;
+    gap: 9px;
+  }
+  .drawer-controls {
+    display: flex;
+    flex: 0 0 auto;
     align-items: center;
     gap: 9px;
   }
@@ -183,7 +192,6 @@
     display: grid;
     min-width: 30px;
     height: 27px;
-    margin-left: auto;
     padding-inline: 8px;
     border: 1px solid var(--border);
     border-radius: var(--radius-pill);

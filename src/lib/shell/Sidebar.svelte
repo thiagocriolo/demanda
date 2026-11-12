@@ -4,14 +4,18 @@
   import SidebarSection from "./SidebarSection.svelte";
   import SidebarToggle from "./SidebarToggle.svelte";
   import WorkspaceSelector from "./WorkspaceSelector.svelte";
-  import { getNavigation } from "./navigation";
+  import { getNavigation, type NavigationMode } from "./navigation";
 
-  let { collapsed, onToggle } = $props<{
+  let { collapsed, onToggle, selectedMode, onSelectMode } = $props<{
     collapsed: boolean;
     onToggle: () => void;
+    selectedMode: NavigationMode | null;
+    onSelectMode: (mode: NavigationMode) => void;
   }>();
 
-  let navigation = $derived(getNavigation(page.url.pathname));
+  let navigation = $derived(
+    getNavigation(page.url.pathname, selectedMode ?? undefined),
+  );
 </script>
 
 <aside class:collapsed aria-label="Barra lateral">
@@ -32,6 +36,7 @@
       label="Menu principal"
       items={navigation.primary}
       {collapsed}
+      activeMode={navigation.mode}
     />
     <div class="secondary">
       <SidebarSection
@@ -39,6 +44,8 @@
         items={navigation.secondary}
         {collapsed}
         variant="secondary"
+        activeMode={navigation.mode}
+        {onSelectMode}
       />
     </div>
   </div>

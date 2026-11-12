@@ -17,11 +17,13 @@
     services = $bindable(),
     categories,
     defaultDuration = "1",
+    onchange,
   } = $props<{
     templates: DeliveryTemplate[];
     services: ServiceTemplate[];
     categories: StyledChoice[];
     defaultDuration?: string;
+    onchange?: () => void;
   }>();
 
   let formOpen = $state(false);
@@ -115,6 +117,7 @@
         )
       : [next, ...templates];
     closeForm();
+    onchange?.();
   }
 
   function duplicate(id: string): void {
@@ -131,6 +134,7 @@
       },
       ...templates,
     ];
+    onchange?.();
   }
 
   function requestDelete(id = editingId): void {
@@ -152,6 +156,7 @@
       (template: DeliveryTemplate) => template.id !== deletingTemplate?.id,
     );
     deletingId = undefined;
+    onchange?.();
   }
 </script>
 

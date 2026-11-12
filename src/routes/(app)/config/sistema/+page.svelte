@@ -166,7 +166,7 @@
   }
 </script>
 
-<svelte:head><title>Sistema · Demanda</title></svelte:head>
+<svelte:head><title>Configurações · Demanda</title></svelte:head>
 
 <ConfigSaveController dirty={hasUnsavedChanges} onsave={save} />
 

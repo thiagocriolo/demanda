@@ -7,11 +7,14 @@
   import { portal } from "$lib/ui/portal";
   import {
     CalendarDays,
-    Repeat2,
-    FileBadge,
+    Check,
+    ChevronDown,
+    CircleDot,
     FileText,
+    Infinity,
     ListChecks,
     Plus,
+    Repeat2,
     Save,
     Tags,
     Trash2,
@@ -44,6 +47,7 @@
   let contractType = $state(normalizeContractType(initialRecord?.contractType));
   let amount = $state(initialRecord?.amount ?? "");
   let selectedTasks = $state<TemplateTask[]>(initialTasks());
+  let openFrequencyTaskId = $state<string | null>(null);
   let deliveryItems = $derived(
     deliveries.map((delivery: DeliveryTemplate) => ({
       id: delivery.id,
@@ -156,6 +160,26 @@
     selectedTasks = [...selectedTasks];
   }
 
+  function frequencyLabel(frequency?: TemplateTask["frequency"]): string {
+    return (
+      {
+        one_off: "Uma vez",
+        weekly: "Semanal",
+        monthly: "Mensal",
+        custom: "Personalizada",
+      }[frequency ?? "one_off"] ?? "Uma vez"
+    );
+  }
+
+  function chooseFrequency(
+    task: TemplateTask,
+    frequency: NonNullable<TemplateTask["frequency"]>,
+  ): void {
+    task.frequency = frequency;
+    setTaskFrequency(task);
+    openFrequencyTaskId = null;
+  }
+
   onMount(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -232,6 +256,41 @@
         >
           <h3 id="service-about-title">Sobre</h3>
           <div class="template-modal-grid">
+            <fieldset class="service-mode template-modal-full">
+              <legend>Tipo de serviço</legend>
+              <p>
+                Defina se as entregas acontecem uma vez ou se formam uma rotina
+                contínua.
+              </p>
+              <div class="service-mode-options">
+                <button
+                  type="button"
+                  class:active={contractType === "Pontual"}
+                  aria-pressed={contractType === "Pontual"}
+                  onclick={() => (contractType = "Pontual")}
+                >
+                  <CircleDot size={18} aria-hidden="true" />
+                  <span
+                    ><strong>Pontual</strong><small
+                      >Cria as tarefas uma única vez.</small
+                    ></span
+                  >
+                </button>
+                <button
+                  type="button"
+                  class:active={contractType === "Rotina"}
+                  aria-pressed={contractType === "Rotina"}
+                  onclick={() => (contractType = "Rotina")}
+                >
+                  <Infinity size={19} aria-hidden="true" />
+                  <span
+                    ><strong>Rotina</strong><small
+                      >Mantém as tarefas se renovando.</small
+                    ></span
+                  >
+                </button>
+              </div>
+            </fieldset>
             <div class="template-modal-name-row template-modal-full">
               <div class="template-modal-control">
                 <span class="template-modal-icon"><Tags size={16} /></span>
@@ -333,17 +392,63 @@
                     </label>
                     {#if contractType === "Rotina"}
                       <div class="routine-frequency">
-                        <Repeat2 size={15} aria-hidden="true" />
-                        <select
-                          bind:value={task.frequency}
-                          aria-label={`Frequência de ${task.name || taskTemplateName(task.templateId)}`}
-                          onchange={() => setTaskFrequency(task)}
+                        <button
+                          class="routine-frequency-trigger"
+                          type="button"
+                          aria-haspopup="menu"
+                          aria-expanded={openFrequencyTaskId === task.id}
+                          onclick={() =>
+                            (openFrequencyTaskId =
+                              openFrequencyTaskId === task.id ? null : task.id)}
                         >
-                          <option value="one_off">Pontual</option>
-                          <option value="monthly">Mensal: dia 1</option>
-                          <option value="weekly">Semanal: domingo</option>
-                          <option value="custom">Personalizada</option>
-                        </select>
+                          <Repeat2 size={15} aria-hidden="true" />
+                          <span>{frequencyLabel(task.frequency)}</span>
+                          <ChevronDown size={14} aria-hidden="true" />
+                        </button>
+                        {#if openFrequencyTaskId === task.id}
+                          <div class="routine-frequency-menu" role="menu">
+                            {#each [["one_off", "Uma vez", "Não se repete no projeto"], ["weekly", "Semanal", "Cria uma tarefa todo domingo"], ["monthly", "Mensal", "Cria uma tarefa no dia 1"], ["custom", "Personalizada", "Escolha os dias desejados"]] as [value, label, description]}
+                              <button
+                                type="button"
+                                role="menuitemradio"
+                                aria-checked={task.frequency === value}
+                                onclick={() =>
+                                  chooseFrequency(
+                                    task,
+                                    value as NonNullable<
+                                      TemplateTask["frequency"]
+                                    >,
+                                  )}
+                              >
+                                <span
+                                  ><strong>{label}</strong><small
+                                    >{description}</small
+                                  ></span
+                                >
+                                {#if task.frequency === value}<Check
+                                    class="routine-frequency-check"
+                                    size={15}
+                                    aria-hidden="true"
+                                  />{/if}
+                              </button>
+                            {/each}
+                          </div>
+                        {/if}
+                        <span>Frequência</span>
+                        <div class="routine-frequency-options">
+                          {#each [["one_off", "Uma vez"], ["weekly", "Semanal"], ["monthly", "Mensal"], ["custom", "Personalizada"]] as [value, label]}
+                            <button
+                              type="button"
+                              class:active={task.frequency === value}
+                              aria-pressed={task.frequency === value}
+                              onclick={() => {
+                                task.frequency =
+                                  value as TemplateTask["frequency"];
+                                setTaskFrequency(task);
+                              }}>{label}</button
+                            >
+                          {/each}
+                        </div>
                       </div>
                     {/if}
                     <button
@@ -416,17 +521,10 @@
 
         <section
           class="template-modal-section"
-          aria-labelledby="service-contract-title"
+          aria-labelledby="service-commercial-title"
         >
-          <h3 id="service-contract-title">Contrato</h3>
+          <h3 id="service-commercial-title">Informações comerciais</h3>
           <div class="template-modal-grid">
-            <div class="template-modal-control">
-              <span class="template-modal-icon"><FileBadge size={16} /></span>
-              <select bind:value={contractType} aria-label="Tipo de contrato">
-                <option value="Pontual">Pontual</option>
-                <option value="Rotina">Rotina</option>
-              </select>
-            </div>
             <div class="template-modal-control template-modal-control--prefix">
               <span class="template-modal-icon">R$</span>
               <input
@@ -437,6 +535,10 @@
                 aria-label="Valor"
               />
             </div>
+            <p class="commercial-helper">
+              O tipo foi definido acima. Você poderá ajustar as demais condições
+              ao criar o projeto.
+            </p>
           </div>
         </section>
 
@@ -469,33 +571,176 @@
 <svelte:window onkeydown={(event) => event.key === "Escape" && oncancel()} />
 
 <style>
+  .service-mode {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .service-mode legend {
+    padding: 0;
+    color: var(--ink-950);
+    font-size: var(--text-md);
+    font-weight: 600;
+  }
+  .service-mode > p,
+  .commercial-helper {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+  }
+  .service-mode-options {
+    display: flex;
+    gap: 3px;
+    margin-top: 9px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-soft);
+  }
+  .service-mode-options button {
+    display: flex;
+    min-height: 38px;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 12px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    color: var(--ink-600);
+    background: transparent;
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+  .service-mode-options button > span {
+    display: contents;
+  }
+  .service-mode-options strong {
+    color: inherit;
+    font-size: inherit;
+  }
+  .service-mode-options small {
+    display: none;
+  }
+  .service-mode-options button.active {
+    border-color: color-mix(in srgb, var(--primary) 26%, var(--border));
+    color: var(--primary);
+    background: var(--surface);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--ink-950) 10%, transparent);
+  }
+  .service-mode-options button.active strong {
+    color: var(--primary);
+  }
+
+  .template-modal-task {
+    grid-template-columns: 46px minmax(0, 1fr) auto 58px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    background: var(--surface-soft);
+  }
+  .template-modal-task-icon,
+  .template-modal-task label,
+  .template-modal-remove {
+    background: var(--surface);
+  }
   .routine-frequency {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 6px;
-    color: var(--muted);
+    padding: 0 2px;
   }
-  .routine-frequency select,
-  .routine-custom select {
-    min-width: 0;
+  .routine-frequency > span,
+  .routine-frequency-options {
+    display: none;
+  }
+  .routine-frequency-trigger {
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 9px;
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 6px;
+    border-radius: 9px;
+    color: var(--ink-700);
     background: var(--surface);
-    color: var(--text);
     font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .routine-frequency-trigger:hover,
+  .routine-frequency-trigger[aria-expanded="true"] {
+    border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 5%, var(--surface));
+  }
+  .routine-frequency-menu {
+    position: absolute;
+    z-index: 4;
+    top: calc(100% + 7px);
+    right: 0;
+    display: grid;
+    width: 250px;
+    gap: 2px;
+    padding: 5px;
+    border: 1px solid color-mix(in srgb, var(--ink-950) 12%, var(--border));
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: 0 14px 28px color-mix(in srgb, var(--ink-950) 17%, transparent);
+  }
+  .routine-frequency-menu button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px;
+    border: 0;
+    border-radius: 8px;
+    color: var(--ink-700);
+    background: transparent;
+    font: inherit;
+    text-align: left;
+  }
+  .routine-frequency-menu button:hover {
+    background: var(--surface-soft);
+  }
+  .routine-frequency-menu button > span {
+    display: grid;
+    gap: 2px;
+  }
+  .routine-frequency-menu strong {
+    color: var(--ink-950);
+    font-size: var(--text-sm);
+  }
+  .routine-frequency-menu small {
+    color: var(--muted);
+    font-size: var(--text-xs);
+  }
+  :global(.routine-frequency-check) {
+    flex: 0 0 auto;
+    color: var(--primary);
   }
   .routine-custom {
     display: grid;
-    gap: 8px;
-    padding: 0 0 10px 42px;
-    color: var(--muted);
-    font-size: var(--text-sm);
+    gap: 9px;
+    margin: -2px 8px 8px 54px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--primary) 4%, var(--surface));
   }
   .routine-custom > label {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
+    color: var(--ink-700);
+    font-size: var(--text-sm);
+    font-weight: 600;
   }
   .routine-days {
     display: flex;
@@ -504,6 +749,7 @@
   }
   .routine-days button {
     min-width: 36px;
+    min-height: 32px;
     padding: 5px 7px;
     border: 1px solid var(--border);
     border-radius: 7px;
@@ -516,5 +762,21 @@
     border-color: var(--primary);
     color: var(--primary);
     background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  }
+  @media (max-width: 760px) {
+    .service-mode-options {
+      width: 100%;
+    }
+    .template-modal-task {
+      grid-template-columns: 46px minmax(0, 1fr) 52px;
+    }
+    .routine-frequency {
+      grid-column: 1 / -1;
+      border-top: 1px solid var(--border);
+      border-left: 0;
+    }
+    .routine-custom {
+      margin-left: 0;
+    }
   }
 </style>

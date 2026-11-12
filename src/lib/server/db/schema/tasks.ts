@@ -26,6 +26,7 @@ import {
 } from "./base";
 
 import { businesses } from "./crm";
+import { users } from "./identity";
 import type { TaskBoardOrder } from "./enums";
 import { projects, projectTaskRoutines } from "./projects";
 import { deliveryTemplates, tags } from "./services";
@@ -82,7 +83,7 @@ export const tasks = applicationSchema.table(
       name: "tasks_workspace_project_routine_foreign_key",
       columns: [table.workspaceId, table.projectRoutineId],
       foreignColumns: [projectTaskRoutines.workspaceId, projectTaskRoutines.id],
-    }).onDelete("set null"),
+    }).onDelete("restrict"),
     unique("tasks_workspace_routine_occurrence_unique").on(
       table.workspaceId,
       table.projectRoutineId,
@@ -190,6 +191,48 @@ export const tasks = applicationSchema.table(
     check(
       "tasks_archive_not_before_creation",
       sql`${table.archivedAt} is null or ${table.archivedAt} >= ${table.createdAt}`,
+    ),
+  ],
+);
+
+export const taskComments = applicationSchema.table(
+  "task_comments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").notNull(),
+    authorUserId: uuid("author_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    body: text("body").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    foreignKey({
+      name: "task_comments_workspace_task_foreign_key",
+      columns: [table.workspaceId, table.taskId],
+      foreignColumns: [tasks.workspaceId, tasks.id],
+    }).onDelete("cascade"),
+    index("task_comments_workspace_task_created_index").on(
+      table.workspaceId,
+      table.taskId,
+      table.createdAt,
+      table.id,
+    ),
+    index("task_comments_author_created_index").on(
+      table.authorUserId,
+      table.createdAt,
+    ),
+    check(
+      "task_comments_body_not_blank",
+      sql`length(btrim(${table.body})) > 0`,
+    ),
+    check(
+      "task_comments_updated_not_before_creation",
+      sql`${table.updatedAt} >= ${table.createdAt}`,
     ),
   ],
 );

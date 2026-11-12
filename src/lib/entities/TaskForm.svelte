@@ -48,6 +48,7 @@
     X,
   } from "@lucide/svelte";
   import { onMount, tick, untrack } from "svelte";
+  import { recordPageHref } from "$lib/records/record-page";
   import type { EntityConfig, EntityRecord } from "./types";
 
   type TaskFormState = {
@@ -177,6 +178,16 @@
         ? "Editar tarefa"
         : "Nova tarefa",
   );
+  let recordHref = $derived(
+    record?.id ? recordPageHref("tarefa", record.id) : undefined,
+  );
+  let modalTitle = $derived(viewOnly && record?.nome ? record.nome : title);
+
+  function closeBeforePageNavigation(event: MouseEvent): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
+    oncancel();
+  }
   let createLabel = $derived(
     config.createAction.toLocaleLowerCase("pt-BR").includes("tarefa")
       ? config.createAction
@@ -985,7 +996,17 @@
     aria-labelledby="task-form-title"
   >
     <header>
-      <h2 id="task-form-title">{title}</h2>
+      <h2 id="task-form-title">
+        {#if viewOnly && recordHref}
+          <a
+            class="record-page-link"
+            href={recordHref}
+            onclick={closeBeforePageNavigation}>{modalTitle}</a
+          >
+        {:else}
+          {modalTitle}
+        {/if}
+      </h2>
       <button
         class="close"
         type="button"
@@ -1486,6 +1507,15 @@
   h2 {
     font-size: var(--text-xl);
     line-height: 1.25;
+  }
+  .record-page-link {
+    color: inherit;
+  }
+  .record-page-link:hover,
+  .record-page-link:focus-visible {
+    color: var(--brand-600);
+    text-decoration: underline;
+    outline: 0;
   }
 
   h3 {

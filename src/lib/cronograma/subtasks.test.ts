@@ -12,6 +12,7 @@ const record: EntityRecord = {
   createdAt: "2026-07-14T12:00:00.000Z",
   updatedAt: "2026-07-14T12:00:00.000Z",
   nome: "Tarefa",
+  negocio: "Negócio da tarefa",
   subtarefas: JSON.stringify([
     {
       id: "d169e93f-e3c5-4ffc-9df0-7c0354b533c7",
@@ -34,6 +35,10 @@ describe("BE-11: projeção de subtarefas no Cronograma", () => {
     expect(subtasks.map(({ id }) => id)).toEqual([
       "d169e93f-e3c5-4ffc-9df0-7c0354b533c7",
       "57690a4a-24fd-4239-9014-e6c86d9ec07d",
+    ]);
+    expect(subtasks.map(({ negocio }) => negocio)).toEqual([
+      "Negócio da tarefa",
+      "Negócio da tarefa",
     ]);
     expect(
       nextUnscheduledSubtasks(subtasks, {

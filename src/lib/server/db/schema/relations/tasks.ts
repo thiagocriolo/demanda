@@ -3,7 +3,13 @@ import { businesses } from "../crm";
 import { projects } from "../projects";
 import { agendaEntries, cronogramaBlocks } from "../schedule";
 import { tags } from "../services";
-import { taskResponsibles, taskSubtasks, taskTags, tasks } from "../tasks";
+import {
+  taskComments,
+  taskResponsibles,
+  taskSubtasks,
+  taskTags,
+  tasks,
+} from "../tasks";
 import { toolUses } from "../tools";
 import { workspaceMembers, workspaces } from "../workspace";
 
@@ -26,6 +32,22 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
   cronogramaBlocks: many(cronogramaBlocks),
   agendaEntry: one(agendaEntries),
   toolUses: many(toolUses),
+  comments: many(taskComments),
+}));
+
+export const taskCommentsRelations = relations(taskComments, ({ one }) => ({
+  workspace: one(workspaces, {
+    fields: [taskComments.workspaceId],
+    references: [workspaces.id],
+  }),
+  task: one(tasks, {
+    fields: [taskComments.workspaceId, taskComments.taskId],
+    references: [tasks.workspaceId, tasks.id],
+  }),
+  author: one(workspaceMembers, {
+    fields: [taskComments.workspaceId, taskComments.authorUserId],
+    references: [workspaceMembers.workspaceId, workspaceMembers.userId],
+  }),
 }));
 
 export const taskSubtasksRelations = relations(

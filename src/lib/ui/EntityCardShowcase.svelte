@@ -34,6 +34,7 @@
   import type { EntityConfig } from "$lib/entities/types";
   import { cardScale, normalizeCardScale } from "./card-scale";
   import EntityCardMenu from "./EntityCardMenu.svelte";
+  import { recordPageHref } from "$lib/records/record-page";
   import type {
     EntityCardAction,
     EntityCardItem,
@@ -164,6 +165,24 @@
     entityActions?.actOnCard(action, item);
   }
 
+  /**
+   * The card is a real link so browser-native new-tab gestures work. A plain
+   * primary click remains the fast, in-place modal interaction.
+   */
+  function openCard(event: MouseEvent, item: EntityCardItem): void {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    actOnCard("view", item);
+  }
+
   function createEntity(): void {
     if (createKey) entityActions?.open(createKey);
   }
@@ -220,14 +239,14 @@
         aria-label={`Card de ${kindLabel(item.kind)}: ${item.title}`}
       >
         {#if interactive && entityActions}
-          <button
+          <a
             class="wc-card-open"
-            type="button"
+            href={recordPageHref(item.kind, item.id)}
             aria-label={`Ver ${item.title}`}
-            onclick={() => actOnCard("view", item)}
+            onclick={(event) => openCard(event, item)}
           >
             <span class="wc-card-open__title">{item.title}</span>
-          </button>
+          </a>
           <EntityCardMenu {item} onaction={actOnCard} />
         {/if}
 
@@ -459,7 +478,7 @@
   .wc-card-create {
     width: 100%;
     min-width: 0;
-    min-height: 100%;
+    min-height: var(--card-create-min-height);
     padding: var(--card-pad);
     border: 1px dashed var(--wc-card-border-hover);
     border-radius: var(--card-radius);
@@ -491,13 +510,18 @@
   }
 
   .wc-card-create__icon {
-    width: 48px;
-    height: 48px;
+    width: var(--card-create-icon-size);
+    height: var(--card-create-icon-size);
     border: 1px solid currentColor;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .wc-card-create__icon :global(svg) {
+    width: calc(var(--card-create-icon-size) * 0.52);
+    height: calc(var(--card-create-icon-size) * 0.52);
   }
 
   .cards-people-list {
@@ -515,6 +539,8 @@
     --card-counter-font-size: var(--text-xs);
     --card-counter-number-size: 13px;
     --card-title-lines: 1;
+    --card-create-min-height: 166px;
+    --card-create-icon-size: 48px;
   }
 
   .wc-card-item {
@@ -912,6 +938,8 @@
     --card-counter-font-size: var(--text-sm);
     --card-counter-number-size: 15px;
     --card-title-lines: 2;
+    --card-create-min-height: 286px;
+    --card-create-icon-size: 56px;
   }
 
   [data-card-level="7"] .cards-people-list,
@@ -926,10 +954,19 @@
     --card-counter-height: 38px;
     --card-counter-font-size: var(--text-sm);
     --card-counter-number-size: 14px;
+    --card-create-min-height: 220px;
+    --card-create-icon-size: 52px;
   }
 
   [data-card-level="5"] .cards-people-list {
     --card-title-size: 14px;
+    --card-create-min-height: 134px;
+    --card-create-icon-size: 44px;
+  }
+
+  [data-card-level="4"] .cards-people-list {
+    --card-create-min-height: 88px;
+    --card-create-icon-size: 38px;
   }
 
   [data-card-level="3"] .cards-people-list,
@@ -945,6 +982,8 @@
   [data-card-level="3"] .cards-people-list {
     --card-title-size: 12px;
     --card-status-font-size: 9px;
+    --card-create-min-height: 60px;
+    --card-create-icon-size: 32px;
   }
 
   [data-card-level="1"] .cards-people-list,
@@ -955,6 +994,16 @@
     --card-radius: 12px;
     --card-title-size: 10px;
     --card-info-height: 30px;
+  }
+
+  [data-card-level="2"] .cards-people-list {
+    --card-create-min-height: 48px;
+    --card-create-icon-size: 28px;
+  }
+
+  [data-card-level="1"] .cards-people-list {
+    --card-create-min-height: 40px;
+    --card-create-icon-size: 24px;
   }
 
   :is([data-card-level="1"], [data-card-level="2"], [data-card-level="3"])

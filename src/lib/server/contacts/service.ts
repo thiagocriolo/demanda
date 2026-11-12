@@ -8,6 +8,9 @@ import {
   inArray,
   isNotNull,
   isNull,
+  gte,
+  lt,
+  lte,
   or,
   sql,
   type SQL,
@@ -28,6 +31,9 @@ import {
   contactPhones,
   contacts,
   businessResponsibles,
+  businesses,
+  projects,
+  tasks,
   users,
   workspaces,
 } from "../db/schema";
@@ -468,6 +474,219 @@ export async function getWorkspaceContact(
   return contact;
 }
 
+export type ContactOperationalDashboard = {
+  metrics: {
+    activeBusinesses: number;
+    activeProjects: number;
+    openTasks: number;
+    overdueTasks: number;
+    dueThisWeek: number;
+  };
+  nextAction:
+    | {
+        title: string;
+        description: string;
+        href: string;
+        tone: "urgent" | "upcoming";
+      }
+    | undefined;
+  businesses: Array<{ id: string; name: string; stage: string }>;
+  projects: Array<{
+    id: string;
+    name: string;
+    status: string;
+    endDate: string | null;
+  }>;
+  tasks: Array<{
+    id: string;
+    name: string;
+    projectName: string;
+    dueDate: string | null;
+    priority: string;
+  }>;
+};
+
+function dashboardDay(offset = 0): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Derives the contact's active operation from persisted relationships. It
+ * deliberately does not infer an activity history that the database does not
+ * store: every number and action below originates from a business, project or
+ * task currently linked to the contact.
+ */
+export async function getContactOperationalDashboard(
+  database: Database,
+  contact: Contact,
+): Promise<ContactOperationalDashboard> {
+  const relatedBusinesses = await database
+    .select({
+      id: businesses.id,
+      name: businesses.name,
+      stage: businesses.stageKey,
+      archivedAt: businesses.archivedAt,
+      updatedAt: businesses.updatedAt,
+    })
+    .from(businessResponsibles)
+    .innerJoin(
+      businesses,
+      and(
+        eq(businesses.workspaceId, businessResponsibles.workspaceId),
+        eq(businesses.id, businessResponsibles.businessId),
+      ),
+    )
+    .where(
+      and(
+        eq(businessResponsibles.workspaceId, contact.workspaceId),
+        eq(businessResponsibles.contactId, contact.id),
+      ),
+    )
+    .orderBy(desc(businesses.updatedAt), desc(businesses.id));
+
+  const activeBusinesses = relatedBusinesses.filter(
+    ({ archivedAt }) => !archivedAt,
+  );
+  const businessIds = activeBusinesses.map(({ id }) => id);
+  if (!businessIds.length) {
+    return {
+      metrics: {
+        activeBusinesses: 0,
+        activeProjects: 0,
+        openTasks: 0,
+        overdueTasks: 0,
+        dueThisWeek: 0,
+      },
+      nextAction: undefined,
+      businesses: [],
+      projects: [],
+      tasks: [],
+    };
+  }
+
+  const activeProjects = await database
+    .select({
+      id: projects.id,
+      name: projects.name,
+      status: projects.statusKey,
+      endDate: projects.endDate,
+      updatedAt: projects.updatedAt,
+    })
+    .from(projects)
+    .where(
+      and(
+        eq(projects.workspaceId, contact.workspaceId),
+        inArray(projects.businessId, businessIds),
+        isNull(projects.archivedAt),
+      ),
+    )
+    .orderBy(
+      asc(sql`case when ${projects.endDate} is null then 1 else 0 end`),
+      asc(projects.endDate),
+      desc(projects.updatedAt),
+      desc(projects.id),
+    );
+
+  const taskConditions = and(
+    eq(tasks.workspaceId, contact.workspaceId),
+    inArray(tasks.businessId, businessIds),
+    isNull(tasks.archivedAt),
+    isNull(tasks.completedAt),
+  );
+  const today = dashboardDay();
+  const weekEnd = dashboardDay(7);
+  const [openTaskTotal] = await database
+    .select({ value: count() })
+    .from(tasks)
+    .where(taskConditions);
+  const [overdueTotal] = await database
+    .select({ value: count() })
+    .from(tasks)
+    .where(
+      and(taskConditions, isNotNull(tasks.dueDate), lt(tasks.dueDate, today)),
+    );
+  const [dueThisWeekTotal] = await database
+    .select({ value: count() })
+    .from(tasks)
+    .where(
+      and(
+        taskConditions,
+        isNotNull(tasks.dueDate),
+        gte(tasks.dueDate, today),
+        lte(tasks.dueDate, weekEnd),
+      ),
+    );
+  const openTasks = await database
+    .select({
+      id: tasks.id,
+      name: tasks.name,
+      dueDate: tasks.dueDate,
+      priority: tasks.priorityKey,
+      projectName: projects.name,
+    })
+    .from(tasks)
+    .innerJoin(
+      projects,
+      and(
+        eq(projects.workspaceId, tasks.workspaceId),
+        eq(projects.id, tasks.projectId),
+      ),
+    )
+    .where(taskConditions)
+    .orderBy(
+      asc(sql`case when ${tasks.dueDate} is null then 1 else 0 end`),
+      asc(tasks.dueDate),
+      desc(tasks.updatedAt),
+      desc(tasks.id),
+    )
+    .limit(6);
+
+  const overdue = openTasks.find(({ dueDate }) =>
+    Boolean(dueDate && dueDate < today),
+  );
+  const upcoming = openTasks.find(({ dueDate }) =>
+    Boolean(dueDate && dueDate >= today),
+  );
+  const nextTask = overdue ?? upcoming;
+  const nextAction = nextTask
+    ? {
+        title: nextTask.name,
+        description: overdue
+          ? `Tarefa vencida em ${nextTask.dueDate}. Priorize esta ação.`
+          : `Próximo prazo: ${nextTask.dueDate}.`,
+        href: `/registros/tarefas/${nextTask.id}`,
+        tone: overdue ? ("urgent" as const) : ("upcoming" as const),
+      }
+    : undefined;
+
+  return {
+    metrics: {
+      activeBusinesses: activeBusinesses.length,
+      activeProjects: activeProjects.length,
+      openTasks: Number(openTaskTotal?.value ?? 0),
+      overdueTasks: Number(overdueTotal?.value ?? 0),
+      dueThisWeek: Number(dueThisWeekTotal?.value ?? 0),
+    },
+    nextAction,
+    businesses: activeBusinesses.slice(0, 5).map(({ id, name, stage }) => ({
+      id,
+      name,
+      stage,
+    })),
+    projects: activeProjects
+      .slice(0, 5)
+      .map(({ id, name, status, endDate }) => ({
+        id,
+        name,
+        status,
+        endDate,
+      })),
+    tasks: openTasks,
+  };
+}
+
 export async function createWorkspaceContact(
   database: Database,
   context: RequestAuthorizationContext,
@@ -481,18 +700,16 @@ export async function createWorkspaceContact(
       );
       await assertLinkedUserIsValid(transaction, input.linkedUserId);
       const id = randomUUID();
-      await transaction
-        .insert(contacts)
-        .values({
-          id,
-          workspaceId,
-          ownerUserId: context.user.id,
-          linkedUserId: input.linkedUserId,
-          name: input.name,
-          contactType: input.contactType,
-          status: input.status,
-          profession: input.profession,
-        });
+      await transaction.insert(contacts).values({
+        id,
+        workspaceId,
+        ownerUserId: context.user.id,
+        linkedUserId: input.linkedUserId,
+        name: input.name,
+        contactType: input.contactType,
+        status: input.status,
+        profession: input.profession,
+      });
       const [created] = await transaction
         .select()
         .from(contacts)
@@ -572,7 +789,17 @@ export async function updateWorkspaceContact(
           ),
         );
       await insertContactDetails(transaction, workspaceId, contactId, input);
-      const [contact] = await hydrateContacts(transaction, [{ ...existing, linkedUserId: input.linkedUserId, name: input.name, contactType: input.contactType, status: input.status, profession: input.profession, updatedAt: now }]);
+      const [contact] = await hydrateContacts(transaction, [
+        {
+          ...existing,
+          linkedUserId: input.linkedUserId,
+          name: input.name,
+          contactType: input.contactType,
+          status: input.status,
+          profession: input.profession,
+          updatedAt: now,
+        },
+      ]);
       if (!contact) throw new ContactNotFoundError();
       return contact;
     });
@@ -604,8 +831,7 @@ export async function archiveWorkspaceContact(
           eq(contacts.ownerUserId, context.user.id),
           eq(contacts.id, contactId),
         ),
-      )
-      ;
+      );
     if (affectedRows(archived) !== 1) throw new ContactNotFoundError();
   });
 }

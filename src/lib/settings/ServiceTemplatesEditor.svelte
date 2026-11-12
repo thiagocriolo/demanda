@@ -12,9 +12,14 @@
     TemplateTask,
   } from "./types";
 
-  let { templates = $bindable(), deliveries = $bindable() } = $props<{
+  let {
+    templates = $bindable(),
+    deliveries = $bindable(),
+    onchange,
+  } = $props<{
     templates: ServiceTemplate[];
     deliveries: DeliveryTemplate[];
+    onchange?: () => void;
   }>();
 
   let formOpen = $state(false);
@@ -135,6 +140,7 @@
         )
       : [next, ...templates];
     closeForm();
+    onchange?.();
   }
 
   function duplicate(id: string): void {
@@ -156,6 +162,7 @@
       },
       ...templates,
     ];
+    onchange?.();
   }
 
   function requestDelete(id = editingId): void {
@@ -184,6 +191,7 @@
       (template: ServiceTemplate) => template.id !== deletingTemplate?.id,
     );
     deletingId = undefined;
+    onchange?.();
   }
 </script>
 

@@ -1,20 +1,39 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import { navigationMode, type NavigationItem } from "./navigation";
+  import {
+    navigationMode,
+    type NavigationItem,
+    type NavigationMode,
+  } from "./navigation";
 
-  let { item } = $props<{ item: NavigationItem }>();
+  let { item, activeMode, onSelectMode } = $props<{
+    item: NavigationItem;
+    activeMode?: NavigationMode;
+    onSelectMode?: (mode: NavigationMode) => void;
+  }>();
   let path = $derived(decodeURIComponent(page.url.pathname));
   let active = $derived(
     item.area
-      ? navigationMode(path) === item.area
+      ? (activeMode ?? navigationMode(path)) === item.area
       : item.exact
         ? path === item.href
         : path === item.href || path.startsWith(`${item.href}/`),
   );
   let ItemIcon = $derived(item.icon);
+
+  function selectArea(event: MouseEvent): void {
+    if (!item.area || !onSelectMode) return;
+    event.preventDefault();
+    onSelectMode(item.area);
+  }
 </script>
 
-<a class:active href={item.href} aria-current={active ? "page" : undefined}>
+<a
+  class:active
+  href={item.href}
+  aria-current={active ? "page" : undefined}
+  onclick={selectArea}
+>
   <ItemIcon size={23} strokeWidth={1.8} />
   <span>{item.label}</span>
 </a>

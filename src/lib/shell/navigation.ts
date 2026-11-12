@@ -34,18 +34,18 @@ export const workspaceNavigation: NavigationItem[] = [
     icon: LayoutDashboard,
     exact: true,
   },
-  { label: "Registros", href: "/registros", icon: GalleryVerticalEnd },
   { label: "Pauta", href: "/pauta", icon: ListTodo },
   { label: "Cronograma", href: "/cronograma", icon: Timeline },
   { label: "Agenda", href: "/agenda", icon: Calendar },
-  { label: "Ferramentas", href: "/ferramentas", icon: Wrench },
-  { label: "Financeiro", href: "/financeiro", icon: BadgeDollarSign },
 ];
 
 export const configNavigation: NavigationItem[] = [
+  { label: "Registros", href: "/registros", icon: GalleryVerticalEnd },
+  { label: "Modelos", href: "/meunegocio", icon: BriefcaseBusiness },
+  { label: "Ferramentas", href: "/ferramentas", icon: Wrench },
+  { label: "Financeiro", href: "/financeiro", icon: BadgeDollarSign },
   { label: "Preferências", href: "/preferencias", icon: SlidersHorizontal },
-  { label: "Meu negócio", href: "/meunegocio", icon: BriefcaseBusiness },
-  { label: "Sistema", href: "/config/sistema", icon: MonitorCog },
+  { label: "Configurações", href: "/config/sistema", icon: MonitorCog },
 ];
 
 export const socialNavigation: NavigationItem[] = [
@@ -71,7 +71,7 @@ export const areaNavigation: NavigationItem[] = [
   },
   { label: "Social", href: "/social", icon: Handshake, area: "social" },
   {
-    label: "Configurações",
+    label: "Meu negócio",
     href: "/config",
     icon: Settings2,
     area: "config",
@@ -90,15 +90,37 @@ export function isConfigPath(pathname: string): boolean {
   );
 }
 
+/** Routes displayed within the Meu negócio navigation area. */
+export function isBusinessPath(pathname: string): boolean {
+  const path = decodeURIComponent(pathname).replace(/\/$/, "") || "/";
+  return (
+    isConfigPath(path) ||
+    path === "/registros" ||
+    path.startsWith("/registros/") ||
+    path === "/ferramentas" ||
+    path.startsWith("/ferramentas/") ||
+    path === "/financeiro" ||
+    path.startsWith("/financeiro/")
+  );
+}
+
 export function navigationMode(pathname: string): NavigationMode {
   const path = decodeURIComponent(pathname);
-  if (isConfigPath(path)) return "config";
+  if (isBusinessPath(path)) return "config";
   if (path === "/social" || path.startsWith("/social/")) return "social";
   return "workspace";
 }
 
-export function getNavigation(pathname: string) {
-  const mode = navigationMode(pathname);
+/**
+ * Returns the navigation shown in the sidebar. `selectedMode` is intentionally
+ * independent from the current route: choosing an area only changes the menu;
+ * navigating to one of its entries is what changes the page content.
+ */
+export function getNavigation(
+  pathname: string,
+  selectedMode?: NavigationMode,
+) {
+  const mode = selectedMode ?? navigationMode(pathname);
   return {
     mode,
     primary: modeNavigation[mode],

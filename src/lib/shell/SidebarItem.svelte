@@ -1,26 +1,40 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import { navigationMode, type NavigationItem } from "./navigation";
+  import {
+    navigationMode,
+    type NavigationItem,
+    type NavigationMode,
+  } from "./navigation";
 
   let {
     item,
     collapsed,
     variant = "primary",
+    activeMode,
+    onSelectMode,
   } = $props<{
     item: NavigationItem;
     collapsed: boolean;
     variant?: "primary" | "secondary";
+    activeMode?: NavigationMode;
+    onSelectMode?: (mode: NavigationMode) => void;
   }>();
 
   let path = $derived(decodeURIComponent(page.url.pathname));
   let active = $derived(
     item.area
-      ? navigationMode(path) === item.area
+      ? (activeMode ?? navigationMode(path)) === item.area
       : item.exact
         ? path === item.href || (item.href === "/dashboard" && path === "/")
         : path === item.href || path.startsWith(`${item.href}/`),
   );
   let ItemIcon = $derived(item.icon);
+
+  function selectArea(event: MouseEvent): void {
+    if (!item.area || !onSelectMode) return;
+    event.preventDefault();
+    onSelectMode(item.area);
+  }
 </script>
 
 <a
@@ -29,6 +43,7 @@
   class:secondary={variant === "secondary"}
   class="nav-item"
   href={item.href}
+  onclick={selectArea}
   aria-current={active ? "page" : undefined}
   title={collapsed ? item.label : undefined}
 >
