@@ -7,6 +7,7 @@
   import { portal } from "$lib/ui/portal";
   import {
     CalendarDays,
+    Repeat2,
     FileBadge,
     FileText,
     ListChecks,
@@ -69,14 +70,21 @@
 
   function normalizeContractType(value?: string): string {
     if (!value) return "Pontual";
-    return value.toLocaleLowerCase().includes("recorr")
-      ? "Recorrente"
+    return value.toLocaleLowerCase().includes("recorr") ||
+      value.toLocaleLowerCase().includes("rotina")
+      ? "Rotina"
       : "Pontual";
   }
 
   function initialTasks(): TemplateTask[] {
     if (!initialRecord) return [];
-    if (initialRecord.tasks.length) return structuredClone(initialRecord.tasks);
+    if (initialRecord.tasks.length) {
+      return structuredClone(initialRecord.tasks).map((task: TemplateTask) => ({
+        ...task,
+        frequency: task.frequency ?? "one_off",
+        recurrenceDays: task.recurrenceDays ?? [],
+      }));
+    }
     return deliveries
       .filter(
         (delivery: DeliveryTemplate) =>
@@ -89,6 +97,8 @@
         id: crypto.randomUUID(),
         templateId: delivery.id,
         name: delivery.name,
+        frequency: "one_off" as const,
+        recurrenceDays: [],
       }));
   }
 
@@ -98,6 +108,8 @@
       id: crypto.randomUUID(),
       templateId: item.id,
       name: item.label,
+      frequency: "one_off",
+      recurrenceDays: [],
     };
     selectedTasks = [...selectedTasks, task];
     void tick().then(() =>
@@ -117,6 +129,31 @@
         (delivery: DeliveryTemplate) => delivery.id === templateId,
       )?.name ?? "Modelo indisponível"
     );
+  }
+
+  function setTaskFrequency(task: TemplateTask): void {
+    if (task.frequency === "weekly") {
+      task.recurrenceDays = [0];
+      task.customUnit = undefined;
+    } else if (task.frequency === "monthly") {
+      task.recurrenceDays = [1];
+      task.customUnit = undefined;
+    } else if (task.frequency === "custom") {
+      task.customUnit ??= "week";
+      task.recurrenceDays ??= [];
+    } else {
+      task.customUnit = undefined;
+      task.recurrenceDays = [];
+    }
+    selectedTasks = [...selectedTasks];
+  }
+
+  function toggleDay(task: TemplateTask, day: number): void {
+    const current = task.recurrenceDays ?? [];
+    task.recurrenceDays = current.includes(day)
+      ? current.filter((value) => value !== day)
+      : [...current, day].sort((left, right) => left - right);
+    selectedTasks = [...selectedTasks];
   }
 
   onMount(() => {
@@ -143,7 +180,21 @@
       contractType,
       amount: amount.trim(),
       tasks: JSON.stringify(
-        selectedTasks.map((task) => ({ ...task, name: task.name.trim() })),
+        selectedTasks.map((task) => ({
+          ...task,
+          frequency:
+            contractType === "Rotina"
+              ? (task.frequency ?? "one_off")
+              : "one_off",
+          customUnit: task.frequency === "custom" ? task.customUnit : undefined,
+          recurrenceDays:
+            task.frequency === "weekly"
+              ? [0]
+              : task.frequency === "monthly"
+                ? [1]
+                : (task.recurrenceDays ?? []),
+          name: task.name.trim(),
+        })),
       ),
     });
   }
@@ -280,6 +331,21 @@
                         aria-label={`Nome da tarefa baseada em ${taskTemplateName(task.templateId)}`}
                       />
                     </label>
+                    {#if contractType === "Rotina"}
+                      <div class="routine-frequency">
+                        <Repeat2 size={15} aria-hidden="true" />
+                        <select
+                          bind:value={task.frequency}
+                          aria-label={`Frequência de ${task.name || taskTemplateName(task.templateId)}`}
+                          onchange={() => setTaskFrequency(task)}
+                        >
+                          <option value="one_off">Pontual</option>
+                          <option value="monthly">Mensal: dia 1</option>
+                          <option value="weekly">Semanal: domingo</option>
+                          <option value="custom">Personalizada</option>
+                        </select>
+                      </div>
+                    {/if}
                     <button
                       class="template-modal-remove"
                       type="button"
@@ -289,6 +355,51 @@
                       <Trash2 size={17} />
                     </button>
                   </div>
+                  {#if contractType === "Rotina" && task.frequency === "custom"}
+                    <div
+                      class="routine-custom"
+                      aria-label="Configuração da frequência personalizada"
+                    >
+                      <label>
+                        Repetir por
+                        <select
+                          bind:value={task.customUnit}
+                          onchange={() => {
+                            task.recurrenceDays = [];
+                            selectedTasks = [...selectedTasks];
+                          }}
+                        >
+                          <option value="week">semana</option>
+                          <option value="month">mês</option>
+                        </select>
+                      </label>
+                      <div class="routine-days">
+                        {#each task.customUnit === "month" ? Array.from({ length: 31 }, (_, index) => index + 1) : [0, 1, 2, 3, 4, 5, 6] as day}
+                          <button
+                            type="button"
+                            class:active={(task.recurrenceDays ?? []).includes(
+                              day,
+                            )}
+                            aria-pressed={(task.recurrenceDays ?? []).includes(
+                              day,
+                            )}
+                            onclick={() => toggleDay(task, day)}
+                            >{task.customUnit === "month"
+                              ? day
+                              : [
+                                  "Dom",
+                                  "Seg",
+                                  "Ter",
+                                  "Qua",
+                                  "Qui",
+                                  "Sex",
+                                  "Sáb",
+                                ][day]}</button
+                          >
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
                 {/each}
               </div>
             {/if}
@@ -313,7 +424,7 @@
               <span class="template-modal-icon"><FileBadge size={16} /></span>
               <select bind:value={contractType} aria-label="Tipo de contrato">
                 <option value="Pontual">Pontual</option>
-                <option value="Recorrente">Recorrente</option>
+                <option value="Rotina">Rotina</option>
               </select>
             </div>
             <div class="template-modal-control template-modal-control--prefix">
@@ -356,3 +467,54 @@
 </div>
 
 <svelte:window onkeydown={(event) => event.key === "Escape" && oncancel()} />
+
+<style>
+  .routine-frequency {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+  }
+  .routine-frequency select,
+  .routine-custom select {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+  }
+  .routine-custom {
+    display: grid;
+    gap: 8px;
+    padding: 0 0 10px 42px;
+    color: var(--muted);
+    font-size: var(--text-sm);
+  }
+  .routine-custom > label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .routine-days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .routine-days button {
+    min-width: 36px;
+    padding: 5px 7px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    background: var(--surface);
+    font: inherit;
+    font-size: var(--text-xs);
+  }
+  .routine-days button.active {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  }
+</style>

@@ -201,8 +201,57 @@ const templateTaskSchema = z
     id: identifier,
     templateId: identifier,
     name: collapsedText(140),
+    frequency: z.enum(["one_off", "weekly", "monthly", "custom"]).optional(),
+    customUnit: z.enum(["week", "month"]).optional(),
+    recurrenceDays: z.array(z.number().int()).max(31).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((task, context) => {
+    const frequency = task.frequency ?? "one_off";
+    const days = task.recurrenceDays ?? [];
+    if (new Set(days).size !== days.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["recurrenceDays"],
+        message: "Dias de recorrência duplicados.",
+      });
+    }
+    if (frequency === "weekly" && JSON.stringify(days) !== "[0]") {
+      context.addIssue({
+        code: "custom",
+        path: ["recurrenceDays"],
+        message: "A recorrência semanal acontece aos domingos.",
+      });
+    }
+    if (frequency === "monthly" && JSON.stringify(days) !== "[1]") {
+      context.addIssue({
+        code: "custom",
+        path: ["recurrenceDays"],
+        message: "A recorrência mensal acontece no dia 1.",
+      });
+    }
+    if (frequency === "custom") {
+      if (!task.customUnit || !days.length) {
+        context.addIssue({
+          code: "custom",
+          path: ["recurrenceDays"],
+          message: "Configure os dias da recorrência personalizada.",
+        });
+      }
+      const maximum = task.customUnit === "week" ? 6 : 31;
+      if (
+        days.some(
+          (day) => day < (task.customUnit === "week" ? 0 : 1) || day > maximum,
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["recurrenceDays"],
+          message: "Dia de recorrência inválido.",
+        });
+      }
+    }
+  });
 
 const serviceTemplateSchema = z
   .object({

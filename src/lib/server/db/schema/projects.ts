@@ -16,7 +16,14 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
-import { applicationSchema, check, createdAt, timestamp, updatedAt, uuid } from "./base";
+import {
+  applicationSchema,
+  check,
+  createdAt,
+  timestamp,
+  updatedAt,
+  uuid,
+} from "./base";
 
 import { businesses } from "./crm";
 import { services, tags } from "./services";
@@ -262,6 +269,53 @@ export const projectResponsibles = applicationSchema.table(
     check(
       "project_responsibles_sort_order_non_negative",
       sql`${table.sortOrder} >= 0`,
+    ),
+  ],
+);
+
+export const projectTaskRoutines = applicationSchema.table(
+  "project_task_routines",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").notNull(),
+    sourceServiceTaskTemplateId: uuid("source_service_task_template_id"),
+    name: varchar("name", { length: 140 }).notNull(),
+    description: text("description").default("").notNull(),
+    categoryKey: varchar("category_key", { length: 64 }),
+    priorityKey: varchar("priority_key", { length: 64 }).notNull(),
+    statusKey: varchar("status_key", { length: 64 }).notNull(),
+    responsibleUserId: uuid("responsible_user_id").notNull(),
+    tagIds: text("tag_ids").default("[]").notNull(),
+    subtasks: text("subtasks").default("[]").notNull(),
+    recurrenceType: varchar("recurrence_type", { length: 16 })
+      .default("one_off")
+      .notNull(),
+    recurrenceUnit: varchar("recurrence_unit", { length: 16 }),
+    recurrenceDays: text("recurrence_days").default("[]").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    unique("project_task_routines_workspace_id_id_unique").on(
+      table.workspaceId,
+      table.id,
+    ),
+    foreignKey({
+      name: "project_task_routines_workspace_project_foreign_key",
+      columns: [table.workspaceId, table.projectId],
+      foreignColumns: [projects.workspaceId, projects.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "project_task_routines_workspace_member_foreign_key",
+      columns: [table.workspaceId, table.responsibleUserId],
+      foreignColumns: [workspaceMembers.workspaceId, workspaceMembers.userId],
+    }),
+    index("project_task_routines_workspace_project_index").on(
+      table.workspaceId,
+      table.projectId,
     ),
   ],
 );

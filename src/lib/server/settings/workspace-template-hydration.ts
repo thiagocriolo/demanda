@@ -127,6 +127,22 @@ async function hydrateServiceTemplates(
           id: task.id,
           templateId: task.deliveryTemplateId,
           name: task.name,
+          frequency: task.recurrenceType as
+            "one_off" | "weekly" | "monthly" | "custom",
+          customUnit: (task.recurrenceUnit || undefined) as
+            "week" | "month" | undefined,
+          recurrenceDays: (() => {
+            try {
+              const parsed: unknown = JSON.parse(task.recurrenceDays);
+              return Array.isArray(parsed)
+                ? parsed.filter((item): item is number =>
+                    Number.isInteger(item),
+                  )
+                : [];
+            } catch {
+              return [];
+            }
+          })(),
         })),
     };
   });

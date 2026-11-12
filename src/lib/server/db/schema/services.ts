@@ -16,7 +16,14 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
-import { applicationSchema, check, createdAt, timestamp, updatedAt, uuid } from "./base";
+import {
+  applicationSchema,
+  check,
+  createdAt,
+  timestamp,
+  updatedAt,
+  uuid,
+} from "./base";
 
 import { workspaceMembers, workspaces } from "./workspace";
 
@@ -364,6 +371,12 @@ export const serviceTaskTemplates = applicationSchema.table(
     serviceId: uuid("service_id").notNull(),
     deliveryTemplateId: uuid("delivery_template_id").notNull(),
     name: varchar("name", { length: 140 }).notNull(),
+    recurrenceType: varchar("recurrence_type", { length: 16 })
+      .default("one_off")
+      .notNull(),
+    recurrenceUnit: varchar("recurrence_unit", { length: 16 }),
+    /** JSON serializado para manter compatibilidade com MySQLs sem JSON default. */
+    recurrenceDays: text("recurrence_days").default("[]").notNull(),
     sortOrder: integer("sort_order").default(0).notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

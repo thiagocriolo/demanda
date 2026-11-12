@@ -40,6 +40,7 @@ function projectDurationDays(value: string): number | null {
 
 function normalizedContract(value: string): "one_off" | "recurring" {
   return value.toLocaleLowerCase("pt-BR").includes("recorr") ||
+    value.toLocaleLowerCase("pt-BR").includes("rotina") ||
     value === "recurring"
     ? "recurring"
     : "one_off";
@@ -142,13 +143,12 @@ export async function synchronizeServiceTemplates(
         .update(services)
         .set({ ...values, version: sql`${services.version} + 1` })
         .where(eq(services.id, current.id));
-      if (affectedRows(updated) !== 1) throw new SettingsRelationsInvalidError();
+      if (affectedRows(updated) !== 1)
+        throw new SettingsRelationsInvalidError();
       serviceId = current.id;
     } else {
       serviceId = randomUUID();
-      await database
-        .insert(services)
-        .values({ ...values, id: serviceId });
+      await database.insert(services).values({ ...values, id: serviceId });
     }
     retained.add(serviceId);
     canonical.set(template.id, serviceId);

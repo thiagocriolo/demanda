@@ -8,6 +8,7 @@ import {
   createWorkspaceTask,
   listWorkspaceTasks,
 } from "$lib/server/tasks/service";
+import { materializeWorkspaceProjectRoutines } from "$lib/server/projects/project-routines";
 import {
   taskCreateSchema,
   taskListQuerySchema,
@@ -21,7 +22,11 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   if (!parsed.success) error(400, "Filtros de tarefas inválidos.");
 
   try {
-    return json(await listWorkspaceTasks(getDatabase(), context, parsed.data));
+    const database = getDatabase();
+    // A materialização é idempotente: ao abrir a operação, novas ocorrências
+    // entram na janela futura sem duplicar o histórico.
+    await materializeWorkspaceProjectRoutines(database, context);
+    return json(await listWorkspaceTasks(database, context, parsed.data));
   } catch (cause) {
     throwTaskHttpError(cause);
   }

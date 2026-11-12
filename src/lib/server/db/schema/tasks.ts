@@ -16,11 +16,18 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
-import { applicationSchema, check, createdAt, timestamp, updatedAt, uuid } from "./base";
+import {
+  applicationSchema,
+  check,
+  createdAt,
+  timestamp,
+  updatedAt,
+  uuid,
+} from "./base";
 
 import { businesses } from "./crm";
 import type { TaskBoardOrder } from "./enums";
-import { projects } from "./projects";
+import { projects, projectTaskRoutines } from "./projects";
 import { deliveryTemplates, tags } from "./services";
 import { workspaceMembers, workspaces } from "./workspace";
 
@@ -33,6 +40,8 @@ export const tasks = applicationSchema.table(
       .references(() => workspaces.id, { onDelete: "cascade" }),
     projectId: uuid("project_id").notNull(),
     businessId: uuid("business_id").notNull(),
+    projectRoutineId: uuid("project_routine_id"),
+    routineOccurrenceDate: date("routine_occurrence_date", { mode: "string" }),
     name: varchar("name", { length: 140 }).notNull(),
     description: text("description").default("").notNull(),
     categoryKey: varchar("category_key", { length: 64 }),
@@ -69,6 +78,16 @@ export const tasks = applicationSchema.table(
     })
       .onDelete("cascade")
       .onUpdate("cascade"),
+    foreignKey({
+      name: "tasks_workspace_project_routine_foreign_key",
+      columns: [table.workspaceId, table.projectRoutineId],
+      foreignColumns: [projectTaskRoutines.workspaceId, projectTaskRoutines.id],
+    }).onDelete("set null"),
+    unique("tasks_workspace_routine_occurrence_unique").on(
+      table.workspaceId,
+      table.projectRoutineId,
+      table.routineOccurrenceDate,
+    ),
     index("tasks_workspace_updated_id_index").on(
       table.workspaceId,
       table.updatedAt,
@@ -109,10 +128,7 @@ export const tasks = applicationSchema.table(
       table.archivedAt,
       table.id,
     ),
-    index("tasks_workspace_name_lower_index").on(
-      table.workspaceId,
-      table.name,
-    ),
+    index("tasks_workspace_name_lower_index").on(table.workspaceId, table.name),
     index("tasks_name_search_index").on(table.name),
     check("tasks_name_not_blank", sql`length(btrim(${table.name})) > 0`),
     check(

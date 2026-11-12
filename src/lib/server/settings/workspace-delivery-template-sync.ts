@@ -162,7 +162,8 @@ export async function synchronizeDeliveryTemplates(
           version: sql`${deliveryTemplates.version} + 1`,
         })
         .where(eq(deliveryTemplates.id, current.id));
-      if (affectedRows(updated) !== 1) throw new SettingsRelationsInvalidError();
+      if (affectedRows(updated) !== 1)
+        throw new SettingsRelationsInvalidError();
       templateId = current.id;
     } else {
       templateId = randomUUID();
@@ -223,6 +224,16 @@ export async function synchronizeServiceTaskTemplates(
         serviceId,
         deliveryTemplateId,
         name: task.name,
+        recurrenceType: task.frequency ?? "one_off",
+        recurrenceUnit:
+          task.frequency === "custom" ? (task.customUnit ?? null) : null,
+        recurrenceDays: JSON.stringify(
+          task.frequency === "weekly"
+            ? [0]
+            : task.frequency === "monthly"
+              ? [1]
+              : (task.recurrenceDays ?? []),
+        ),
         sortOrder,
         createdAt: now,
         updatedAt: now,

@@ -12,6 +12,12 @@ export type TemplateTask = {
   id: string;
   templateId: string;
   name: string;
+  /** Uma ocorrência única ou a regra que cria novas ocorrências no projeto. */
+  frequency?: "one_off" | "weekly" | "monthly" | "custom";
+  /** Usado somente em frequências personalizadas. */
+  customUnit?: "week" | "month";
+  /** Dias da semana (0 = domingo) ou dias do mês (1 a 31). */
+  recurrenceDays?: number[];
 };
 
 export type Service = {

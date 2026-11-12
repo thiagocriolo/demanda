@@ -16,6 +16,7 @@ import {
 } from "./project-commands";
 import { workspaceIdFromContext } from "./shared";
 import { projectMutationSchema } from "./validation";
+import { createProjectRoutinesFromServices } from "./project-routines";
 
 function addDays(dateValue: string, days: number): string {
   const date = new Date(`${dateValue}T00:00:00.000Z`);
@@ -150,13 +151,26 @@ export async function createWorkspaceProjectFromService(
       });
       if (!parsedEffective.success) throw new ProjectRelationsInvalidError();
       const effective = parsedEffective.data;
-      return createProjectInTransaction(
+      const project = await createProjectInTransaction(
         transaction,
         workspaceId,
         context.user.id,
         effective,
         source.id,
       );
+      await createProjectRoutinesFromServices(
+        transaction,
+        workspaceId,
+        {
+          id: project.id,
+          businessId: effective.businessId,
+          startDate: effective.startDate,
+          endDate: effective.endDate,
+        },
+        serviceIds,
+        effective.responsibleUserIds[0]!,
+      );
+      return project;
     });
   } catch (error) {
     if (error instanceof ProjectRelationsInvalidError) throw error;
