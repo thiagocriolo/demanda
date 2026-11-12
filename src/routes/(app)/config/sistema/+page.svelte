@@ -159,10 +159,17 @@
 
   async function resetData(): Promise<void> {
     if (resetConfirmation !== "RESETAR") return;
-    settings = await resetPersonalSettings();
-    savedSettings = JSON.stringify(settings);
-    resetConfirmation = "";
-    dataMessage = "Preferências pessoais restauradas";
+    try {
+      settings = await resetPersonalSettings();
+      savedSettings = JSON.stringify(settings);
+      resetConfirmation = "";
+      dataMessage = "Todos os dados da conta foram apagados";
+    } catch (error) {
+      dataMessage =
+        error instanceof Error
+          ? error.message
+          : "Não foi possível resetar os dados da conta.";
+    }
   }
 </script>
 
@@ -527,7 +534,7 @@
   {:else if activeTab === "dados"}
     <SettingsCard
       title="Resetar dados"
-      description="Limpa configurações e registros locais. Esta ação não pode ser desfeita."
+      description="Apaga do banco os dados pessoais, arquivos, interações e todo o conteúdo do seu workspace pessoal. A conta e a senha permanecem. Esta ação não pode ser desfeita."
       tone="danger"
     >
       <label class="settings-field"

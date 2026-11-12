@@ -249,11 +249,11 @@ export async function importSettingsBackup(
 export async function resetPersonalSettings(
   fetcher: FetchLike = fetch,
 ): Promise<SettingsState> {
-  const next = mergeSettingsScopes(
-    defaultPersonalSettings(),
-    workspaceVersion
-      ? workspaceSettingsFromState(cached)
-      : defaultWorkspaceSettings(),
+  return apply(
+    await requestJson<SettingsSnapshot>(fetcher, "/api/account/reset", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ confirmation: "RESETAR" }),
+    }),
   );
-  return savePersonalSettings(next, fetcher);
 }

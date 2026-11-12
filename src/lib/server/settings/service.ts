@@ -12,3 +12,4 @@ export {
   getSettingsSnapshot,
   importSettingsSnapshot,
 } from "./snapshot-service";
+export { resetAccountData } from "./account-data-service";
