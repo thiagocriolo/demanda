@@ -31,6 +31,7 @@ export const projectRecordsDomain: RecordsDomain<ProjectFacets> = {
           : undefined,
       orderBy: request.orderBy,
       archived: archivedMode(request),
+      includeInactive: true,
       signal: request.signal,
     });
     return { ...result, items: result.items.map(projectToEntityRecord) };

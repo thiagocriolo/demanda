@@ -172,7 +172,13 @@ export async function listUserWorkspaces(
     })
     .from(projects)
     .innerJoin(businesses, eq(businesses.id, projects.businessId))
-    .where(and(inArray(projects.workspaceId, ids), isNull(projects.archivedAt)))
+    .where(
+      and(
+        inArray(projects.workspaceId, ids),
+        eq(projects.isActive, true),
+        isNull(projects.archivedAt),
+      ),
+    )
     .orderBy(
       asc(projects.workspaceId),
       asc(projects.endDate),
@@ -423,7 +429,9 @@ export async function archiveUserWorkspace(
     const archived = await transaction
       .update(workspaces)
       .set({ archivedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(workspaces.id, workspaceId), isNull(workspaces.archivedAt)));
+      .where(
+        and(eq(workspaces.id, workspaceId), isNull(workspaces.archivedAt)),
+      );
     if (affectedRows(archived) !== 1) throw new WorkspaceNotFoundError();
   });
 }
@@ -530,15 +538,13 @@ export async function addWorkspaceCollaboratorByEmail(
     }
 
     const createdInvitationId = randomUUID();
-    await transaction
-      .insert(workspaceInvitations)
-      .values({
-        id: createdInvitationId,
-        workspaceId,
-        invitedByUserId: actorUserId,
-        email: normalizedEmail,
-        role: input.role,
-      });
+    await transaction.insert(workspaceInvitations).values({
+      id: createdInvitationId,
+      workspaceId,
+      invitedByUserId: actorUserId,
+      email: normalizedEmail,
+      role: input.role,
+    });
     const [invitation] = await transaction
       .select()
       .from(workspaceInvitations)

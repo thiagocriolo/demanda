@@ -145,6 +145,48 @@ CRIE TAREFA: Wireframe | PROJETO: Site`),
     });
   });
 
+  it("aceita o tipo cíclico ou pontual na criação de projeto", () => {
+    expect(
+      parseRecordCommands(`{
+  "protocol": "demanda.commands/v2",
+  "commands": [
+    {
+      "id": "project-monthly",
+      "action": "create",
+      "resource": "project",
+      "data": {
+        "name": "Gestão mensal",
+        "businessName": "Macajo",
+        "contractType": "cíclico"
+      }
+    },
+    {
+      "id": "project-site",
+      "action": "create",
+      "resource": "project",
+      "data": {
+        "name": "Site institucional",
+        "businessName": "Macajo",
+        "contractType": "pontual"
+      }
+    }
+  ]
+}`),
+    ).toMatchObject({
+      ok: true,
+      queueCommands: [
+        {
+          id: "project-monthly",
+          command: { kind: "project", contractType: "recurring" },
+        },
+        {
+          id: "project-site",
+          command: { kind: "project", contractType: "one_off" },
+        },
+      ],
+    });
+  });
+
   it("aceita modelos de serviço e entrega vinculados", () => {
     expect(
       parseRecordCommands(`{

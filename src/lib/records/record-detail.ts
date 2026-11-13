@@ -135,6 +135,7 @@ export function projectDetail(project: Project): RecordDetail {
         label: "Contrato",
         value: project.contractType === "recurring" ? "Recorrente" : "Pontual",
       },
+      { label: "Exibição", value: project.isActive ? "On" : "Off" },
     ],
     sections: [
       {

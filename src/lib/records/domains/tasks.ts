@@ -49,6 +49,7 @@ export const taskRecordsDomain: RecordsDomain<TaskFacets> = {
           : undefined,
       orderBy: request.orderBy,
       archived: archivedMode(request),
+      includeInactiveProjects: true,
       signal: request.signal,
     });
     return { ...result, items: result.items.map(taskToEntityRecord) };

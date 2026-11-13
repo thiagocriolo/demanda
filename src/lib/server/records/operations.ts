@@ -52,6 +52,7 @@ function today(): string {
 async function tasksFor(
   database: Database,
   conditions: ReturnType<typeof and>,
+  activeOnly = true,
 ): Promise<OperationalTask[]> {
   const rows = await database
     .select({
@@ -70,6 +71,7 @@ async function tasksFor(
       and(
         eq(projects.workspaceId, tasks.workspaceId),
         eq(projects.id, tasks.projectId),
+        ...(activeOnly ? [eq(projects.isActive, true)] : []),
       ),
     )
     .where(conditions)
@@ -114,6 +116,7 @@ export async function getBusinessOperations(
       and(
         eq(projects.workspaceId, business.workspaceId),
         eq(projects.businessId, business.id),
+        eq(projects.isActive, true),
         isNull(projects.archivedAt),
       ),
     )
@@ -165,6 +168,7 @@ export async function getProjectOperations(
       eq(tasks.projectId, project.id),
       isNull(tasks.archivedAt),
     ),
+    false,
   );
   return {
     business: { id: project.business.id, name: project.business.name },

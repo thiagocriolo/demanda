@@ -316,6 +316,10 @@ export const taskListQuerySchema = z
     tagId: z.string().uuid().optional(),
     dueFrom: isoDate.optional(),
     dueTo: isoDate.optional(),
+    includeInactiveProjects: z
+      .enum(["true", "false"])
+      .transform((value) => value === "true")
+      .default(false),
     archived: z.enum(["exclude", "include", "only"]).default("exclude"),
     orderBy: z
       .enum(["updated", "name_asc", "name_desc", "due_asc", "due_desc"])

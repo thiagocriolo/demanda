@@ -226,6 +226,7 @@ export async function hydrateProjects(
       workspaceId: row.workspaceId,
       sourceServiceId: row.sourceServiceId,
       isInstitutional: row.isInstitutional,
+      isActive: row.isActive,
       name: row.name,
       business: {
         id: business.id,
@@ -300,6 +301,7 @@ function projectCommonConditions(
   query: ProjectListQuery,
 ): SQL[] {
   const conditions: SQL[] = [eq(projects.workspaceId, workspaceId)];
+  if (!query.includeInactive) conditions.push(eq(projects.isActive, true));
   if (!query.includeEmptyInstitutional) {
     conditions.push(sql`(
       not ${projects.isInstitutional}

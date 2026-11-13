@@ -76,6 +76,7 @@ export type ProjectListOptions = {
   orderBy?: "updated" | "name_asc" | "name_desc";
   archived?: "exclude" | "include" | "only";
   includeEmptyInstitutional?: boolean;
+  includeInactive?: boolean;
   signal?: AbortSignal;
 };
 
@@ -96,6 +97,7 @@ async function listProjectsForWorkspace(
   if (options.includeEmptyInstitutional) {
     params.set("includeEmptyInstitutional", "true");
   }
+  if (options.includeInactive) params.set("includeInactive", "true");
   return requestJson<ProjectList>(fetcher, `/api/projects?${params}`, {
     signal: options.signal,
   });
@@ -290,6 +292,20 @@ export async function updateProject(
     fetcher,
     `/api/projects/${encodeURIComponent(projectId)}`,
     jsonRequest("PUT", input),
+  );
+  notifyProjectsChanged();
+  return project;
+}
+
+export async function setProjectActive(
+  projectId: string,
+  isActive: boolean,
+  fetcher: FetchLike = fetch,
+): Promise<Project> {
+  const project = await requestJson<Project>(
+    fetcher,
+    `/api/projects/${encodeURIComponent(projectId)}/active`,
+    jsonRequest("PUT", { isActive }),
   );
   notifyProjectsChanged();
   return project;
@@ -505,6 +521,7 @@ export function projectToEntityRecord(project: Project): EntityRecord {
     serviceIds: JSON.stringify(project.services.map(({ id }) => id)),
     sourceServiceId: project.sourceServiceId ?? "",
     isInstitutional: String(project.isInstitutional),
+    isActive: String(project.isActive),
     status: project.archivedAt ? "arquivado" : project.status,
     dataInicio: project.startDate,
     start_date: project.startDate,

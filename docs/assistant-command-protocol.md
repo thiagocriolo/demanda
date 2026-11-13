@@ -49,16 +49,17 @@ CRIE NEGÓCIO: Macajo | RESPONSÁVEL: Caleb Martins
 ### Criar projeto
 
 ```text
-CRIE PROJETO: Nome do projeto | NEGÓCIO: Nome do negócio
+CRIE PROJETO: Nome do projeto | NEGÓCIO: Nome do negócio | TIPO: CÍCLICO ou PONTUAL
 ```
 
 O projeto é criado em planejamento, com início na data atual, sem valor, e com
-o usuário atual como responsável.
+o usuário atual como responsável. Escolha `CÍCLICO` para uma recorrência ou
+`PONTUAL` para uma entrega única.
 
 Exemplo:
 
 ```text
-CRIE PROJETO: Site institucional | NEGÓCIO: Macajo
+CRIE PROJETO: Site institucional | NEGÓCIO: Macajo | TIPO: PONTUAL
 ```
 
 ### Criar tarefa
@@ -81,7 +82,7 @@ CRIE TAREFA: Criar wireframe da página inicial | PROJETO: Site institucional
 ```text
 CRIE CONTATO: Caleb Martins
 CRIE NEGÓCIO: Macajo | RESPONSÁVEL: Caleb Martins
-CRIE PROJETO: Site institucional | NEGÓCIO: Macajo
+CRIE PROJETO: Site institucional | NEGÓCIO: Macajo | TIPO: PONTUAL
 CRIE TAREFA: Criar wireframe da página inicial | PROJETO: Site institucional
 CRIE TAREFA: Definir identidade visual | PROJETO: Site institucional
 ```

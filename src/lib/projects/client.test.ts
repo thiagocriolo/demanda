@@ -9,6 +9,7 @@ import {
   listProjects,
   projectRelationsFromRecord,
   projectToEntityRecord,
+  setProjectActive,
   type FetchLike,
 } from "./client";
 import type {
@@ -36,6 +37,7 @@ const project: Project = {
   workspaceId,
   sourceServiceId,
   isInstitutional: false,
+  isActive: true,
   name: "Identidade visual",
   business: {
     id: businessId,
@@ -174,6 +176,7 @@ describe("cliente de projetos", () => {
         orderBy: "name_asc",
         archived: "include",
         includeEmptyInstitutional: true,
+        includeInactive: true,
       },
       fetcher,
     );
@@ -185,6 +188,7 @@ describe("cliente de projetos", () => {
     expect(url).toContain(`serviceId=${sourceServiceId}`);
     expect(url).toContain("archived=include");
     expect(url).toContain("includeEmptyInstitutional=true");
+    expect(url).toContain("includeInactive=true");
     expect(url).toContain(`workspaceId=${workspaceId}`);
   });
 
@@ -206,6 +210,24 @@ describe("cliente de projetos", () => {
 
     expect(await listAllActiveProjects({}, fetcher)).toEqual([project, second]);
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("altera a exibição do projeto pelo endpoint dedicado", async () => {
+    const fetcher = vi.fn(async () =>
+      Response.json({ ...project, isActive: false }),
+    ) as FetchLike;
+
+    expect(await setProjectActive(project.id, false, fetcher)).toMatchObject({
+      id: project.id,
+      isActive: false,
+    });
+    expect(fetcher).toHaveBeenCalledWith(
+      `/api/projects/${project.id}/active`,
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ isActive: false }),
+      }),
+    );
   });
 
   it("rejeita troca de workspace entre páginas ou dentro dos itens", async () => {

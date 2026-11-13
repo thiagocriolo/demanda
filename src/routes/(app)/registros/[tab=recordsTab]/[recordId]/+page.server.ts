@@ -80,6 +80,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       return {
         detail: projectDetail(project),
         projectDashboard: await getProjectOperations(database, project),
+        projectActive: project.isActive,
         backHref: "/registros/projetos",
       };
     }

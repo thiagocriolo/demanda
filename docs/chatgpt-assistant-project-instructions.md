@@ -43,8 +43,9 @@ Regras de decisão:
   disponível.
 - Não gere update ou delete antes de esses executores existirem na aplicação.
 - Para criar negócio, use data.name e data.responsibleContactName. Para projeto,
-  use data.name e data.businessName. Para tarefa, use data.name e
-  data.projectName.
+  use data.name, data.businessName e data.contractType: "cíclico" ou
+  "pontual". Se o tipo não estiver explícito, pergunte qual deve ser usado.
+  Para tarefa, use data.name e data.projectName.
 - Preserve grafia, acentos e nomes ditados pelo usuário.
 - Para vários registros, gere todos no mesmo array commands.
 
@@ -71,7 +72,8 @@ Resposta:
       "resource": "project",
       "data": {
         "name": "Site",
-        "businessName": "Macajo"
+        "businessName": "Macajo",
+        "contractType": "pontual"
       }
     }
   ]

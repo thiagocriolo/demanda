@@ -18,6 +18,7 @@ export type RecordCommand =
       name: string;
       businessName?: string;
       businessRef?: string;
+      contractType?: "one_off" | "recurring";
     }
   | {
       kind: "task";
@@ -114,12 +115,14 @@ export function parseRecordCommand(input: string): ParseRecordCommandResult {
     text,
   );
   if (project) {
+    const { businessName, contractType } = projectDetails(project[1]!);
     return {
       ok: true,
       command: {
         kind: "project",
         name: project[0]!,
-        businessName: project[1]!,
+        businessName,
+        ...(contractType ? { contractType } : {}),
       },
     };
   }
@@ -180,7 +183,7 @@ function parseCanonicalCommand(input: string): ParseRecordCommandResult | null {
       command: {
         kind: "project",
         name: project[0]!,
-        businessName: project[1]!,
+        ...projectDetails(project[1]!),
       },
     };
   }
@@ -231,6 +234,47 @@ function requiredTextOrReference(
     );
   }
   return { ...(name ? { name } : {}), ...(reference ? { reference } : {}) };
+}
+
+function projectDetails(value: string): {
+  businessName: string;
+  contractType?: "one_off" | "recurring";
+} {
+  const typeMatch = /\s*\|\s*TIPO:\s*(C[ÍI]CLICO|PONTUAL)$/iu.exec(value);
+  return {
+    businessName: value
+      .replace(/\s*\|\s*TIPO:\s*(?:C[ÍI]CLICO|PONTUAL)$/iu, "")
+      .trim(),
+    ...(typeMatch
+      ? {
+          contractType:
+            typeMatch[1]!
+              .normalize("NFD")
+              .replace(/\p{M}/gu, "")
+              .toLocaleLowerCase("pt-BR") === "ciclico"
+              ? "recurring"
+              : "one_off",
+        }
+      : {}),
+  };
+}
+
+function projectContractType(
+  command: AssistantCommand,
+): "one_off" | "recurring" | undefined {
+  const value = optionalText(command, "contractType");
+  if (!value) return undefined;
+  const normalized = value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLocaleLowerCase("pt-BR");
+  if (["recurring", "recorrente", "ciclico"].includes(normalized)) {
+    return "recurring";
+  }
+  if (["one_off", "pontual"].includes(normalized)) return "one_off";
+  throw new Error(
+    "data.contractType precisa ser “cíclico” ou “pontual”.",
+  );
 }
 
 function taskSubtasks(
@@ -298,11 +342,13 @@ function compileStructuredCommand(command: AssistantCommand): RecordCommand {
         "businessName",
         "businessRef",
       );
+      const contractType = projectContractType(command);
       return {
         kind: "project",
         name: requiredText(command, "name"),
         ...(business.name ? { businessName: business.name } : {}),
         ...(business.reference ? { businessRef: business.reference } : {}),
+        ...(contractType ? { contractType } : {}),
       };
     }
     case "task": {

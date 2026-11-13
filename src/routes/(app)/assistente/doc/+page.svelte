@@ -41,7 +41,8 @@
       "resource": "project",
       "data": {
         "name": "Site",
-        "businessRef": "business-macajo"
+        "businessRef": "business-macajo",
+        "contractType": "pontual"
       }
     }
   ]

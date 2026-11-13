@@ -141,7 +141,7 @@ export async function synchronizeDeliveryTemplates(
     );
     const values = {
       workspaceId,
-      serviceId: null,
+      serviceId: serviceId ?? null,
       name: template.name,
       description: template.briefing,
       categoryKey: template.category || null,

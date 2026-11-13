@@ -128,18 +128,35 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-let templateWrite = Promise.resolve();
+let templateWrite: Promise<void> = Promise.resolve();
 
 function updateWorkspaceTemplates(
   update: (settings: ReturnType<typeof currentSettings>) => void,
-): Promise<void> {
+): Promise<ReturnType<typeof currentSettings>> {
   const next = templateWrite.then(async () => {
     const settings = currentSettings();
     update(settings);
-    await saveWorkspaceSettings(settings);
+    return saveWorkspaceSettings(settings);
   });
-  templateWrite = next.catch(() => undefined);
+  templateWrite = next.then(
+    () => undefined,
+    () => undefined,
+  );
   return next;
+}
+
+function persistedTemplateId(
+  templates: Array<{ id: string; name: string }>,
+  name: string,
+  kind: string,
+): string {
+  const template = exactOne(templates, name, kind);
+  if (!template) {
+    throw new Error(
+      `O ${kind} “${name}” foi salvo, mas não pôde ser localizado no workspace.`,
+    );
+  }
+  return template.id;
 }
 
 function templateId(): string {
@@ -227,7 +244,7 @@ export async function executeRecordCommand(
       briefing: "",
       tagLabels: [],
       responsibleUserIds: [await currentResponsibleUserId()],
-      contractType: "recurring",
+      contractType: command.contractType ?? "one_off",
       amountCents: 0,
       firstDueDate: null,
       paymentMethod: "",
@@ -244,7 +261,7 @@ export async function executeRecordCommand(
 
   if (command.kind === "service_template") {
     const id = templateId();
-    await updateWorkspaceTemplates((settings) => {
+    const savedSettings = await updateWorkspaceTemplates((settings) => {
       settings.serviceTemplates = [
         ...settings.serviceTemplates,
         {
@@ -271,7 +288,13 @@ export async function executeRecordCommand(
     return {
       message: `Criei o modelo de serviço ${command.name}.`,
       created: [{ type: "modelo de serviço", name: command.name }],
-      output: { serviceTemplateId: id },
+      output: {
+        serviceTemplateId: persistedTemplateId(
+          savedSettings.serviceTemplates,
+          command.name,
+          "modelo de serviço",
+        ),
+      },
     };
   }
 
@@ -280,7 +303,7 @@ export async function executeRecordCommand(
     const serviceTemplateId = command.serviceTemplateRef
       ? referencedId(context, command.serviceTemplateRef, "serviceTemplateId")
       : "";
-    await updateWorkspaceTemplates((settings) => {
+    const savedSettings = await updateWorkspaceTemplates((settings) => {
       settings.deliveryTemplates = [
         ...settings.deliveryTemplates,
         {
@@ -320,7 +343,13 @@ export async function executeRecordCommand(
     return {
       message: `Criei o modelo de entrega ${command.name}.`,
       created: [{ type: "modelo de entrega", name: command.name }],
-      output: { deliveryTemplateId: id },
+      output: {
+        deliveryTemplateId: persistedTemplateId(
+          savedSettings.deliveryTemplates,
+          command.name,
+          "modelo de entrega",
+        ),
+      },
     };
   }
 

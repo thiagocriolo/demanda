@@ -55,6 +55,9 @@
   }
 
   function description(command: CompiledQueueCommand["command"]): string {
+    if (command.kind === "project") {
+      return `Tipo: ${command.contractType === "recurring" ? "Cíclico" : "Pontual"}.`;
+    }
     if (command.kind === "task" && command.subtasks?.length) {
       return `${command.subtasks.length} subtarefa(s) será(ão) criada(s).`;
     }

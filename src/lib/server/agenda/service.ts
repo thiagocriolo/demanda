@@ -92,13 +92,30 @@ async function ensureAgendaEntries(
     .select({ id: projects.id, date: projects.endDate })
     .from(projects)
     .where(
-      and(eq(projects.workspaceId, workspaceId), isNull(projects.archivedAt)),
+      and(
+        eq(projects.workspaceId, workspaceId),
+        eq(projects.isActive, true),
+        isNull(projects.archivedAt),
+      ),
     )
     .orderBy(asc(projects.id));
   const taskRows = await database
     .select({ id: tasks.id, date: tasks.dueDate })
     .from(tasks)
-    .where(and(eq(tasks.workspaceId, workspaceId), isNull(tasks.archivedAt)))
+    .innerJoin(
+      projects,
+      and(
+        eq(projects.workspaceId, tasks.workspaceId),
+        eq(projects.id, tasks.projectId),
+      ),
+    )
+    .where(
+      and(
+        eq(tasks.workspaceId, workspaceId),
+        eq(projects.isActive, true),
+        isNull(tasks.archivedAt),
+      ),
+    )
     .orderBy(asc(tasks.id));
   const subtaskRows = await database
     .select({

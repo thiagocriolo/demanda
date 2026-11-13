@@ -175,25 +175,23 @@ export async function createProjectInTransaction(
     () => new ProjectRelationsInvalidError(),
   );
   const id = randomUUID();
-  await transaction
-    .insert(projects)
-    .values({
-      id,
-      workspaceId,
-      businessId: input.businessId,
-      sourceServiceId,
-      name: input.name,
-      statusKey: input.status,
-      briefing: input.briefing,
-      startDate: input.startDate,
-      endDate: input.endDate,
-      contractType: input.contractType,
-      amountCents: input.amountCents,
-      firstDueDate: input.firstDueDate,
-      paymentMethod: input.paymentMethod || null,
-      paymentTerms: input.paymentTerms || null,
-      financeNotes: input.financeNotes || null,
-    });
+  await transaction.insert(projects).values({
+    id,
+    workspaceId,
+    businessId: input.businessId,
+    sourceServiceId,
+    name: input.name,
+    statusKey: input.status,
+    briefing: input.briefing,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    contractType: input.contractType,
+    amountCents: input.amountCents,
+    firstDueDate: input.firstDueDate,
+    paymentMethod: input.paymentMethod || null,
+    paymentTerms: input.paymentTerms || null,
+    financeNotes: input.financeNotes || null,
+  });
   const [created] = await transaction
     .select()
     .from(projects)
@@ -423,6 +421,54 @@ export async function updateWorkspaceProject(
     }
     translateProjectConstraint(error);
   }
+}
+
+export async function setWorkspaceProjectActive(
+  database: Database,
+  context: RequestAuthorizationContext,
+  projectId: string,
+  isActive: boolean,
+): Promise<Project> {
+  const workspaceId = workspaceIdFromContext(context);
+  return database.transaction(async (transaction) => {
+    await requireWorkspacePermissionForUpdate(
+      transaction,
+      context.user.id,
+      workspaceId,
+      "workspace:write",
+    );
+    const existing = await findScopedProjectRow(
+      transaction,
+      workspaceId,
+      projectId,
+      true,
+    );
+    if (!existing) throw new ProjectNotFoundError();
+    if (existing.isInstitutional) {
+      throw new InstitutionalProjectProtectedError();
+    }
+    const now = new Date();
+    const result = await transaction
+      .update(projects)
+      .set({ isActive, updatedAt: now })
+      .where(
+        and(eq(projects.workspaceId, workspaceId), eq(projects.id, projectId)),
+      );
+    if (affectedRows(result) !== 1) throw new ProjectNotFoundError();
+    const [updated] = await transaction
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    if (!updated) throw new ProjectNotFoundError();
+    const [project] = await hydrateProjects(
+      transaction,
+      [updated],
+      context.user.id,
+    );
+    if (!project) throw new ProjectNotFoundError();
+    return project;
+  });
 }
 
 export async function archiveWorkspaceProject(

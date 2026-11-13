@@ -42,6 +42,7 @@ export type Project = {
   workspaceId: string;
   sourceServiceId: string | null;
   isInstitutional: boolean;
+  isActive: boolean;
   name: string;
   business: ProjectBusiness;
   services: ProjectServiceSummary[];

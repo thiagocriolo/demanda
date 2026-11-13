@@ -25,8 +25,12 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     await readRequestInput(request),
   );
   if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const location = issue?.path.length ? ` em ${issue.path.join(".")}` : "";
     return new Response(
-      JSON.stringify({ message: "Configurações do workspace inválidas." }),
+      JSON.stringify({
+        message: `Configurações do workspace inválidas${location}: ${issue?.message ?? "revise os dados enviados"}.`,
+      }),
       { status: 400, headers: { "content-type": "application/json" } },
     );
   }

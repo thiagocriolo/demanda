@@ -219,6 +219,10 @@ export const projectMutationSchema = projectMutationObject
   })
   .transform((value): ProjectMutationInput => value);
 
+export const projectActivationSchema = z
+  .object({ isActive: z.boolean() })
+  .strict();
+
 export const projectFromServiceSchema = z
   .object({
     serviceId: z.string().uuid(),
@@ -300,6 +304,10 @@ export const projectListQuerySchema = z
     endFrom: isoDate.optional(),
     endTo: isoDate.optional(),
     includeEmptyInstitutional: z
+      .enum(["true", "false"])
+      .transform((value) => value === "true")
+      .default(false),
+    includeInactive: z
       .enum(["true", "false"])
       .transform((value) => value === "true")
       .default(false),

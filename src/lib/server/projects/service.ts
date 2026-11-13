@@ -12,6 +12,7 @@ export {
   createWorkspaceProjectFromService,
   deleteWorkspaceProject,
   getWorkspaceProject,
+  setWorkspaceProjectActive,
   getWorkspaceProjectOptions,
   listWorkspaceProjects,
   updateWorkspaceProject,

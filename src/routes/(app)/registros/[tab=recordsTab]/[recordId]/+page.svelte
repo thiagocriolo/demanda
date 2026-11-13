@@ -1,5 +1,6 @@
 <script lang="ts">
   import PageHeader from "$lib/ui/PageHeader.svelte";
+  import { ProjectApiError, setProjectActive } from "$lib/projects/client";
   import {
     ArrowRight,
     BriefcaseBusiness,
@@ -26,9 +27,16 @@
   let commentBody = $state("");
   let commentError = $state("");
   let commentSaving = $state(false);
+  let projectActive = $state(true);
+  let projectVisibilitySaving = $state(false);
+  let projectVisibilityError = $state("");
 
   $effect(() => {
     taskComments = data.taskComments ?? [];
+  });
+
+  $effect(() => {
+    projectActive = data.projectActive ?? true;
   });
 
   async function publishComment(): Promise<void> {
@@ -58,6 +66,23 @@
       commentSaving = false;
     }
   }
+
+  async function toggleProjectVisibility(): Promise<void> {
+    if (!data.projectDashboard || projectVisibilitySaving) return;
+    projectVisibilitySaving = true;
+    projectVisibilityError = "";
+    try {
+      const project = await setProjectActive(data.detail.id, !projectActive);
+      projectActive = project.isActive;
+    } catch (cause) {
+      projectVisibilityError =
+        cause instanceof ProjectApiError
+          ? cause.message
+          : "Não foi possível atualizar a visibilidade do projeto.";
+    } finally {
+      projectVisibilitySaving = false;
+    }
+  }
 </script>
 
 <svelte:head><title>{data.detail.title} · Demanda</title></svelte:head>
@@ -80,7 +105,25 @@
       {#if data.detail.archived}
         <span class="record-detail__archived">Registro arquivado</span>
       {/if}
+      {#if data.projectDashboard}
+        <button
+          class:active={projectActive}
+          class="project-visibility-toggle"
+          type="button"
+          role="switch"
+          aria-checked={projectActive}
+          disabled={projectVisibilitySaving}
+          onclick={() => void toggleProjectVisibility()}
+        >
+          Exibição: {projectActive ? "On" : "Off"}
+        </button>
+      {/if}
     </div>
+    {#if projectVisibilityError}
+      <p class="project-visibility-error" role="alert">
+        {projectVisibilityError}
+      </p>
+    {/if}
 
     {#if data.contactDashboard}
       <section class="contact-dashboard" aria-label="Central de operação">
@@ -514,6 +557,32 @@
     background: var(--surface-hover);
     font-size: var(--text-xs);
     font-weight: 700;
+  }
+  .project-visibility-toggle {
+    margin-left: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    padding: 7px 10px;
+    color: var(--ink-500);
+    background: var(--surface-soft);
+    font: inherit;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .project-visibility-toggle.active {
+    border-color: color-mix(in srgb, #16a34a 45%, var(--border));
+    color: #177342;
+    background: #eaf8ef;
+  }
+  .project-visibility-toggle:disabled {
+    cursor: wait;
+    opacity: 0.6;
+  }
+  .project-visibility-error {
+    margin: -4px 0 0;
+    color: var(--danger);
+    font-size: var(--text-xs);
   }
   .record-detail__summary,
   .record-detail__section {

@@ -84,6 +84,7 @@ export type TaskListOptions = {
   dueTo?: string;
   orderBy?: "updated" | "name_asc" | "name_desc" | "due_asc" | "due_desc";
   archived?: "exclude" | "include" | "only";
+  includeInactiveProjects?: boolean;
   signal?: AbortSignal;
 };
 
@@ -112,6 +113,9 @@ async function listTasksForWorkspace(
   };
   for (const [key, value] of Object.entries(stringFilters)) {
     if (value) params.set(key, value);
+  }
+  if (options.includeInactiveProjects) {
+    params.set("includeInactiveProjects", "true");
   }
   return requestJson<TaskList>(fetcher, `/api/tasks?${params}`, {
     signal: options.signal,

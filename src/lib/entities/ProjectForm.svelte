@@ -8,6 +8,7 @@
     getProjectOptions,
     ProjectApiError,
     projectRelationsFromRecord,
+    setProjectActive,
   } from "$lib/projects/client";
   import type {
     ProjectOptions,
@@ -144,11 +145,29 @@
     record?.id ? recordPageHref("projeto", record.id) : undefined,
   );
   let modalTitle = $derived(viewOnly && record?.nome ? record.nome : title);
+  let projectActive = $state(true);
+  let visibilityUpdating = $state(false);
 
   function closeBeforePageNavigation(event: MouseEvent): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
       return;
     oncancel();
+  }
+
+  async function toggleProjectVisibility(): Promise<void> {
+    if (!record || institutionalProject || visibilityUpdating) return;
+    visibilityUpdating = true;
+    try {
+      const project = await setProjectActive(record.id, !projectActive);
+      projectActive = project.isActive;
+    } catch (cause) {
+      validationError =
+        cause instanceof ProjectApiError
+          ? cause.message
+          : "Não foi possível atualizar a visibilidade do projeto.";
+    } finally {
+      visibilityUpdating = false;
+    }
   }
   let form = $state<ProjectFormState>(projectFromRecord());
   let businessItems = $derived(
@@ -197,6 +216,7 @@
 
   onMount(() => {
     form = projectFromRecord(record);
+    projectActive = record?.isActive !== "false";
     const relations = projectRelationsFromRecord(record);
     sourceServiceId =
       relations.sourceServiceId ?? relations.services.at(0)?.id ?? "";
@@ -250,6 +270,7 @@
       const relatedTasks = await listAllTasks({
         projectId: record.id,
         archived: "include",
+        includeInactiveProjects: true,
         signal: request.signal,
       });
       if (request.signal.aborted) return;
@@ -1280,14 +1301,31 @@
           {modalTitle}
         {/if}
       </h2>
-      <button
-        class="close"
-        type="button"
-        aria-label="Fechar"
-        onclick={oncancel}
-      >
-        <X size={18} strokeWidth={2} />
-      </button>
+      <div class="header-actions">
+        {#if record && !institutionalProject}
+          <button
+            class:active={projectActive}
+            class="project-visibility-toggle"
+            type="button"
+            role="switch"
+            aria-checked={projectActive}
+            aria-label={`Exibição do projeto: ${projectActive ? "On" : "Off"}`}
+            disabled={visibilityUpdating}
+            onclick={() => void toggleProjectVisibility()}
+          >
+            <span>{projectActive ? "On" : "Off"}</span><i aria-hidden="true"
+            ></i>
+          </button>
+        {/if}
+        <button
+          class="close"
+          type="button"
+          aria-label="Fechar"
+          onclick={oncancel}
+        >
+          <X size={18} strokeWidth={2} />
+        </button>
+      </div>
     </header>
 
     <div class="body">
@@ -1871,6 +1909,52 @@
 
   h2 {
     font-size: var(--text-xl);
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .project-visibility-toggle {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    padding: 3px 5px 3px 9px;
+    color: var(--ink-500);
+    background: var(--surface-soft);
+    font: inherit;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .project-visibility-toggle i {
+    display: block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--ink-400);
+    transition:
+      transform var(--motion-fast),
+      background var(--motion-fast);
+  }
+  .project-visibility-toggle.active {
+    border-color: color-mix(
+      in srgb,
+      var(--success, #16a34a) 45%,
+      var(--border)
+    );
+    color: #177342;
+    background: #eaf8ef;
+  }
+  .project-visibility-toggle.active i {
+    background: #16a34a;
+  }
+  .project-visibility-toggle:disabled {
+    opacity: 0.58;
+    cursor: wait;
   }
   .record-page-link {
     color: inherit;

@@ -9,6 +9,7 @@ const project: Project = {
   workspaceId: "workspace-1",
   sourceServiceId: "service-1",
   isInstitutional: false,
+  isActive: true,
   name: "Projeto do serviço",
   business: { id: "business-1", name: "Cliente", archivedAt: null },
   services: [],

@@ -634,6 +634,14 @@ function taskCommonConditions(
   query: TaskListQuery,
 ): SQL[] {
   const conditions: SQL[] = [eq(tasks.workspaceId, workspaceId)];
+  if (!query.includeInactiveProjects) {
+    conditions.push(sql<boolean>`exists (
+      select 1 from ${projects}
+      where ${projects.workspaceId} = ${tasks.workspaceId}
+        and ${projects.id} = ${tasks.projectId}
+        and ${projects.isActive}
+    )`);
+  }
   const search = taskSearchCondition(query.query);
   if (search) conditions.push(search);
   if (query.businessId) conditions.push(eq(tasks.businessId, query.businessId));
@@ -824,25 +832,23 @@ export async function createWorkspaceTask(
       );
       const now = new Date();
       const id = randomUUID();
-      await transaction
-        .insert(tasks)
-        .values({
-          id,
-          workspaceId,
-          projectId: project.projectId,
-          businessId: project.businessId,
-          name: input.name,
-          description: input.briefing,
-          categoryKey: input.category || null,
-          priorityKey: input.priority,
-          statusKey: input.status,
-          dueDate: input.dueDate,
-          sortOrder: input.sortOrder ?? 0,
-          boardOrder: {},
-          completedAt: input.status === TASK_COMPLETED_STATUS ? now : null,
-          createdAt: now,
-          updatedAt: now,
-        });
+      await transaction.insert(tasks).values({
+        id,
+        workspaceId,
+        projectId: project.projectId,
+        businessId: project.businessId,
+        name: input.name,
+        description: input.briefing,
+        categoryKey: input.category || null,
+        priorityKey: input.priority,
+        statusKey: input.status,
+        dueDate: input.dueDate,
+        sortOrder: input.sortOrder ?? 0,
+        boardOrder: {},
+        completedAt: input.status === TASK_COMPLETED_STATUS ? now : null,
+        createdAt: now,
+        updatedAt: now,
+      });
       const [createdRaw] = await transaction
         .select()
         .from(tasks)
@@ -959,8 +965,7 @@ async function synchronizeSubtasks(
           eq(taskSubtasks.id, subtask.id),
           isNull(taskSubtasks.archivedAt),
         ),
-      )
-      ;
+      );
     if (affectedRows(updated) !== 1) throw new TaskRelationsInvalidError();
   }
   if (additions.length) {
@@ -1356,7 +1361,8 @@ export async function updateWorkspaceTaskBoard(
               isNull(tasks.archivedAt),
             ),
           );
-        if (affectedRows(changedRows) !== 1) throw new TaskVersionConflictError();
+        if (affectedRows(changedRows) !== 1)
+          throw new TaskVersionConflictError();
         const [changed] = await transaction
           .select()
           .from(tasks)
@@ -1549,7 +1555,8 @@ export async function setWorkspaceSubtaskState(
           isNull(taskSubtasks.archivedAt),
         ),
       );
-    if (affectedRows(changedSubtask) !== 1) throw new TaskSubtaskNotFoundError();
+    if (affectedRows(changedSubtask) !== 1)
+      throw new TaskSubtaskNotFoundError();
     const updatedTaskRows = await transaction
       .update(tasks)
       .set({
@@ -1563,7 +1570,8 @@ export async function setWorkspaceSubtaskState(
           eq(tasks.version, input.version),
         ),
       );
-    if (affectedRows(updatedTaskRows) !== 1) throw new TaskVersionConflictError();
+    if (affectedRows(updatedTaskRows) !== 1)
+      throw new TaskVersionConflictError();
     const [updatedTask] = await transaction
       .select()
       .from(tasks)

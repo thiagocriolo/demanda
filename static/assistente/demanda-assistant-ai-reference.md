@@ -68,6 +68,12 @@ Inclua também o comando-pai em `dependsOn`. A referência e a dependência deve
 apontar para o mesmo comando. Nomes como `businessName` e `projectName` só são
 aceitos para compatibilidade ou para localizar algo externo já inequívoco.
 
+## Tipo de projeto
+
+Todo comando `project` deve informar `data.contractType`: use `"cíclico"` para
+projetos recorrentes ou `"pontual"` para uma entrega única. Se o pedido não
+deixar isso claro, faça uma pergunta curta antes de gerar o link.
+
 ## Subtarefas
 
 Subtarefas pertencem a uma única tarefa. Não crie uma tarefa independente para
@@ -168,7 +174,8 @@ Atualizar o site com duas subtarefas e a tarefa Subir campanha.”
       "resource": "project",
       "data": {
         "name": "Gestão de Tráfego",
-        "businessRef": "business-siebra"
+        "businessRef": "business-siebra",
+        "contractType": "cíclico"
       }
     },
     {

@@ -158,6 +158,7 @@ describe("tasks client", () => {
         projectId,
         responsibleUserId: responsibleId,
         archived: "include",
+        includeInactiveProjects: true,
         orderBy: "due_asc",
       },
       fetcher,
@@ -169,6 +170,7 @@ describe("tasks client", () => {
     expect(url).toContain(`projectId=${projectId}`);
     expect(url).toContain(`responsibleUserId=${responsibleId}`);
     expect(url).toContain("archived=include");
+    expect(url).toContain("includeInactiveProjects=true");
     expect(url).toContain("orderBy=due_asc");
   });
 

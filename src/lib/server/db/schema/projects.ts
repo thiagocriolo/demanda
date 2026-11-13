@@ -41,6 +41,7 @@ export const projects = applicationSchema.table(
       .references(() => businesses.id, { onDelete: "cascade" }),
     sourceServiceId: uuid("source_service_id"),
     isInstitutional: boolean("is_institutional").default(false).notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
     name: varchar("name", { length: 140 }).notNull(),
     statusKey: varchar("status_key", { length: 64 }).notNull(),
     briefing: text("briefing").default("").notNull(),
