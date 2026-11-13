@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import type { Database } from "./database";
+import { rawRows, type Database } from "./database";
 
 type RuntimeSchemaGlobals = typeof globalThis & {
   __demandaRuntimeSchemaPromise?: Promise<void>;
@@ -24,12 +24,45 @@ export function ensureRuntimeSchema(database: Database): Promise<void> {
 }
 
 async function applyRuntimeSchema(database: Database): Promise<void> {
+  await addColumnIfMissing(
+    database,
+    "projects",
+    "is_active",
+    "boolean NOT NULL DEFAULT true",
+  );
+  await addColumnIfMissing(
+    database,
+    "service_task_templates",
+    "recurrence_type",
+    "varchar(16) NOT NULL DEFAULT 'one_off'",
+  );
+  await addColumnIfMissing(
+    database,
+    "service_task_templates",
+    "recurrence_unit",
+    "varchar(16) NULL",
+  );
+  await addColumnIfMissing(
+    database,
+    "service_task_templates",
+    "recurrence_days",
+    "text NOT NULL DEFAULT ('[]')",
+  );
+
   await database.execute(
     sql.raw(`
-    ALTER TABLE service_task_templates
-      ADD COLUMN IF NOT EXISTS recurrence_type varchar(16) NOT NULL DEFAULT 'one_off',
-      ADD COLUMN IF NOT EXISTS recurrence_unit varchar(16) NULL,
-      ADD COLUMN IF NOT EXISTS recurrence_days text NOT NULL DEFAULT ('[]')
+    CREATE TABLE IF NOT EXISTS legacy_import_records (
+      workspace_id char(36) NOT NULL,
+      source_key varchar(96) NOT NULL,
+      source_record_id varchar(160) NOT NULL,
+      imported_task_id char(36) NOT NULL,
+      created_at timestamp(3) NOT NULL DEFAULT (now()),
+      PRIMARY KEY (workspace_id, source_key, source_record_id),
+      CONSTRAINT legacy_import_records_workspace_id_workspaces_id_fk
+        FOREIGN KEY (workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE,
+      CONSTRAINT legacy_import_records_imported_task_id_tasks_id_fk
+        FOREIGN KEY (imported_task_id) REFERENCES tasks (id) ON DELETE CASCADE
+    )
   `),
   );
 
@@ -66,12 +99,17 @@ async function applyRuntimeSchema(database: Database): Promise<void> {
   `),
   );
 
-  await database.execute(
-    sql.raw(`
-    ALTER TABLE tasks
-      ADD COLUMN IF NOT EXISTS project_routine_id char(36) NULL,
-      ADD COLUMN IF NOT EXISTS routine_occurrence_date date NULL
-  `),
+  await addColumnIfMissing(
+    database,
+    "tasks",
+    "project_routine_id",
+    "char(36) NULL",
+  );
+  await addColumnIfMissing(
+    database,
+    "tasks",
+    "routine_occurrence_date",
+    "date NULL",
   );
 
   await database.execute(
@@ -95,5 +133,26 @@ async function applyRuntimeSchema(database: Database): Promise<void> {
         REFERENCES users (id) ON DELETE RESTRICT
     )
   `),
+  );
+}
+
+async function addColumnIfMissing(
+  database: Database,
+  tableName: string,
+  columnName: string,
+  definition: string,
+): Promise<void> {
+  const result = await database.execute(
+    sql`select 1 as present
+        from information_schema.columns
+       where table_schema = database()
+         and table_name = ${tableName}
+         and column_name = ${columnName}
+       limit 1`,
+  );
+  if (rawRows<{ present: number }>(result).length) return;
+
+  await database.execute(
+    sql.raw(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definition}`),
   );
 }
