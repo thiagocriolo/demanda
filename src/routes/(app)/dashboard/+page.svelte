@@ -445,6 +445,38 @@
       freeMinutes: Math.max(0, availableMinutes - reservedMinutes),
     };
   });
+  const todayScheduledMinutes = $derived(
+    scheduledToday.reduce(
+      (total, { entry }) => total + entry.durationSlots * 30,
+      0,
+    ),
+  );
+  const todayCapacityUsed = $derived(
+    remainingWorkday.availableMinutes > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (remainingWorkday.reservedMinutes /
+              remainingWorkday.availableMinutes) *
+              100,
+          ),
+        )
+      : 0,
+  );
+  const todayDeliveries = $derived([
+    ...todayDueTasks.map((task) => ({
+      id: `task-${task.id}`,
+      title: task.nome,
+      kind: "Tarefa",
+      href: "/pauta",
+    })),
+    ...todayDueProjects.map((project) => ({
+      id: `project-${project.id}`,
+      title: project.nome,
+      kind: "Projeto",
+      href: "/registros/projetos",
+    })),
+  ]);
   const todaySignals = $derived<TodaySignal[]>([
     ...(todayTasksWithoutExecution.length
       ? [
@@ -879,7 +911,7 @@
       idPrefix="dashboard-control"
       class="dashboard-control-system"
       panelClass="dashboard-control-panel"
-      minHeight="316px"
+      minHeight="0px"
       mobileMinHeight="316px"
       onchange={(value) => selectTab(value as DashboardTab)}
     >
@@ -991,6 +1023,118 @@
                 <span>Não há riscos operacionais identificados para hoje.</span>
               </div>
             {/if}
+          </section>
+
+          <section class="today-route" aria-labelledby="today-route-title">
+            <div class="today-section-head">
+              <div>
+                <span class="today-eyebrow">Roteiro</span>
+                <h2 id="today-route-title">Execução prevista</h2>
+              </div>
+              <span class="today-route-summary"
+                >{formatDuration(todayScheduledMinutes)} planejados</span
+              >
+            </div>
+            {#if scheduledToday.length}
+              <ol class="today-timeline">
+                {#each scheduledToday as item (item.task.id)}
+                  {@const end =
+                    item.entry.startMinutes + item.entry.durationSlots * 30}
+                  <li
+                    class:current={currentScheduledSubtask?.task.id ===
+                      item.task.id}
+                    class:next={!currentScheduledSubtask &&
+                      nextScheduledSubtask?.task.id === item.task.id}
+                  >
+                    <span class="today-timeline-time"
+                      >{timeFromMinutes(item.entry.startMinutes)}</span
+                    >
+                    <a href="/cronograma">
+                      <strong>{item.task.nome}</strong>
+                      <span>
+                        {item.task.taskNome}
+                        {#if item.task.projeto}
+                          · {item.task.projeto}{/if}
+                      </span>
+                    </a>
+                    <span class="today-timeline-duration"
+                      >{formatDuration(item.entry.durationSlots * 30)}
+                      <small>até {timeFromMinutes(end)}</small></span
+                    >
+                  </li>
+                {/each}
+              </ol>
+            {:else}
+              <div class="today-route-empty">
+                <span>Seu dia ainda não tem blocos reservados.</span>
+                <a href="/cronograma"
+                  >Montar roteiro <ArrowUpRight size={14} /></a
+                >
+              </div>
+            {/if}
+          </section>
+
+          <section
+            class="today-deliveries"
+            aria-labelledby="today-deliveries-title"
+          >
+            <div class="today-section-head">
+              <div>
+                <span class="today-eyebrow">Compromissos</span>
+                <h2 id="today-deliveries-title">Entregas do dia</h2>
+              </div>
+              <a href="/agenda">Ver agenda <ArrowUpRight size={14} /></a>
+            </div>
+            {#if todayDeliveries.length}
+              <ul class="today-delivery-list">
+                {#each todayDeliveries as delivery (delivery.id)}
+                  <li>
+                    <a href={delivery.href}>
+                      <span>{delivery.kind}</span>
+                      <strong>{delivery.title}</strong>
+                      <ArrowUpRight size={14} aria-hidden="true" />
+                    </a>
+                  </li>
+                {/each}
+              </ul>
+            {:else}
+              <p class="today-deliveries-empty">
+                Nenhuma tarefa ou projeto vence hoje. Use esse espaço para
+                avançar o que vem a seguir.
+              </p>
+            {/if}
+          </section>
+
+          <section
+            class="today-capacity"
+            aria-labelledby="today-capacity-title"
+          >
+            <div class="today-section-head">
+              <div>
+                <span class="today-eyebrow">Disponibilidade</span>
+                <h2 id="today-capacity-title">Capacidade restante</h2>
+              </div>
+              <strong>{todayCapacityUsed}%</strong>
+            </div>
+            <div
+              class="today-capacity-track"
+              role="progressbar"
+              aria-label="Capacidade planejada da jornada"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow={todayCapacityUsed}
+            >
+              <span style={`width: ${todayCapacityUsed}%`}></span>
+            </div>
+            <div class="today-capacity-notes">
+              <span
+                >{formatDuration(remainingWorkday.reservedMinutes)} reservados</span
+              >
+              <span>{formatDuration(remainingWorkday.freeMinutes)} livres</span>
+            </div>
+            <a class="today-capacity-action" href="/cronograma"
+              >Ajustar capacidade <ArrowUpRight size={14} /></a
+            >
           </section>
 
           <nav class="today-actions" aria-label="Ações de planejamento">
@@ -1543,8 +1687,12 @@
 
   :global(.dashboard-control-panel) {
     flex: 1;
-    min-height: 316px;
+    min-height: 0;
     padding: 20px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scroll-padding: 20px;
     background: linear-gradient(
       135deg,
       color-mix(in srgb, #ffffff 88%, rgba(46, 86, 255, 0.1)) 0%,
@@ -1555,21 +1703,31 @@
   }
 
   .today-dashboard {
-    min-height: 274px;
+    min-height: 574px;
     display: grid;
     grid-template-columns: minmax(0, 1.2fr) minmax(190px, 0.8fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "focus summary"
+      "signals signals"
+      "route route"
+      "deliveries capacity"
+      "actions actions";
+    align-content: start;
     gap: 10px;
   }
 
   .today-focus,
   .today-summary,
   .today-signals,
+  .today-route,
+  .today-deliveries,
+  .today-capacity,
   .today-actions {
     min-width: 0;
   }
 
   .today-focus {
+    grid-area: focus;
     min-height: 128px;
     padding: 14px;
     display: grid;
@@ -1667,6 +1825,7 @@
   }
 
   .today-summary {
+    grid-area: summary;
     display: grid;
     gap: 10px;
   }
@@ -1708,6 +1867,7 @@
   }
 
   .today-signals {
+    grid-area: signals;
     grid-column: 1 / -1;
     min-height: 0;
     padding: 12px;
@@ -1794,7 +1954,249 @@
     font-weight: 650;
   }
 
+  .today-route,
+  .today-deliveries,
+  .today-capacity {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.82);
+  }
+
+  .today-route {
+    grid-area: route;
+  }
+
+  .today-route h2,
+  .today-deliveries h2,
+  .today-capacity h2 {
+    margin: 2px 0 0;
+    color: #17233b;
+    font-size: 14px;
+    line-height: 1.15;
+  }
+
+  .today-route-summary {
+    padding: 4px 7px;
+    border: 1px solid rgba(46, 86, 255, 0.17);
+    border-radius: 999px;
+    color: #3554ad;
+    background: rgba(46, 86, 255, 0.06);
+    font-size: 10px;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+
+  .today-timeline {
+    display: grid;
+    gap: 7px;
+    margin-top: 12px;
+  }
+
+  .today-timeline li {
+    position: relative;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 43px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 0;
+    border-top: 1px solid rgba(15, 23, 42, 0.07);
+  }
+
+  .today-timeline li:first-child {
+    border-top: 0;
+  }
+
+  .today-timeline li.current::before,
+  .today-timeline li.next::before {
+    position: absolute;
+    top: 50%;
+    left: -14px;
+    width: 3px;
+    height: 30px;
+    border-radius: 0 4px 4px 0;
+    background: #2e56ff;
+    content: "";
+    transform: translateY(-50%);
+  }
+
+  .today-timeline li.next::before {
+    background: #eab308;
+  }
+
+  .today-timeline-time {
+    color: #4861bb;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .today-timeline a {
+    min-width: 0;
+  }
+
+  .today-timeline a strong,
+  .today-timeline a span {
+    display: block;
+  }
+
+  .today-timeline a strong {
+    overflow: hidden;
+    color: #17233b;
+    font-size: 12px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .today-timeline a span {
+    margin-top: 2px;
+    overflow: hidden;
+    color: #64748b;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .today-timeline-duration {
+    display: grid;
+    justify-items: end;
+    gap: 2px;
+    color: #334155;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .today-timeline-duration small {
+    color: #94a3b8;
+    font-size: 9px;
+    font-weight: 600;
+  }
+
+  .today-route-empty {
+    min-height: 62px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 10px;
+    border-radius: 9px;
+    color: #64748b;
+    background: rgba(46, 86, 255, 0.045);
+    font-size: 11px;
+  }
+
+  .today-route-empty a,
+  .today-capacity-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+    color: #2047e7;
+    font-size: 11px;
+    font-weight: 750;
+  }
+
+  .today-deliveries {
+    grid-area: deliveries;
+  }
+
+  .today-delivery-list {
+    display: grid;
+    gap: 7px;
+    margin-top: 12px;
+  }
+
+  .today-delivery-list a {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid rgba(234, 179, 8, 0.25);
+    border-radius: 9px;
+    background: rgba(254, 249, 195, 0.32);
+  }
+
+  .today-delivery-list a > span {
+    padding: 3px 5px;
+    border-radius: 5px;
+    color: #8a5a12;
+    background: rgba(234, 179, 8, 0.12);
+    font-size: 9px;
+    font-weight: 750;
+  }
+
+  .today-delivery-list strong {
+    min-width: 0;
+    overflow: hidden;
+    color: #17233b;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .today-deliveries-empty {
+    margin-top: 12px;
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .today-capacity {
+    grid-area: capacity;
+    background: linear-gradient(135deg, rgba(237, 242, 255, 0.72), #fff 78%);
+  }
+
+  .today-capacity > .today-section-head > strong {
+    color: #2047e7;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .today-capacity-track {
+    width: 100%;
+    height: 9px;
+    margin-top: 16px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(46, 86, 255, 0.12);
+  }
+
+  .today-capacity-track span {
+    display: block;
+    height: 100%;
+    min-width: 4px;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #2e56ff, #7390ff);
+    transition: width var(--motion-base) ease;
+  }
+
+  .today-capacity-notes {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 8px;
+    color: #64748b;
+    font-size: 10px;
+  }
+
+  .today-capacity-notes span:last-child {
+    color: #216642;
+    font-weight: 750;
+  }
+
+  .today-capacity-action {
+    margin-top: 14px;
+  }
+
   .today-actions {
+    grid-area: actions;
     grid-column: 1 / -1;
     display: flex;
     flex-wrap: wrap;
@@ -2392,12 +2794,24 @@
     }
 
     .today-dashboard {
+      min-height: 0;
       grid-template-columns: 1fr;
       grid-template-rows: auto;
+      grid-template-areas:
+        "focus"
+        "summary"
+        "signals"
+        "route"
+        "deliveries"
+        "capacity"
+        "actions";
     }
 
     .today-focus,
     .today-signals,
+    .today-route,
+    .today-deliveries,
+    .today-capacity,
     .today-actions {
       grid-column: auto;
     }
