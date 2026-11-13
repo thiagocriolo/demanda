@@ -26,6 +26,7 @@
     record,
     categories,
     defaultDuration = "1",
+    saving = false,
     oncancel,
     onsave,
     ondelete,
@@ -34,8 +35,9 @@
     categories: StyledChoice[];
     defaultDuration?: string;
     oncancel: () => void;
-    onsave: (values: Record<string, string>) => void;
+    onsave: (values: Record<string, string>) => void | Promise<void>;
     ondelete?: () => void;
+    saving?: boolean;
   }>();
 
   const initialRecord = untrack(() => record);
@@ -122,7 +124,7 @@
     };
   });
 
-  function submit(event: SubmitEvent): void {
+  async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     if (!formNode.reportValidity()) return;
     const savedSubtasks: DeliveryTemplateSubtask[] = subtasks
@@ -133,7 +135,7 @@
         duracao: normalizedDuration(subtask.duracao),
         status: subtask.status || "pendente",
       }));
-    onsave({
+    await onsave({
       name: name.trim(),
       category,
       briefing: briefing.trim(),
@@ -303,6 +305,7 @@
               <button
                 class="template-modal-delete"
                 type="button"
+                disabled={saving}
                 onclick={ondelete}><Trash2 size={16} />Excluir</button
               >
             </div>
@@ -311,9 +314,10 @@
             <button
               class="template-modal-cancel"
               type="button"
+              disabled={saving}
               onclick={oncancel}><X size={16} />Cancelar</button
             >
-            <button class="template-modal-save" type="submit"
+            <button class="template-modal-save" type="submit" disabled={saving}
               ><Save size={16} />{record ? "Salvar" : "Criar entrega"}</button
             >
           </div>

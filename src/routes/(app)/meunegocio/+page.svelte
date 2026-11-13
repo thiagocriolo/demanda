@@ -7,15 +7,11 @@
   import ServiceTemplatesEditor from "$lib/settings/ServiceTemplatesEditor.svelte";
   import SettingsCard from "$lib/settings/SettingsCard.svelte";
   import TagEditor from "$lib/settings/TagEditor.svelte";
-  import {
-    loadSettingsFromServer,
-    saveWorkspaceSettings,
-    workspaceSettingsAccess,
-  } from "$lib/settings/client";
+  import { saveWorkspaceSettings } from "$lib/settings/client";
   import { mergeSettingsScopes } from "$lib/settings/defaults";
   import type { SettingsState } from "$lib/settings/types";
   import type { TabItem } from "$lib/ui/Tabs.svelte";
-  import { onMount, untrack } from "svelte";
+  import { untrack } from "svelte";
   import type { PageData } from "./$types";
 
   type Props = { data: PageData };
@@ -68,21 +64,6 @@
     if (!filters.some(({ value }) => value === activeFilter))
       activeFilter = filters[0]?.value ?? "";
   });
-  onMount(() => {
-    void loadSettingsFromServer()
-      .then((loaded) => {
-        settings = loaded;
-        canManage = workspaceSettingsAccess().canManage;
-        savedSettings = JSON.stringify(loaded);
-      })
-      .catch((error) => {
-        settingsMessage =
-          error instanceof Error
-            ? error.message
-            : "Não foi possível carregar as configurações do workspace.";
-      });
-  });
-
   async function save(): Promise<void> {
     try {
       settings = await saveWorkspaceSettings(settings);
@@ -104,6 +85,15 @@
       templateSaveTimeout = undefined;
       void save().catch(() => undefined);
     }, 350);
+  }
+
+  async function saveDeliveryTemplates(): Promise<void> {
+    if (!canManage) {
+      throw new Error(
+        "Somente administradores podem alterar as configurações do workspace.",
+      );
+    }
+    await save();
   }
 </script>
 
@@ -128,7 +118,7 @@
       bind:services={settings.serviceTemplates}
       categories={settings.taskCategories}
       defaultDuration={settings.defaultTaskDuration}
-      onchange={saveTemplates}
+      onchange={saveDeliveryTemplates}
     />
   {:else if activeTab === "status" && activeFilter === "contatos"}
     <SettingsCard

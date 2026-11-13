@@ -23,10 +23,12 @@
     services: ServiceTemplate[];
     categories: StyledChoice[];
     defaultDuration?: string;
-    onchange?: () => void;
+    onchange?: () => void | Promise<void>;
   }>();
 
   let formOpen = $state(false);
+  let saving = $state(false);
+  let saveError = $state("");
   let editingId = $state<string | undefined>();
   let deletingId = $state<string | undefined>();
   let editingTemplate = $derived(
@@ -88,7 +90,24 @@
     editingId = undefined;
   }
 
-  function save(values: Record<string, string>): void {
+  async function persist(): Promise<boolean> {
+    saving = true;
+    saveError = "";
+    try {
+      await onchange?.();
+      return true;
+    } catch (error) {
+      saveError =
+        error instanceof Error
+          ? error.message
+          : "Não foi possível salvar a entrega. Tente novamente.";
+      return false;
+    } finally {
+      saving = false;
+    }
+  }
+
+  async function save(values: Record<string, string>): Promise<void> {
     const base: DeliveryTemplate = editingTemplate ?? {
       id: crypto.randomUUID(),
       projectTemplateId: "",
@@ -116,11 +135,10 @@
           template.id === editingTemplate?.id ? next : template,
         )
       : [next, ...templates];
-    closeForm();
-    onchange?.();
+    if (await persist()) closeForm();
   }
 
-  function duplicate(id: string): void {
+  async function duplicate(id: string): Promise<void> {
     if (templates.length >= 100) return;
     const source = templates.find(
       (template: DeliveryTemplate) => template.id === id,
@@ -134,7 +152,7 @@
       },
       ...templates,
     ];
-    onchange?.();
+    await persist();
   }
 
   function requestDelete(id = editingId): void {
@@ -143,7 +161,7 @@
     closeForm();
   }
 
-  function confirmDelete(): void {
+  async function confirmDelete(): Promise<void> {
     if (!deletingTemplate) return;
     const templateId = deletingTemplate.id;
     services = services.map((service: ServiceTemplate) => ({
@@ -155,8 +173,7 @@
     templates = templates.filter(
       (template: DeliveryTemplate) => template.id !== deletingTemplate?.id,
     );
-    deletingId = undefined;
-    onchange?.();
+    if (await persist()) deletingId = undefined;
   }
 </script>
 
@@ -173,6 +190,10 @@
     <strong>{templates.length} de 100 modelos</strong>
   </header>
 
+  {#if saveError}
+    <p class="template-save-error" role="alert">{saveError}</p>
+  {/if}
+
   <TemplateCardGrid
     kind="delivery"
     items={cards}
@@ -188,6 +209,7 @@
     record={editingTemplate}
     {categories}
     {defaultDuration}
+    {saving}
     oncancel={closeForm}
     onsave={save}
     ondelete={() => requestDelete()}
@@ -257,6 +279,11 @@
     font-size: var(--text-xs);
     font-weight: 500;
     white-space: nowrap;
+  }
+  .template-save-error {
+    margin: 0;
+    color: var(--red-600, #b91c1c);
+    font-size: var(--text-sm);
   }
   @media (max-width: 640px) {
     .gallery-header {
