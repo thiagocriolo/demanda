@@ -9,10 +9,10 @@ const id = "eaf06398-1486-4aa2-aed3-5710b20e7ad2";
 
 describe("URLs canônicas dos registros", () => {
   it("cria uma página estável para cada tipo de card", () => {
-    expect(recordPageHref("pessoa", id)).toBe(`/registros/contatos/${id}`);
-    expect(recordPageHref("negocio", id)).toBe(`/registros/negócios/${id}`);
-    expect(recordPageHref("projeto", id)).toBe(`/registros/projetos/${id}`);
-    expect(recordPageHref("tarefa", id)).toBe(`/registros/tarefas/${id}`);
+    expect(recordPageHref("pessoa", id)).toBe(`/clientes/contatos/${id}`);
+    expect(recordPageHref("negocio", id)).toBe(`/clientes/negócios/${id}`);
+    expect(recordPageHref("projeto", id)).toBe(`/clientes/projetos/${id}`);
+    expect(recordPageHref("tarefa", id)).toBe(`/clientes/tarefas/${id}`);
   });
 
   it("alinha as chaves de persistência aos links de detalhe", () => {

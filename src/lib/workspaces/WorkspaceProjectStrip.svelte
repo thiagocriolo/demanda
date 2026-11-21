@@ -62,7 +62,7 @@
       statusColor: statusColors[project.status] ?? statusColors.planejamento,
       secondary: project.negocio || project.cliente || "Negócio não informado",
       relation:
-        project.responsavel || project.servicos || "Responsável não informado",
+        project.contractName || project.servicos || "Contrato não informado",
       completion: formatDate(project.dataFim || project.prazo),
     };
   }

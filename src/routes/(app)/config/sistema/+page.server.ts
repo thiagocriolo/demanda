@@ -5,7 +5,6 @@ import { requireAuthenticatedPageRequest } from "$lib/server/authorization/http"
 import {
   changePassword,
   InvalidCredentialsError,
-  listActiveSessions,
   revokeAllSessions,
 } from "$lib/server/auth/service";
 import {
@@ -14,18 +13,8 @@ import {
 } from "$lib/server/auth/validation";
 import { getDatabase } from "$lib/server/db";
 
-export const load: PageServerLoad = async ({ locals, url }) => {
-  const principal = requireAuthenticatedPageRequest(
-    locals,
-    `${url.pathname}${url.search}`,
-  );
-  const sessions = await listActiveSessions(getDatabase(), principal.user.id);
-  return {
-    security: {
-      currentSessionId: principal.session.id,
-      sessions,
-    },
-  };
+export const load: PageServerLoad = () => {
+  redirect(307, "/config/sistema/geral");
 };
 
 export const actions: Actions = {

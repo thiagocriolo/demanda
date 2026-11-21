@@ -6,6 +6,11 @@ import {
   personalSettingsFromState,
   workspaceSettingsFromState,
 } from "./defaults";
+import {
+  createChangeChannel,
+  requestJson as fetchJson,
+  type FetchLike,
+} from "../http/client";
 import { SETTINGS_CHANGED_EVENT } from "./storage";
 import type {
   PersonalSettingsResponse,
@@ -13,8 +18,6 @@ import type {
   SettingsState,
   WorkspaceSettingsResponse,
 } from "./types";
-
-type FetchLike = typeof fetch;
 
 export class SettingsApiError extends Error {
   constructor(
@@ -32,28 +35,18 @@ let workspaceVersion = 0;
 let workspaceId = "";
 let canManageWorkspace = false;
 
-async function requestJson<T>(
+const settingsChannel = createChangeChannel(SETTINGS_CHANGED_EVENT);
+const notify = settingsChannel.notify;
+
+function requestJson<T>(
   fetcher: FetchLike,
   input: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetcher(input, init);
-  if (!response.ok) {
-    let message = "Não foi possível carregar as configurações.";
-    try {
-      const payload = (await response.json()) as { message?: unknown };
-      if (typeof payload.message === "string") message = payload.message;
-    } catch {
-      // A mensagem genérica cobre respostas sem JSON.
-    }
-    throw new SettingsApiError(response.status, message);
-  }
-  return (await response.json()) as T;
-}
-
-function notify(): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(SETTINGS_CHANGED_EVENT));
+  return fetchJson<T>(fetcher, input, init, {
+    fallbackMessage: "Não foi possível carregar as configurações.",
+    createError: (status, message) => new SettingsApiError(status, message),
+  });
 }
 
 function apply(snapshot: SettingsSnapshot): SettingsState {

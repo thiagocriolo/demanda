@@ -113,7 +113,7 @@ Quota, limpeza, migração segura e decisões do pipeline estão documentadas em
 
 ## Pessoas e contatos
 
-- A aba Contatos de `/registros` usa a API autenticada `/api/contacts`; o
+- A aba Contatos de `/clientes` usa a API autenticada `/api/contacts`; o
   workspace é sempre obtido da sessão no servidor e não é aceito no corpo ou
   nos filtros enviados pelo navegador.
 - A API oferece listagem paginada com busca, filtros e ordenação, além de
@@ -128,7 +128,7 @@ Quota, limpeza, migração segura e decisões do pipeline estão documentadas em
 
 ## Negócios
 
-- A aba Negócios de `/registros` e o formulário global usam as rotas
+- A aba Negócios de `/clientes` e o formulário global usam as rotas
   autenticadas `/api/businesses` e `/api/businesses/[businessId]`.
 - O workspace vem exclusivamente da sessão. O corpo aceita nome, categoria,
   etapa, IDs dos contatos responsáveis e notas; qualquer campo extra, inclusive

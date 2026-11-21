@@ -2,7 +2,7 @@ import { allNavigation, isConfigPath } from "./navigation";
 
 const rootTitles: Record<string, string> = {
   "/": "Dashboard",
-  "/config": "Meu negócio",
+  "/config": "Configurações",
   "/ferramentas": "Ferramentas",
   "/social": "Social",
 };
@@ -24,12 +24,7 @@ export function resolveTopbarTitle(pathname: string): string {
   if (path === "/social" || path.startsWith("/social/")) {
     return rootTitles["/social"];
   }
-  if (isConfigPath(path)) {
-    if (path === "/meunegocio" || path.startsWith("/meunegocio/")) {
-      return resolvePageTitle(path);
-    }
-    return rootTitles["/config"];
-  }
+  if (isConfigPath(path)) return rootTitles["/config"];
   if (path === "/ferramentas" || path.startsWith("/ferramentas/")) {
     return rootTitles["/ferramentas"];
   }

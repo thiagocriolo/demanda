@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { BusinessMutationInput } from "../../businesses/types";
+import { normalizeKey } from "../db/helpers";
 
 const collapsedText = (maximum: number) =>
   z
@@ -8,17 +9,6 @@ const collapsedText = (maximum: number) =>
     .min(1)
     .max(maximum)
     .transform((value) => value.replace(/\s+/g, " "));
-
-function normalizeKey(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "_")
-    .replace(/^[_-]+|[_-]+$/g, "")
-    .replace(/_{2,}/g, "_");
-}
 
 const normalizedKey = z
   .string()

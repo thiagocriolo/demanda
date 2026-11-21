@@ -6,6 +6,7 @@ import { recordsTabRoutes } from "./navigation";
 const tabByKind: Record<EntityCardKind, RecordsTab> = {
   pessoa: "pessoas",
   negocio: "negocios",
+  contrato: "contratos",
   projeto: "projetos",
   tarefa: "tarefas",
 };
@@ -13,6 +14,7 @@ const tabByKind: Record<EntityCardKind, RecordsTab> = {
 const kindByEntityKey: Record<EntityConfig["key"], EntityCardKind> = {
   pessoas: "pessoa",
   negocios: "negocio",
+  contratos: "contrato",
   projetos: "projeto",
   entregas: "tarefa",
 };
@@ -31,9 +33,10 @@ export function recordPageHrefForEntity(
 
 export function recordTabFromRoute(value: string): RecordsTab | undefined {
   const tab = decodeURIComponent(value).toLocaleLowerCase("pt-BR");
-  if (tab === "contatos") return "pessoas";
+  if (tab === "pessoas" || tab === "contatos") return "pessoas";
   if (tab === "negócios") return "negocios";
+  if (tab === "contratos") return "contratos";
   if (tab === "projetos") return "projetos";
-  if (tab === "tarefas") return "tarefas";
+  if (tab === "entregas" || tab === "tarefas") return "tarefas";
   return undefined;
 }

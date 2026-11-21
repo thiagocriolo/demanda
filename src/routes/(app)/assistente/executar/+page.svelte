@@ -8,7 +8,11 @@
     Play,
     ShieldCheck,
   } from "@lucide/svelte";
-  import { executeRecordCommand } from "$lib/assistant/record-actions";
+  import {
+    executeRecordCommand,
+    preflightRecordCommandQueue,
+    type RecordQueuePreflightIssue,
+  } from "$lib/assistant/record-actions";
   import {
     compileRecordCommandQueue,
     executeCompiledRecordCommandQueue,
@@ -26,6 +30,9 @@
   let progress = $state<QueueCommandProgress[]>([]);
   let executing = $state(false);
   let completed = $state(false);
+  let preflightIssues = $state<RecordQueuePreflightIssue[]>([]);
+  let preflightPending = $state(false);
+  let preflightEpoch = 0;
   let commandPayload = $state<string | null>(null);
   let loadedPayload = $state(false);
 
@@ -83,6 +90,9 @@
     validationError = "";
     progress = [];
     completed = false;
+    preflightIssues = [];
+    preflightPending = false;
+    const epoch = ++preflightEpoch;
     try {
       const document = window.location.hash
         ? commandDocumentFromHash(window.location.hash)
@@ -95,6 +105,22 @@
         );
       }
       queue = compileRecordCommandQueue(parsed.queueCommands);
+      preflightPending = true;
+      void preflightRecordCommandQueue(queue)
+        .then((issues) => {
+          if (epoch === preflightEpoch) preflightIssues = issues;
+        })
+        .catch((cause) => {
+          if (epoch !== preflightEpoch) return;
+          validationError =
+            cause instanceof Error
+              ? cause.message
+              : "Não foi possível validar as dependências do lote.";
+          queue = undefined;
+        })
+        .finally(() => {
+          if (epoch === preflightEpoch) preflightPending = false;
+        });
     } catch (cause) {
       queue = undefined;
       validationError =
@@ -105,7 +131,14 @@
   });
 
   async function confirm(): Promise<void> {
-    if (!queue || executing || completed) return;
+    if (
+      !queue ||
+      executing ||
+      completed ||
+      preflightPending ||
+      preflightIssues.length
+    )
+      return;
     executing = true;
     try {
       await executeCompiledRecordCommandQueue(
@@ -165,6 +198,9 @@
       <ol class="command-list">
         {#each queue as item (item.id)}
           {@const current = progress.find(({ id }) => id === item.id)}
+          {@const preflight = preflightIssues.find(
+            ({ commandId }) => commandId === item.id,
+          )}
           <li
             class:running={current?.status === "running"}
             class:succeeded={current?.status === "succeeded"}
@@ -185,7 +221,9 @@
               {#if item.dependsOn.length}<small
                   >Depende de: {item.dependsOn.join(", ")}</small
                 >{/if}
-              {#if current?.message}<span>{current.message}</span>{/if}
+              {#if preflight}<span class="preflight-error"
+                  >{preflight.message}</span
+                >{:else if current?.message}<span>{current.message}</span>{/if}
             </div>
             {#if current}<small class="status"
                 >{statusLabel(current.status)}</small
@@ -193,6 +231,17 @@
           </li>
         {/each}
       </ol>
+      {#if preflightPending}
+        <p class="preflight-notice">
+          <LoaderCircle class="spin" size={16} />Validando dependências
+          externas…
+        </p>
+      {:else if preflightIssues.length}
+        <p class="preflight-notice preflight-notice--error" role="alert">
+          <CircleAlert size={16} />Corrija as dependências indicadas antes de
+          executar.
+        </p>
+      {/if}
     </section>
 
     <footer class="review-actions">
@@ -200,7 +249,14 @@
         <ShieldCheck size={16} />A confirmação exige sua sessão autenticada e
         executa somente os comandos permitidos.
       </p>
-      <button type="button" onclick={confirm} disabled={executing || completed}>
+      <button
+        type="button"
+        onclick={confirm}
+        disabled={executing ||
+          completed ||
+          preflightPending ||
+          preflightIssues.length > 0}
+      >
         {#if executing}<LoaderCircle
             size={18}
           />Executando…{:else if completed}<Check
@@ -313,6 +369,23 @@
   .command-content span,
   .command-content small {
     display: block;
+  }
+  .command-content .preflight-error {
+    color: #a13c4b;
+    font-weight: 700;
+  }
+  .preflight-notice {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0;
+    padding: 0 18px 16px;
+    color: var(--ink-500, #697083);
+    font-size: 0.78rem;
+  }
+  .preflight-notice--error {
+    color: #a13c4b;
+    font-weight: 700;
   }
   .command-content strong {
     color: var(--ink-800, #30364a);

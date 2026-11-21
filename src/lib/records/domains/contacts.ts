@@ -71,7 +71,7 @@ export const contactRecordsDomain: RecordsDomain<ContactFacets> = {
       ...baseCard(config, record),
       primary: record.telefone || "Telefone não informado",
       secondary: record.email || "E-mail não informado",
-      relation: record.cargo || "Contato cadastrado",
+      relation: record.cargo || "Pessoa cadastrada",
     };
   },
 };

@@ -1,9 +1,8 @@
 <script lang="ts">
   import {
-    BusinessApiError,
-    businessToEntityRecord,
-    listAllActiveBusinesses,
-  } from "$lib/businesses/client";
+    listAllActiveContracts,
+    type Contract,
+  } from "$lib/contracts/client";
   import {
     getProjectOptions,
     ProjectApiError,
@@ -12,11 +11,11 @@
   } from "$lib/projects/client";
   import type {
     ProjectOptions,
-    ProjectResponsible,
     ProjectServiceSummary,
     ProjectTag,
     Service,
   } from "$lib/projects/types";
+  import { recordPageHref } from "$lib/records/record-page";
   import {
     currentSettings,
     loadSettingsFromServer,
@@ -26,11 +25,15 @@
     type GlobalSelectorItem,
   } from "$lib/ui/GlobalSelector.svelte";
   import {
+    loadWorkspaces,
+    refreshWorkspaceSnapshot,
+    type Workspace,
+  } from "$lib/workspaces/workspace-storage";
+  import {
     Archive,
     BriefcaseBusiness,
     CalendarCheck2,
     CalendarDays,
-    FileBadge,
     FileText,
     Flag,
     FolderKanban,
@@ -40,11 +43,9 @@
     Save,
     Tags,
     Trash2,
-    UsersRound,
     X,
   } from "@lucide/svelte";
   import { onMount, tick } from "svelte";
-  import { recordPageHref } from "$lib/records/record-page";
   import type { EntityRecord } from "./types";
 
   type ProjectFormMode = "create" | "view" | "edit";
@@ -54,32 +55,17 @@
     name: string;
   };
 
-  type ProjectInstallmentDraft = {
-    number: number;
-    dueDate: string;
-    amount: string;
-    status: string;
-  };
-
   type ProjectFormState = {
     nome: string;
+    contractId: string;
+    contractName: string;
     negocioId: string;
     negocio: string;
-    businessWorkspaceId: string;
-    cliente: string;
     status: string;
     dataInicio: string;
     dataFim: string;
     briefing: string;
     tasks: ProjectTaskDraft[];
-    tipoContrato: string;
-    valor: string;
-    primeiroVencimento: string;
-    parcelas: string;
-    installments: ProjectInstallmentDraft[];
-    paymentMethod: string;
-    paymentTerms: string;
-    financeNotes: string;
   };
 
   let {
@@ -105,31 +91,25 @@
   let formNode: HTMLFormElement | undefined;
   let startDateInput: HTMLInputElement | undefined;
   let endDateInput: HTMLInputElement | undefined;
-  let paymentDateInput: HTMLInputElement | undefined;
   let sourceServiceId = $state("");
   let availableServices = $state<Service[]>([]);
   let currentServiceRelations = $state<ProjectServiceSummary[]>([]);
-  let selectedResponsibles = $state<GlobalSelectorItem[]>([]);
   let selectedTags = $state<GlobalSelectorItem[]>([]);
-  let currentResponsibleRelations = $state<ProjectResponsible[]>([]);
   let currentTagRelations = $state<ProjectTag[]>([]);
   let projectOptions = $state<ProjectOptions>();
-  let optionsLoading = $state(true);
+  let optionsWorkspaceId = $state("");
+  let optionsLoading = $state(false);
   let optionsError = $state("");
   let optionsRequest: AbortController | undefined;
-  let installmentsTouched = $state(false);
-  let firstDueDateTouched = $state(false);
-  let applyingSourceDefaults = false;
   let validationError = $state("");
-  let installmentError = $state("");
-  let businesses = $state<EntityRecord[]>([]);
-  let businessesLoading = $state(true);
-  let businessesError = $state("");
-  let businessesRequest: AbortController | undefined;
+  let workspaces = $state<Workspace[]>([]);
+  let contracts = $state<Contract[]>([]);
+  let contractsLoading = $state(true);
+  let contractsError = $state("");
+  let contractsRequest: AbortController | undefined;
   let projectTasksLoading = $state(false);
   let projectTasksError = $state("");
   let projectTasksRequest: AbortController | undefined;
-  let legacyBusiness: EntityRecord | undefined;
   let statusOptions = $state<{ key: string; label: string }[]>([]);
   let resolvedMode = $derived(mode ?? (record ? "edit" : "create"));
   let viewOnly = $derived(resolvedMode === "view");
@@ -147,6 +127,53 @@
   let modalTitle = $derived(viewOnly && record?.nome ? record.nome : title);
   let projectActive = $state(true);
   let visibilityUpdating = $state(false);
+
+  let form = $state<ProjectFormState>(projectFromRecord());
+  let workspaceNames = $derived(
+    new Map(workspaces.map((workspace) => [workspace.id, workspace.name])),
+  );
+  let selectedContract = $derived(
+    contracts.find(({ id }) => id === form.contractId),
+  );
+  let activeOptionsWorkspaceId = $derived(
+    resolvedMode === "create"
+      ? (selectedContract?.workspaceId ?? "")
+      : (record?.workspaceId ?? selectedContract?.workspaceId ?? ""),
+  );
+  let contractItems = $derived.by((): GlobalSelectorItem[] => {
+    const showWorkspace = workspaces.length > 1;
+    const items: GlobalSelectorItem[] = contracts.map((contract) => {
+      const workspaceName = showWorkspace
+        ? workspaceNames.get(contract.workspaceId)
+        : undefined;
+      return {
+        id: contract.id,
+        label: contract.name,
+        description: workspaceName
+          ? `${contract.business.name} · ${workspaceName}`
+          : contract.business.name,
+        updatedAt: contract.updatedAt,
+      };
+    });
+    if (
+      resolvedMode !== "create" &&
+      form.contractId &&
+      !items.some(({ id }) => id === form.contractId)
+    ) {
+      items.push({
+        id: form.contractId,
+        label: form.contractName || "Contrato vinculado",
+        description: form.negocio || undefined,
+      });
+    }
+    return items;
+  });
+  let sourceServiceItems = $derived(
+    sourceSelectorItems(availableServices, currentServiceRelations),
+  );
+  let tagItems = $derived(
+    selectorItemsForTags(projectOptions?.tags ?? [], currentTagRelations),
+  );
 
   function closeBeforePageNavigation(event: MouseEvent): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
@@ -169,27 +196,6 @@
       visibilityUpdating = false;
     }
   }
-  let form = $state<ProjectFormState>(projectFromRecord());
-  let businessItems = $derived(
-    businesses.map((business) => ({
-      id: business.id,
-      label: business.nome,
-      description: business.cliente || business.responsaveis || undefined,
-      updatedAt: business.updatedAt,
-    })),
-  );
-  let sourceServiceItems = $derived(
-    sourceSelectorItems(availableServices, currentServiceRelations),
-  );
-  let responsibleItems = $derived(
-    selectorItemsForResponsibles(
-      projectOptions?.members ?? [],
-      currentResponsibleRelations,
-    ),
-  );
-  let tagItems = $derived(
-    selectorItemsForTags(projectOptions?.tags ?? [], currentTagRelations),
-  );
 
   function applyProjectStatuses(
     settings: ReturnType<typeof currentSettings>,
@@ -221,22 +227,27 @@
     sourceServiceId =
       relations.sourceServiceId ?? relations.services.at(0)?.id ?? "";
     currentServiceRelations = relations.services;
-    currentResponsibleRelations = relations.responsibles;
     currentTagRelations = relations.tags;
-    selectedResponsibles = responsibleSelections(relations.responsibles);
     selectedTags = tagSelections(relations.tags);
-    legacyBusiness = legacyBusinessFromRecord(record, form);
-    businesses = legacyBusiness ? [legacyBusiness] : [];
-    if (legacyBusiness) form.negocioId = legacyBusiness.id;
-    void loadBusinesses();
+
+    workspaces = loadWorkspaces();
+    if (!workspaces.length) {
+      void refreshWorkspaceSnapshot()
+        .then((items) => {
+          workspaces = items;
+        })
+        .catch(() => undefined);
+    }
+
+    void loadContracts();
     void loadRelatedTasks();
-    void loadOptions();
+    if (resolvedMode !== "create" && record?.workspaceId) {
+      void loadOptions(record.workspaceId);
+    }
     applyProjectStatuses(currentSettings());
     void loadSettingsFromServer()
       .then(applyProjectStatuses)
       .catch(() => undefined);
-
-    refreshInstallments({ preserveManual: true });
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -249,7 +260,7 @@
     });
 
     return () => {
-      businessesRequest?.abort();
+      contractsRequest?.abort();
       optionsRequest?.abort();
       projectTasksRequest?.abort();
       document.body.style.overflow = previousOverflow;
@@ -268,6 +279,7 @@
     projectTasksError = "";
     try {
       const relatedTasks = await listAllTasks({
+        workspaceId: record.workspaceId || undefined,
         projectId: record.id,
         archived: "include",
         includeInactiveProjects: true,
@@ -352,27 +364,6 @@
     return items;
   }
 
-  function responsibleItem(
-    responsible: ProjectResponsible,
-  ): GlobalSelectorItem {
-    return {
-      id: responsible.userId,
-      label: responsible.name,
-      description: responsible.email,
-      avatarUrl: responsible.avatarUrl ?? undefined,
-    };
-  }
-
-  function selectorItemsForResponsibles(
-    members: ProjectResponsible[],
-    current: ProjectResponsible[],
-  ): GlobalSelectorItem[] {
-    return uniqueSelectorItems([
-      ...members.map(responsibleItem),
-      ...current.map(responsibleItem),
-    ]);
-  }
-
   function tagItem(tag: ProjectTag): GlobalSelectorItem {
     return {
       id: tag.id,
@@ -391,131 +382,68 @@
     ]);
   }
 
-  function responsibleSelections(
-    responsibles: ProjectResponsible[],
-  ): GlobalSelectorItem[] {
-    return responsibles.map(responsibleItem);
-  }
-
   function tagSelections(tags: ProjectTag[]): GlobalSelectorItem[] {
     return tags.map(tagItem);
   }
 
-  function legacyBusinessFromRecord(
-    source: EntityRecord | undefined,
-    state: ProjectFormState,
-  ): EntityRecord | undefined {
-    const storedId = state.negocioId.trim();
-    const storedName = state.negocio.trim();
-    if (!source || (!storedId && !storedName)) return undefined;
-
-    const selectorId =
-      storedId ||
-      `negocio-legado-${encodeURIComponent(normalizeText(storedName))}`;
-    return {
-      id: selectorId,
-      createdAt: source.createdAt,
-      updatedAt: source.updatedAt,
-      workspaceId: state.businessWorkspaceId,
-      nome: storedName || storedId || "Negócio legado",
-      cliente: state.cliente,
-      __legacyBusiness: "true",
-      __legacyBusinessId: storedId,
-      __legacyBusinessName: storedName,
-    };
-  }
-
-  function isLegacyBusiness(business: EntityRecord): boolean {
-    return business.__legacyBusiness === "true";
-  }
-
-  function storedBusinessId(business: EntityRecord): string {
-    return isLegacyBusiness(business)
-      ? business.__legacyBusinessId
-      : business.id;
-  }
-
-  function storedBusinessName(business: EntityRecord): string {
-    return isLegacyBusiness(business)
-      ? business.__legacyBusinessName
-      : business.nome;
-  }
-
-  function syncSelectedBusiness(business: EntityRecord): void {
-    form.negocioId = business.id;
-    form.negocio = storedBusinessName(business);
-    form.businessWorkspaceId = business.workspaceId;
-  }
-
-  async function loadBusinesses(): Promise<void> {
-    businessesRequest?.abort();
+  async function loadContracts(): Promise<void> {
+    contractsRequest?.abort();
     const request = new AbortController();
-    businessesRequest = request;
-    businessesLoading = true;
-    businessesError = "";
-
+    contractsRequest = request;
+    contractsLoading = true;
+    contractsError = "";
     try {
-      const apiBusinesses = await listAllActiveBusinesses({
+      contracts = await listAllActiveContracts({
         signal: request.signal,
       });
-      if (businessesRequest !== request) return;
-
-      const records = apiBusinesses.map(businessToEntityRecord);
-      if (
-        legacyBusiness &&
-        !records.some((business) => business.id === legacyBusiness?.id)
-      ) {
-        records.push(legacyBusiness);
+      if (contractsRequest !== request) return;
+      const selected = contracts.find(({ id }) => id === form.contractId);
+      if (selected) {
+        form.contractName = selected.name;
+        form.negocioId = selected.business.id;
+        form.negocio = selected.business.name;
+        if (resolvedMode === "create") {
+          void loadOptions(selected.workspaceId);
+        }
+      } else if (resolvedMode === "create" && form.contractId) {
+        form.contractId = "";
+        form.contractName = "";
       }
-      businesses = records;
-
-      const selected = businesses.find(
-        (business) => business.id === form.negocioId,
-      );
-      if (selected) syncSelectedBusiness(selected);
-      else {
-        form.negocioId = "";
-        form.negocio = "";
-        form.businessWorkspaceId = "";
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") return;
-      if (businessesRequest !== request) return;
-      businessesError =
-        error instanceof BusinessApiError
-          ? error.message
-          : "Não foi possível carregar os negócios. Tente novamente.";
+    } catch (cause) {
+      if (cause instanceof Error && cause.name === "AbortError") return;
+      if (contractsRequest !== request) return;
+      contractsError = "Não foi possível carregar os contratos.";
     } finally {
-      if (businessesRequest === request) businessesLoading = false;
+      if (contractsRequest === request) contractsLoading = false;
     }
   }
 
-  async function loadOptions(): Promise<void> {
+  async function loadOptions(workspaceId: string): Promise<void> {
+    if (!workspaceId) return;
     optionsRequest?.abort();
     const request = new AbortController();
     optionsRequest = request;
+    optionsWorkspaceId = workspaceId;
     optionsLoading = true;
     optionsError = "";
 
     try {
-      const options = await getProjectOptions({ signal: request.signal });
+      const options = await getProjectOptions({
+        workspaceId,
+        signal: request.signal,
+      });
       if (optionsRequest !== request) return;
-      if (record?.workspaceId && record.workspaceId !== options.workspaceId) {
-        throw new ProjectApiError(
-          409,
-          "O workspace mudou durante o carregamento do projeto. Abra-o novamente.",
-        );
-      }
       projectOptions = options;
       availableServices = options.services;
-      const responsibles = selectorItemsForResponsibles(
-        options.members,
-        currentResponsibleRelations,
-      );
-      selectedResponsibles = selectedResponsibles.flatMap((selected) => {
-        const item = responsibles.find(({ id }) => id === selected.id);
-        return item ? [item] : [selected];
-      });
+      if (
+        resolvedMode === "create" &&
+        sourceServiceId &&
+        !options.services.some(
+          ({ id, archivedAt }) => id === sourceServiceId && !archivedAt,
+        )
+      ) {
+        sourceServiceId = "";
+      }
       const tags = selectorItemsForTags(options.tags, currentTagRelations);
       selectedTags = selectedTags.flatMap((selected) => {
         const item = tags.find(({ id }) => id === selected.id);
@@ -527,7 +455,7 @@
       optionsError =
         error instanceof ProjectApiError
           ? error.message
-          : "Não foi possível carregar serviços e responsáveis. Tente novamente.";
+          : "Não foi possível carregar serviços e tags. Tente novamente.";
     } finally {
       if (optionsRequest === request) optionsLoading = false;
     }
@@ -541,46 +469,6 @@
     return "";
   }
 
-  function parseInstallments(value: string): ProjectInstallmentDraft[] {
-    if (!value) return [];
-    try {
-      const parsed: unknown = JSON.parse(value);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.flatMap((item, index) => {
-        if (!item || typeof item !== "object") return [];
-        const installment = item as Record<string, unknown>;
-        const dueDate =
-          typeof installment.due_date === "string"
-            ? installment.due_date
-            : typeof installment.dueDate === "string"
-              ? installment.dueDate
-              : "";
-        const amount =
-          typeof installment.amount === "string"
-            ? installment.amount
-            : typeof installment.valor === "string"
-              ? installment.valor
-              : "";
-        return [
-          {
-            number:
-              typeof installment.number === "number"
-                ? Math.max(1, installment.number)
-                : index + 1,
-            dueDate: normalizeDate(dueDate) ?? "",
-            amount,
-            status:
-              typeof installment.status === "string" && installment.status
-                ? installment.status
-                : "pending",
-          },
-        ];
-      });
-    } catch {
-      return [];
-    }
-  }
-
   function displayDate(value: string): string {
     const raw = value.trim();
     const iso = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(raw);
@@ -590,68 +478,18 @@
     return raw.replaceAll(".", "/");
   }
 
-  function normalizeContractType(value: string): "Pontual" | "Recorrente" {
-    const normalized = normalizeText(value);
-    return normalized === "recorrente" || normalized === "mensal"
-      ? "Recorrente"
-      : "Pontual";
-  }
-
-  function formatDateInput(value: string): string {
-    const iso = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value.trim());
-    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
-    const digits = value.replace(/\D/gu, "").slice(0, 8);
-    if (digits.length <= 2) return digits;
-    if (digits.length <= 4) {
-      return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    }
-    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-  }
-
-  function handlePaymentDateInput(event: Event): void {
-    const input = event.currentTarget as HTMLInputElement;
-    const formatted = formatDateInput(input.value);
-    input.value = formatted;
-    form.primeiroVencimento = formatted;
-    paymentDateInput?.setCustomValidity("");
-  }
-
   function projectFromRecord(record?: EntityRecord): ProjectFormState {
-    const contractType = normalizeContractType(
-      first(record, "tipoContrato", "contract_type"),
-    );
     return {
       nome: first(record, "nome", "name"),
+      contractId: first(record, "contractId"),
+      contractName: first(record, "contractName"),
       negocioId: first(record, "negocioId", "business_id"),
       negocio: first(record, "negocio", "business_name", "cliente"),
-      businessWorkspaceId: first(
-        record,
-        "businessWorkspaceId",
-        "business_workspace_id",
-        "workspaceId",
-      ),
-      cliente: first(record, "cliente"),
       status: first(record, "status") || "planejamento",
       dataInicio: displayDate(first(record, "dataInicio", "start_date")),
       dataFim: displayDate(first(record, "dataFim", "delivery_date", "prazo")),
       briefing: first(record, "briefing", "description", "descricao"),
       tasks: [],
-      tipoContrato: contractType,
-      valor: first(record, "valor", "amount"),
-      primeiroVencimento: displayDate(
-        first(record, "primeiroVencimento", "payment_date"),
-      ),
-      parcelas:
-        contractType === "Pontual"
-          ? first(record, "parcelas", "installments_count") ||
-            (record ? "1" : "")
-          : "1",
-      installments: parseInstallments(
-        first(record, "installments", "parcelasDetalhadas"),
-      ),
-      paymentMethod: first(record, "paymentMethod", "payment_method"),
-      paymentTerms: first(record, "paymentTerms", "payment_terms"),
-      financeNotes: first(record, "financeNotes", "finance_notes"),
     };
   }
 
@@ -672,8 +510,6 @@
   }
 
   function applySourceServiceDefaults(service: Service): void {
-    applyingSourceDefaults = true;
-    firstDueDateTouched = false;
     if (!form.dataInicio) {
       form.dataInicio = displayDate(new Date().toISOString().slice(0, 10));
     }
@@ -685,19 +521,7 @@
     form.status = service.defaultStatus;
     form.dataFim = displayDate(endDate);
     form.briefing = service.defaultBriefing;
-    form.tipoContrato =
-      service.defaultContractType === "recurring" ? "Recorrente" : "Pontual";
-    form.valor = centsToMoney(service.defaultAmountCents);
-    form.parcelas = String(Math.max(1, service.defaultInstallmentCount));
-    form.paymentMethod = service.defaultPaymentMethod;
-    form.paymentTerms = service.defaultPaymentTerms;
-    form.financeNotes = service.defaultFinanceNotes;
     selectedTags = service.tags.map(tagItem);
-    selectedResponsibles = service.responsibles.map(responsibleItem);
-    syncSourceFirstDueDate();
-    refreshInstallments();
-    installmentsTouched = false;
-    applyingSourceDefaults = false;
   }
 
   function refreshSourceEndDate(): void {
@@ -712,21 +536,6 @@
         addDays(startDate, service.defaultDurationDays),
       );
     }
-    syncSourceFirstDueDate();
-    refreshInstallments();
-  }
-
-  function sourceFirstDueDate(startDate: string): string {
-    const amountCents = Math.max(0, moneyToCents(form.valor) ?? 0);
-    return form.tipoContrato === "Pontual" && amountCents > 0 ? startDate : "";
-  }
-
-  function syncSourceFirstDueDate(): void {
-    if (resolvedMode !== "create" || !sourceServiceId || firstDueDateTouched) {
-      return;
-    }
-    const startDate = normalizeDate(form.dataInicio) ?? "";
-    form.primeiroVencimento = displayDate(sourceFirstDueDate(startDate));
   }
 
   function sameValues(left: string[], right: string[]): boolean {
@@ -764,48 +573,32 @@
     ) {
       overrides.push("tagLabels");
     }
-    if (
-      !sameValues(
-        selectedResponsibles.map(({ id }) => id),
-        source.responsibles.map(({ userId }) => userId),
-      )
-    ) {
-      overrides.push("responsibleUserIds");
-    }
-    const contractType =
-      form.tipoContrato === "Recorrente" ? "recurring" : "one_off";
-    if (contractType !== source.defaultContractType) {
-      overrides.push("contractType");
-    }
-    if ((moneyToCents(form.valor) ?? 0) !== source.defaultAmountCents) {
-      overrides.push("amountCents");
-    }
-    const expectedFirstDueDate = sourceFirstDueDate(startDate ?? "");
-    if (
-      (normalizeDate(form.primeiroVencimento) ?? "") !== expectedFirstDueDate
-    ) {
-      overrides.push("firstDueDate");
-    }
-    if (form.paymentMethod.trim() !== source.defaultPaymentMethod.trim()) {
-      overrides.push("paymentMethod");
-    }
-    if (form.paymentTerms.trim() !== source.defaultPaymentTerms.trim()) {
-      overrides.push("paymentTerms");
-    }
-    if (form.financeNotes.trim() !== source.defaultFinanceNotes.trim()) {
-      overrides.push("financeNotes");
-    }
-    if (installmentsTouched) overrides.push("installments");
     return overrides;
   }
 
-  function selectBusiness(id: string): void {
-    const business = businesses.find((candidate) => candidate.id === id);
-    if (business) syncSelectedBusiness(business);
-    else {
+  function selectContract(id: string): void {
+    form.contractId = id;
+    const contract = contracts.find((item) => item.id === id);
+    if (contract) {
+      form.contractName = contract.name;
+      form.negocioId = contract.business.id;
+      form.negocio = contract.business.name;
+      if (contract.workspaceId !== optionsWorkspaceId) {
+        if (resolvedMode === "create") sourceServiceId = "";
+        availableServices = [];
+        projectOptions = undefined;
+        void loadOptions(contract.workspaceId);
+      }
+    } else {
+      form.contractName = "";
       form.negocioId = "";
       form.negocio = "";
-      form.businessWorkspaceId = "";
+      optionsWorkspaceId = "";
+      optionsError = "";
+      optionsLoading = false;
+      availableServices = [];
+      projectOptions = undefined;
+      if (resolvedMode === "create") sourceServiceId = "";
     }
   }
 
@@ -845,45 +638,6 @@
     return null;
   }
 
-  function moneyToCents(value: string): number | null {
-    const raw = value.trim().replace(/\s|R\$/giu, "");
-    if (!raw) return null;
-    const negative = raw.includes("-");
-    const cleaned = raw.replaceAll("-", "");
-    const decimalSeparator = Math.max(
-      cleaned.lastIndexOf(","),
-      cleaned.lastIndexOf("."),
-    );
-    let digits: string;
-    if (
-      decimalSeparator >= 0 &&
-      cleaned.length - decimalSeparator - 1 >= 1 &&
-      cleaned.length - decimalSeparator - 1 <= 2
-    ) {
-      const integer =
-        cleaned.slice(0, decimalSeparator).replace(/\D/gu, "") || "0";
-      const decimal = cleaned
-        .slice(decimalSeparator + 1)
-        .replace(/\D/gu, "")
-        .padEnd(2, "0")
-        .slice(0, 2);
-      digits = `${integer}${decimal}`;
-    } else {
-      digits = `${cleaned.replace(/\D/gu, "")}00`;
-    }
-    if (!/^\d+$/u.test(digits)) return null;
-    const cents = Number(digits);
-    if (!Number.isFinite(cents)) return null;
-    return negative ? -cents : cents;
-  }
-
-  function centsToMoney(cents: number): string {
-    const safeCents = Math.round(Number.isFinite(cents) ? cents : 0);
-    const sign = safeCents < 0 ? "-" : "";
-    const absolute = Math.abs(safeCents);
-    return `${sign}${Math.floor(absolute / 100).toLocaleString("pt-BR")},${String(absolute % 100).padStart(2, "0")}`;
-  }
-
   function addDays(dateValue: string, days: number): string {
     const normalized = normalizeDate(dateValue);
     if (!normalized) return "";
@@ -893,274 +647,20 @@
     return date.toISOString().slice(0, 10);
   }
 
-  function addCalendarMonths(dateValue: string, months: number): string {
-    const normalized = normalizeDate(dateValue);
-    if (!normalized) return "";
-    const [year, month, day] = normalized.split("-").map(Number);
-    const first = new Date(Date.UTC(year, month - 1 + months, 1));
-    const lastDay = new Date(
-      Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0),
-    ).getUTCDate();
-    first.setUTCDate(Math.min(day, lastDay));
-    return first.toISOString().slice(0, 10);
-  }
-
-  function daysBetween(startValue: string, endValue: string): number | null {
-    const start = normalizeDate(startValue);
-    const end = normalizeDate(endValue);
-    if (!start || !end) return null;
-    const startTime = Date.parse(`${start}T00:00:00Z`);
-    const endTime = Date.parse(`${end}T00:00:00Z`);
-    return Math.round((endTime - startTime) / 86_400_000);
-  }
-
-  function splitAmount(totalCents: number, count: number): number[] {
-    if (count <= 0) return [];
-    const base = Math.trunc(totalCents / count);
-    const values = Array.from({ length: count }, () => base);
-    values[count - 1] += totalCents - base * count;
-    return values;
-  }
-
-  function buildAutoInstallments(
-    count: number,
-    firstDueDate: string,
-    totalCents: number,
-  ): ProjectInstallmentDraft[] {
-    return splitAmount(totalCents, count).map((amount, index) => ({
-      number: index + 1,
-      dueDate: addCalendarMonths(firstDueDate, index),
-      amount: centsToMoney(amount),
-      status: form.installments[index]?.status || "pending",
-    }));
-  }
-
-  function installmentCount(): number {
-    return Math.max(1, Math.min(99, Number.parseInt(form.parcelas, 10) || 1));
-  }
-
-  function updateContractType(value: string): void {
-    const wasRecurring = form.tipoContrato === "Recorrente";
-    form.tipoContrato = normalizeContractType(value);
-    if (form.tipoContrato === "Recorrente") form.parcelas = "1";
-    else if (wasRecurring) form.parcelas = "";
-    syncSourceFirstDueDate();
-    refreshInstallments();
-  }
-
-  function updateProjectAmount(): void {
-    syncSourceFirstDueDate();
-    refreshInstallments();
-  }
-
-  function updateInstallmentCount(value: string): void {
-    if (!applyingSourceDefaults) installmentsTouched = true;
-    form.parcelas = value;
-    const count = Number.parseInt(value, 10);
-    if (Number.isFinite(count) && count >= 1) refreshInstallments();
-    else form.installments = [];
-  }
-
-  function refreshInstallments(
-    options: { preserveManual?: boolean } = {},
-  ): void {
-    const count = installmentCount();
-    if (form.parcelas.trim()) form.parcelas = String(count);
-    const totalCents = Math.max(0, moneyToCents(form.valor) ?? 0);
-    const firstDueDate = normalizeDate(form.primeiroVencimento) ?? "";
-    if (count === 1) {
-      form.installments =
-        totalCents === 0 && !firstDueDate
-          ? []
-          : buildAutoInstallments(1, firstDueDate, totalCents);
-      validationError = "";
-      installmentError = "";
-      return;
-    }
-    if (options.preserveManual && form.installments.length === count) {
-      form.installments = form.installments.map((installment, index) => ({
-        ...installment,
-        number: index + 1,
-      }));
-    } else {
-      form.installments = buildAutoInstallments(
-        count,
-        firstDueDate,
-        totalCents,
-      );
-    }
-    validationError = "";
-    installmentError = "";
-  }
-
-  function updateFirstDueDate(value: string): void {
-    if (!applyingSourceDefaults) firstDueDateTouched = true;
-    const normalized = normalizeDate(value);
-    const count = installmentCount();
-    if (!normalized) {
-      validationError = "";
-      installmentError = "";
-      return;
-    }
-    if (count <= 1 || form.installments.length !== count) {
-      refreshInstallments();
-      return;
-    }
-
-    form.installments = form.installments.map((installment, index) => ({
-      ...installment,
-      dueDate: addDays(normalized, index * 30),
-    }));
-    validationError = "";
-    installmentError = "";
-  }
-
-  function updateInstallmentDate(index: number, value: string): void {
-    if (!form.installments[index]) return;
-    if (!applyingSourceDefaults) installmentsTouched = true;
-    const normalized = normalizeDate(value);
-    const items = form.installments.map((installment) => ({ ...installment }));
-    items[index].dueDate = value;
-
-    if (normalized) {
-      if (index === 0) {
-        form.primeiroVencimento = displayDate(normalized);
-        items.forEach((installment, itemIndex) => {
-          installment.dueDate = addCalendarMonths(normalized, itemIndex);
-        });
-      } else {
-        const interval = daysBetween(items[index - 1].dueDate, normalized);
-        if (interval !== null) {
-          items.slice(index + 1).forEach((installment, offset) => {
-            installment.dueDate = addDays(normalized, interval * (offset + 1));
-          });
-        }
-      }
-    }
-
-    form.installments = items;
-    validationError = "";
-    installmentError = "";
-  }
-
-  function rebalanceInstallments(index: number, value: string): void {
-    if (!applyingSourceDefaults) installmentsTouched = true;
-    const totalCents = Math.max(0, moneyToCents(form.valor) ?? 0);
-    const items = form.installments.map((installment) => ({ ...installment }));
-    if (!items[index]) return;
-    const previousTotal = items
-      .slice(0, index)
-      .reduce(
-        (sum, installment) =>
-          sum + Math.max(0, moneyToCents(installment.amount) ?? 0),
-        0,
-      );
-    const amount = Math.max(
-      0,
-      Math.min(totalCents - previousTotal, moneyToCents(value) ?? 0),
-    );
-    items[index].amount = centsToMoney(amount);
-    const remainingIndexes = items.length - index - 1;
-    const remaining = Math.max(0, totalCents - previousTotal - amount);
-    splitAmount(remaining, remainingIndexes).forEach((part, offset) => {
-      items[index + offset + 1].amount = centsToMoney(part);
-    });
-    form.installments = items;
-    validationError = "";
-    installmentError = "";
-  }
-
-  function serializeInstallments(): string {
-    return JSON.stringify(
-      form.installments.map((installment, index) => ({
-        number: index + 1,
-        due_date: normalizeDate(installment.dueDate) ?? "",
-        amount: centsToMoney(moneyToCents(installment.amount) ?? 0),
-        status: installment.status,
-      })),
-    );
-  }
-
-  function validateInstallments(count: number, totalCents: number): boolean {
-    if (totalCents < 0) {
-      validationError = "O valor do projeto não pode ser negativo.";
-      installmentError = validationError;
-      return false;
-    }
-    if (form.tipoContrato !== "Pontual") return true;
-    if (totalCents <= 0) {
-      if (count <= 1) return true;
-      validationError = "Informe um valor total válido para gerar as parcelas.";
-      installmentError = validationError;
-      return false;
-    }
-    if (!normalizeDate(form.primeiroVencimento)) {
-      validationError = "Informe o primeiro vencimento para gerar as parcelas.";
-      installmentError = validationError;
-      paymentDateInput?.focus();
-      return false;
-    }
-    if (
-      form.installments.length !== count ||
-      form.installments.some(
-        (installment) => !normalizeDate(installment.dueDate),
-      )
-    ) {
-      validationError = "Todas as parcelas precisam ter vencimento.";
-      installmentError = validationError;
-      return false;
-    }
-    const installmentValues = form.installments.map((installment) =>
-      moneyToCents(installment.amount),
-    );
-    if (installmentValues.some((amount) => amount === null || amount < 0)) {
-      validationError = "Todas as parcelas precisam ter um valor válido.";
-      installmentError = validationError;
-      return false;
-    }
-    const sum = installmentValues.reduce<number>(
-      (total, amount) => total + (amount ?? 0),
-      0,
-    );
-    if (sum !== totalCents) {
-      validationError =
-        "A soma das parcelas precisa ser igual ao valor total do projeto.";
-      installmentError = validationError;
-      return false;
-    }
-    installmentError = "";
-    return true;
-  }
-
   function submit(event: SubmitEvent): void {
     event.preventDefault();
     if (viewOnly || !formNode) return;
     validationError = "";
-    installmentError = "";
+
+    const contract = contracts.find(({ id }) => id === form.contractId);
+    if (resolvedMode === "create" && !contract) {
+      validationError = "Selecione um contrato válido.";
+      return;
+    }
     if (optionsLoading || optionsError) {
       validationError = optionsError || "Aguarde o carregamento do catálogo.";
       return;
     }
-    const business = businesses.find(
-      (candidate) => candidate.id === form.negocioId,
-    );
-    const businessInput = formNode.querySelector<HTMLInputElement>(
-      'input[aria-label="Negócio"]',
-    );
-    businessInput?.setCustomValidity("");
-    if (
-      !business ||
-      (resolvedMode === "create" && isLegacyBusiness(business))
-    ) {
-      const message = "Selecione um negócio válido.";
-      validationError = message;
-      businessInput?.setCustomValidity(message);
-      businessInput?.reportValidity();
-      businessInput?.focus();
-      return;
-    }
-
-    const businessWorkspaceId = business.workspaceId;
 
     const selectedSource = sourceServiceId
       ? sourceServiceItems.find(({ id }) => id === sourceServiceId)
@@ -1177,10 +677,6 @@
       return;
     }
     const serviceIds = sourceServiceId ? [sourceServiceId] : [];
-    if (!selectedResponsibles.length) {
-      validationError = "Selecione ao menos uma pessoa responsável.";
-      return;
-    }
 
     const startDate = validateDate(
       startDateInput,
@@ -1190,20 +686,6 @@
     if (startDate === null) return;
     const endDate = validateDate(endDateInput, form.dataFim, "Data de fim");
     if (endDate === null) return;
-    const paymentDate = validateDate(
-      paymentDateInput,
-      form.primeiroVencimento,
-      "Primeiro vencimento",
-    );
-    if (paymentDate === null) return;
-
-    const installmentCount = Math.max(
-      1,
-      Math.min(99, Number.parseInt(form.parcelas, 10) || 1),
-    );
-    form.parcelas = String(installmentCount);
-    const totalCents = moneyToCents(form.valor) ?? 0;
-    if (!validateInstallments(installmentCount, totalCents)) return;
 
     if (!formNode.reportValidity()) return;
 
@@ -1211,13 +693,11 @@
       startDate ||
       (resolvedMode === "create" ? new Date().toISOString().slice(0, 10) : "");
     const selectedServiceLabels = selectedSource ? [selectedSource.label] : [];
-    const installmentsJson = serializeInstallments();
-    const businessId = storedBusinessId(business);
-    const businessName = storedBusinessName(business);
-    const responsibleNames = selectedResponsibles.map(({ label }) => label);
+    const contractId = contract?.id ?? form.contractId;
+    const contractName = contract?.name ?? form.contractName;
+    const businessId = contract?.business.id ?? form.negocioId;
+    const businessName = contract?.business.name ?? form.negocio;
     const tagLabels = selectedTags.map(({ label }) => label);
-    const contractType =
-      form.tipoContrato === "Recorrente" ? "recurring" : "one_off";
 
     const values = {
       nome: form.nome.trim(),
@@ -1227,17 +707,12 @@
       serviceIds: JSON.stringify(serviceIds),
       sourceServiceId,
       sourceOverrideFields: JSON.stringify(sourceOverrideFields()),
+      contractId,
+      contractName,
       negocioId: businessId,
       business_id: businessId,
       negocio: businessName,
       business_name: businessName,
-      cliente: business.cliente || form.cliente || businessName,
-      ...(businessWorkspaceId
-        ? {
-            businessWorkspaceId,
-            business_workspace_id: businessWorkspaceId,
-          }
-        : {}),
       status: form.status,
       dataInicio: savedStartDate,
       start_date: savedStartDate,
@@ -1249,26 +724,7 @@
       descricao: form.briefing.trim(),
       tags: tagLabels.join(", "),
       tagLabels: JSON.stringify(tagLabels),
-      responsaveis: responsibleNames.join(", "),
-      responsavel: responsibleNames.join(", "),
-      responsibleUserIds: JSON.stringify(
-        selectedResponsibles.map(({ id }) => id),
-      ),
-      tipoContrato: form.tipoContrato,
-      contract_type: contractType,
-      valor: form.valor.trim(),
-      amount: form.valor.trim(),
-      amountCents: String(totalCents),
-      primeiroVencimento: paymentDate,
-      payment_date: paymentDate,
-      parcelas: form.parcelas,
-      installments_count: form.parcelas,
-      installments: installmentsJson,
-      parcelasDetalhadas: installmentsJson,
-      paymentMethod: form.paymentMethod.trim(),
-      paymentTerms: form.paymentTerms.trim(),
-      financeNotes: form.financeNotes.trim(),
-      special_condition: installmentCount > 1 ? "1" : "0",
+      responsibleUserIds: "[]",
       is_institutional: "0",
     };
     const addTaskAfterSave =
@@ -1337,37 +793,6 @@
         <section class="section" aria-labelledby="project-about-title">
           <h3 id="project-about-title">Sobre</h3>
           <div class="about-grid">
-            <div class="field full service-field">
-              <GlobalSelector
-                items={sourceServiceItems}
-                bind:value={sourceServiceId}
-                presentation="search"
-                selection="single"
-                label="Serviço (opcional)"
-                placeholder="Selecione um serviço para usar como modelo"
-                emptyMessage="Nenhum serviço disponível."
-                icon={Tags}
-                controlIcon={Tags}
-                disabled={viewOnly ||
-                  resolvedMode !== "create" ||
-                  optionsLoading ||
-                  Boolean(optionsError)}
-                onchange={selectSourceService}
-              />
-              {#if optionsLoading}
-                <p class="businesses-state" role="status">
-                  Carregando serviços, responsáveis e tags…
-                </p>
-              {:else if optionsError}
-                <div class="businesses-error" role="alert">
-                  <span>{optionsError}</span>
-                  <button type="button" onclick={() => void loadOptions()}>
-                    Tentar novamente
-                  </button>
-                </div>
-              {/if}
-            </div>
-
             <div class="field full">
               <div class="control">
                 <span class="control-icon" aria-hidden="true">
@@ -1387,53 +812,76 @@
 
             <div class="field full">
               <GlobalSelector
-                items={businessItems}
-                bind:value={form.negocioId}
+                items={contractItems}
+                bind:value={form.contractId}
                 presentation="search"
                 selection="single"
-                label="Negócio"
-                placeholder={businessesLoading
-                  ? "Carregando negócios..."
-                  : "Selecione o negócio"}
-                emptyMessage="Nenhum negócio encontrado."
+                label="Contrato"
+                placeholder={contractsLoading
+                  ? "Carregando contratos..."
+                  : "Selecione o contrato"}
+                emptyMessage="Nenhum contrato encontrado."
                 icon={BriefcaseBusiness}
                 controlIcon={BriefcaseBusiness}
-                required
+                required={resolvedMode === "create"}
                 disabled={viewOnly ||
-                  businessesLoading ||
-                  Boolean(businessesError)}
-                onchange={selectBusiness}
+                  resolvedMode !== "create" ||
+                  contractsLoading ||
+                  Boolean(contractsError)}
+                onchange={selectContract}
               />
-              {#if businessesLoading}
-                <p class="businesses-state" aria-live="polite">
-                  Carregando negócios do workspace ativo...
+              {#if contractsLoading}
+                <p class="catalog-state" aria-live="polite">
+                  Carregando contratos...
                 </p>
-              {:else if businessesError}
-                <div class="businesses-error" role="alert">
-                  <span>{businessesError}</span>
-                  <button type="button" onclick={() => void loadBusinesses()}>
+              {:else if contractsError}
+                <div class="catalog-error" role="alert">
+                  <span>{contractsError}</span>
+                  <button type="button" onclick={() => void loadContracts()}>
                     Tentar novamente
                   </button>
                 </div>
               {/if}
             </div>
 
-            <div class="field full">
+            <div class="field full service-field">
               <GlobalSelector
-                items={responsibleItems}
-                bind:selected={selectedResponsibles}
+                items={sourceServiceItems}
+                bind:value={sourceServiceId}
                 presentation="search"
-                selection="multiple"
-                label="Pessoas responsáveis"
-                placeholder="Selecione ao menos uma pessoa responsável"
-                emptyMessage="Nenhum membro disponível neste workspace."
-                icon={UsersRound}
-                required
-                showInitials
-                showHelper
-                helperMessage="Você pode selecionar mais de uma pessoa."
-                disabled={viewOnly || optionsLoading || Boolean(optionsError)}
+                selection="single"
+                label="Serviço (opcional)"
+                placeholder={resolvedMode === "create" &&
+                !activeOptionsWorkspaceId
+                  ? "Selecione um contrato para escolher um serviço"
+                  : optionsLoading
+                    ? "Carregando serviços..."
+                    : "Selecione um serviço para usar como modelo"}
+                emptyMessage="Nenhum serviço disponível."
+                icon={Tags}
+                controlIcon={Tags}
+                disabled={viewOnly ||
+                  resolvedMode !== "create" ||
+                  !activeOptionsWorkspaceId ||
+                  optionsLoading ||
+                  Boolean(optionsError)}
+                onchange={selectSourceService}
               />
+              {#if optionsLoading}
+                <p class="catalog-state" role="status">
+                  Carregando serviços e tags…
+                </p>
+              {:else if optionsError}
+                <div class="catalog-error" role="alert">
+                  <span>{optionsError}</span>
+                  <button
+                    type="button"
+                    onclick={() => void loadOptions(activeOptionsWorkspaceId)}
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              {/if}
             </div>
 
             <div class="field">
@@ -1520,13 +968,19 @@
                 presentation="search"
                 selection="multiple"
                 label="Tags"
-                placeholder="Selecione as tags"
+                placeholder={resolvedMode === "create" &&
+                !activeOptionsWorkspaceId
+                  ? "Selecione um contrato para escolher as tags"
+                  : "Selecione as tags"}
                 emptyMessage="Nenhuma tag disponível neste workspace."
                 icon={Tags}
                 controlIcon={Tags}
                 showHelper
                 helperMessage="Você pode selecionar mais de uma tag."
-                disabled={viewOnly || optionsLoading || Boolean(optionsError)}
+                disabled={viewOnly ||
+                  !activeOptionsWorkspaceId ||
+                  optionsLoading ||
+                  Boolean(optionsError)}
               />
             </div>
           </div>
@@ -1585,206 +1039,6 @@
               {/each}
             {:else}
               <div class="task-empty">Sem tarefas neste projeto.</div>
-            {/if}
-          </div>
-        </section>
-
-        <section
-          class="section contract-section"
-          aria-labelledby="project-contract-title"
-        >
-          <h3 id="project-contract-title">Contrato</h3>
-          <div
-            class="contract-grid"
-            class:recurring={form.tipoContrato === "Recorrente"}
-          >
-            <div class="contract-type">
-              <div class="control">
-                <span class="control-icon" aria-hidden="true">
-                  <FileBadge size={15} strokeWidth={1.8} />
-                </span>
-                <select
-                  name="tipoContrato"
-                  disabled={viewOnly}
-                  aria-label="Tipo de contratação"
-                  bind:value={form.tipoContrato}
-                  onchange={(event) =>
-                    updateContractType(event.currentTarget.value)}
-                >
-                  <option value="Pontual">Pontual</option>
-                  <option value="Recorrente">Recorrente</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="contract-value">
-              <div class="control prefix-control">
-                <span class="prefix" aria-hidden="true">R$</span>
-                <input
-                  name="valor"
-                  maxlength="40"
-                  inputmode="decimal"
-                  disabled={viewOnly}
-                  aria-label="Valor"
-                  placeholder="Valor"
-                  bind:value={form.valor}
-                  onchange={updateProjectAmount}
-                />
-              </div>
-            </div>
-
-            <div class="contract-date">
-              <div class="control">
-                <span class="control-icon" aria-hidden="true">
-                  <CalendarDays size={15} strokeWidth={1.8} />
-                </span>
-                <input
-                  bind:this={paymentDateInput}
-                  name="primeiroVencimento"
-                  inputmode="numeric"
-                  autocomplete="off"
-                  maxlength="10"
-                  disabled={viewOnly}
-                  aria-label="Primeiro vencimento"
-                  placeholder="dd/mm/aaaa"
-                  bind:value={form.primeiroVencimento}
-                  oninput={handlePaymentDateInput}
-                  onchange={(event) =>
-                    updateFirstDueDate(event.currentTarget.value)}
-                />
-              </div>
-            </div>
-
-            {#if form.tipoContrato === "Pontual"}
-              <div class="contract-installments">
-                <div class="control prefix-control">
-                  <span class="prefix" aria-hidden="true">#</span>
-                  <input
-                    name="parcelas"
-                    type="number"
-                    min="1"
-                    max="99"
-                    step="1"
-                    disabled={viewOnly}
-                    aria-label="Parcelas"
-                    placeholder="Parcelas"
-                    bind:value={form.parcelas}
-                    oninput={(event) =>
-                      updateInstallmentCount(event.currentTarget.value)}
-                  />
-                </div>
-              </div>
-            {/if}
-
-            <div class="payment-method">
-              <div class="control">
-                <span class="control-icon" aria-hidden="true">
-                  <FileBadge size={15} strokeWidth={1.8} />
-                </span>
-                <input
-                  name="paymentMethod"
-                  maxlength="120"
-                  disabled={viewOnly}
-                  aria-label="Forma de pagamento"
-                  placeholder="Forma de pagamento"
-                  bind:value={form.paymentMethod}
-                />
-              </div>
-            </div>
-
-            <div class="payment-terms">
-              <div class="control">
-                <span class="control-icon" aria-hidden="true">
-                  <FileText size={15} strokeWidth={1.8} />
-                </span>
-                <input
-                  name="paymentTerms"
-                  maxlength="240"
-                  disabled={viewOnly}
-                  aria-label="Condições de pagamento"
-                  placeholder="Condições de pagamento"
-                  bind:value={form.paymentTerms}
-                />
-              </div>
-            </div>
-
-            <div class="finance-notes">
-              <div class="control textarea-control">
-                <span class="control-icon" aria-hidden="true">
-                  <FileText size={15} strokeWidth={1.8} />
-                </span>
-                <textarea
-                  name="financeNotes"
-                  rows="3"
-                  maxlength="1200"
-                  disabled={viewOnly}
-                  aria-label="Observações financeiras"
-                  placeholder="Observações financeiras"
-                  bind:value={form.financeNotes}></textarea>
-              </div>
-            </div>
-
-            {#if form.tipoContrato === "Pontual" && installmentCount() > 1}
-              <div class="installments-panel">
-                <div class="installments-head">
-                  <strong>Plano de parcelamento</strong>
-                  <span>{installmentCount()} parcelas</span>
-                </div>
-
-                {#if installmentError}
-                  <div class="installments-alert" role="alert">
-                    {installmentError}
-                  </div>
-                {/if}
-
-                <div class="installments-table-wrap">
-                  <table class="installments-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Parcela</th>
-                        <th scope="col">Vencimento</th>
-                        <th scope="col">Valor</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each form.installments as installment, index (installment.number)}
-                        <tr>
-                          <th scope="row">{index + 1}</th>
-                          <td>
-                            <input
-                              type="date"
-                              disabled={viewOnly}
-                              aria-label={`Vencimento da parcela ${index + 1}`}
-                              value={installment.dueDate}
-                              onchange={(event) =>
-                                updateInstallmentDate(
-                                  index,
-                                  event.currentTarget.value,
-                                )}
-                            />
-                          </td>
-                          <td>
-                            <div class="installment-value">
-                              <span aria-hidden="true">R$</span>
-                              <input
-                                disabled={viewOnly}
-                                inputmode="decimal"
-                                aria-label={`Valor da parcela ${index + 1}`}
-                                value={installment.amount}
-                                onblur={(event) =>
-                                  rebalanceInstallments(
-                                    index,
-                                    event.currentTarget.value,
-                                  )}
-                              />
-                            </div>
-                          </td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             {/if}
           </div>
         </section>
@@ -1890,7 +1144,7 @@
     animation: rise var(--motion-base) ease-out;
   }
 
-  header {
+  .dialog > header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1910,11 +1164,13 @@
   h2 {
     font-size: var(--text-xl);
   }
+
   .header-actions {
     display: flex;
     align-items: center;
     gap: 10px;
   }
+
   .project-visibility-toggle {
     display: inline-flex;
     min-height: 32px;
@@ -1930,6 +1186,7 @@
     font-weight: 700;
     cursor: pointer;
   }
+
   .project-visibility-toggle i {
     display: block;
     width: 18px;
@@ -1940,6 +1197,7 @@
       transform var(--motion-fast),
       background var(--motion-fast);
   }
+
   .project-visibility-toggle.active {
     border-color: color-mix(
       in srgb,
@@ -1949,16 +1207,20 @@
     color: #177342;
     background: #eaf8ef;
   }
+
   .project-visibility-toggle.active i {
     background: #16a34a;
   }
+
   .project-visibility-toggle:disabled {
     opacity: 0.58;
     cursor: wait;
   }
+
   .record-page-link {
     color: inherit;
   }
+
   .record-page-link:hover,
   .record-page-link:focus-visible {
     color: var(--brand-600);
@@ -2009,13 +1271,13 @@
     font-size: var(--text-sm);
   }
 
-  .businesses-state {
+  .catalog-state {
     margin: 7px 4px 0;
     color: var(--muted);
     font-size: var(--text-xs);
   }
 
-  .businesses-error {
+  .catalog-error {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2029,7 +1291,7 @@
     font-size: var(--text-xs);
   }
 
-  .businesses-error button {
+  .catalog-error button {
     flex: 0 0 auto;
     min-height: 30px;
     padding: 5px 9px;
@@ -2056,8 +1318,7 @@
     gap: 12px;
   }
 
-  .field,
-  .contract-grid > div {
+  .field {
     min-width: 0;
   }
 
@@ -2152,13 +1413,13 @@
 
   .add-task {
     display: inline-flex;
-    min-height: 56px;
+    min-height: 38px;
     align-items: center;
     justify-content: center;
     gap: 7px;
-    padding: 0 18px;
+    padding: 0 13px;
     border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-md);
     color: var(--ink-800);
     background: var(--panel);
     font: inherit;
@@ -2209,12 +1470,6 @@
     font-weight: 600;
   }
 
-  .add-task {
-    min-height: 38px;
-    padding-inline: 13px;
-    border-radius: var(--radius-md);
-  }
-
   .task-list {
     display: grid;
     gap: 8px;
@@ -2256,179 +1511,6 @@
   }
 
   .task-row input:disabled {
-    color: var(--text);
-    opacity: 1;
-    cursor: default;
-    -webkit-text-fill-color: var(--text);
-  }
-
-  .contract-section {
-    gap: 10px;
-    padding: 14px 16px 16px;
-  }
-
-  .contract-grid {
-    display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .contract-type {
-    grid-column: span 4;
-  }
-
-  .contract-value,
-  .contract-date {
-    grid-column: span 3;
-  }
-
-  .contract-installments {
-    grid-column: span 2;
-  }
-
-  .payment-method,
-  .payment-terms {
-    grid-column: span 6;
-  }
-
-  .finance-notes {
-    grid-column: 1 / -1;
-  }
-
-  .contract-grid.recurring .contract-type,
-  .contract-grid.recurring .contract-value,
-  .contract-grid.recurring .contract-date {
-    grid-column: span 4;
-  }
-
-  .prefix-control {
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px;
-  }
-
-  .prefix {
-    color: var(--muted);
-    font-size: var(--text-md);
-    font-weight: 600;
-  }
-
-  .installments-panel {
-    display: grid;
-    grid-column: 1 / -1;
-    gap: 12px;
-    padding: 14px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    background: var(--surface-soft);
-  }
-
-  .installments-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 14px;
-  }
-
-  .installments-head strong {
-    color: var(--ink-950);
-    font-size: var(--text-md);
-    font-weight: 600;
-  }
-
-  .installments-head > span {
-    flex: 0 0 auto;
-    padding: 5px 9px;
-    border: 1px solid color-mix(in srgb, var(--primary) 25%, var(--border));
-    border-radius: var(--radius-pill);
-    color: var(--brand-700);
-    background: var(--brand-50);
-    font-size: var(--text-sm);
-    font-weight: 600;
-  }
-
-  .installments-alert {
-    padding: 10px 12px;
-    border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
-    border-radius: var(--radius-lg);
-    color: var(--danger);
-    background: color-mix(in srgb, var(--danger) 6%, white);
-    font-size: var(--text-sm);
-    line-height: 1.45;
-  }
-
-  .installments-table-wrap {
-    overflow-x: auto;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    background: var(--panel);
-  }
-
-  .installments-table {
-    width: 100%;
-    min-width: 520px;
-    border-collapse: collapse;
-  }
-
-  .installments-table th,
-  .installments-table td {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border);
-    text-align: left;
-    vertical-align: middle;
-  }
-
-  .installments-table thead th {
-    color: var(--muted);
-    background: var(--surface-soft);
-    font-size: var(--text-xs);
-    font-weight: 600;
-  }
-
-  .installments-table tbody th {
-    width: 86px;
-    color: var(--ink-950);
-    font-size: var(--text-md);
-    font-weight: 600;
-  }
-
-  .installments-table tbody tr:last-child th,
-  .installments-table tbody tr:last-child td {
-    border-bottom: 0;
-  }
-
-  .installments-table td > input,
-  .installment-value {
-    width: 100%;
-    min-height: 46px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--panel);
-  }
-
-  .installments-table td > input {
-    padding: 0 12px;
-  }
-
-  .installment-value {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 8px;
-    padding: 0 12px;
-  }
-
-  .installment-value > span {
-    color: var(--muted);
-    font-size: var(--text-sm);
-    font-weight: 600;
-  }
-
-  .installments-table td > input:focus,
-  .installment-value:focus-within {
-    border-color: var(--primary);
-  }
-
-  .view-mode .installments-table input:disabled {
     color: var(--text);
     opacity: 1;
     cursor: default;
@@ -2557,7 +1639,7 @@
       border-radius: var(--radius-lg);
     }
 
-    header {
+    .dialog > header {
       padding: 14px 14px 12px;
     }
 
@@ -2572,18 +1654,6 @@
 
     .about-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .contract-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .contract-grid > div {
-      grid-column: auto;
-    }
-
-    .contract-grid > .installments-panel {
-      grid-column: 1 / -1;
     }
 
     .section-head {
@@ -2616,23 +1686,12 @@
   }
 
   @media (max-width: 520px) {
-    .about-grid,
-    .contract-grid {
+    .about-grid {
       grid-template-columns: minmax(0, 1fr);
     }
 
-    .field,
-    .contract-grid > div {
+    .field {
       grid-column: 1 / -1;
-    }
-
-    .installments-head {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .installments-head > span {
-      align-self: flex-start;
     }
 
     .task-actions {

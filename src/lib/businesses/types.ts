@@ -42,6 +42,13 @@ export type BusinessResponsibleUserOption = {
   current: boolean;
 };
 
+/** Opção enxuta de contato usada exclusivamente no seletor de responsáveis. */
+export type BusinessResponsibleContactOption = {
+  id: string;
+  name: string;
+  profession: string | null;
+};
+
 export type BusinessNote = {
   id: string;
   body: string;

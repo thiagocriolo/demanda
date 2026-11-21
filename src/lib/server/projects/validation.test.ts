@@ -11,34 +11,13 @@ import {
 function validProject() {
   return {
     name: "  Projeto   Aurora  ",
-    businessId: randomUUID(),
+    contractId: randomUUID(),
     serviceIds: [randomUUID()],
     status: " Em execução ",
     startDate: "2028-02-29",
     endDate: "2028-03-31",
     briefing: "Briefing",
     tagLabels: ["  Identidade   visual  ", "Site"],
-    responsibleUserIds: [randomUUID()],
-    contractType: "one_off",
-    amountCents: 10_001,
-    firstDueDate: "2028-03-05",
-    paymentMethod: "Pix",
-    paymentTerms: "Na entrega",
-    financeNotes: "",
-    installments: [
-      {
-        number: 1,
-        dueDate: "2028-03-05",
-        amountCents: 5_000,
-        status: "Pendente",
-      },
-      {
-        number: 2,
-        dueDate: "2028-04-05",
-        amountCents: 5_001,
-        status: "Pendente",
-      },
-    ],
   };
 }
 
@@ -63,17 +42,14 @@ function validService() {
 }
 
 describe("validacao de projetos e servicos", () => {
-  it("normaliza textos, chaves e tags", () => {
+  it("normaliza textos, chaves e tags sem exigir financeiro ou responsaveis", () => {
     const parsed = projectMutationSchema.parse(validProject());
     expect(parsed).toMatchObject({
       name: "Projeto Aurora",
       status: "em_execucao",
       tagLabels: ["Identidade visual", "Site"],
+      responsibleUserIds: [],
     });
-    expect(parsed.installments.map(({ status }) => status)).toEqual([
-      "pendente",
-      "pendente",
-    ]);
     expect(projectTagKey("  Identidade Vísual ")).toBe("identidade_visual");
   });
 
@@ -138,13 +114,13 @@ describe("validacao de projetos e servicos", () => {
     }
   });
 
-  it("exige responsaveis membros unicos", () => {
+  it("aceita projeto sem responsaveis e rejeita duplicatas", () => {
     expect(
       projectMutationSchema.safeParse({
         ...validProject(),
         responsibleUserIds: [],
       }).success,
-    ).toBe(false);
+    ).toBe(true);
     const userId = randomUUID();
     expect(
       projectMutationSchema.safeParse({
@@ -154,38 +130,12 @@ describe("validacao de projetos e servicos", () => {
     ).toBe(false);
   });
 
-  it("valida ordem, vencimentos e soma das parcelas", () => {
-    const base = validProject();
-    const mutations = [
-      { installments: [{ ...base.installments[0], number: 2 }] },
-      {
-        installments: [
-          base.installments[0],
-          { ...base.installments[1], dueDate: "2028-03-01" },
-        ],
-      },
-      {
-        installments: [
-          base.installments[0],
-          { ...base.installments[1], amountCents: 5_000 },
-        ],
-      },
-      { firstDueDate: "2028-03-06" },
-      { installments: [] },
-    ];
-    for (const mutation of mutations) {
-      expect(
-        projectMutationSchema.safeParse({ ...base, ...mutation }).success,
-      ).toBe(false);
-    }
-  });
-
   it("valida modelo de servico e overrides sem workspace", () => {
     expect(serviceMutationSchema.safeParse(validService()).success).toBe(true);
     expect(
       projectFromServiceSchema.safeParse({
         serviceId: randomUUID(),
-        businessId: randomUUID(),
+        contractId: randomUUID(),
         name: "Projeto do modelo",
         startDate: "2028-01-31",
       }).success,
@@ -193,7 +143,7 @@ describe("validacao de projetos e servicos", () => {
     expect(
       projectFromServiceSchema.safeParse({
         serviceId: randomUUID(),
-        businessId: randomUUID(),
+        contractId: randomUUID(),
         name: "Projeto",
         startDate: "2028-01-31",
         workspaceId: randomUUID(),
@@ -204,7 +154,7 @@ describe("validacao de projetos e servicos", () => {
       projectFromServiceSchema.safeParse({
         serviceId,
         additionalServiceIds: [serviceId],
-        businessId: randomUUID(),
+        contractId: randomUUID(),
         name: "Projeto",
         startDate: "2028-01-31",
       }).success,

@@ -339,7 +339,7 @@
     animation: rise var(--motion-base) ease-out;
   }
 
-  header {
+  .dialog > header {
     display: flex;
     align-items: center;
     justify-content: space-between;

@@ -1,7 +1,8 @@
 export type FinancialEntryType = "revenue" | "expense";
 export type FinancialEntryMode = "one_off" | "recurring";
 export type FinancialEntryStatus = "open" | "paused" | "settled";
-export type FinancialEntrySource = "manual" | "project";
+/** `project` is retained only for pre-contract historical rows. */
+export type FinancialEntrySource = "manual" | "project" | "contract";
 export type FinancialSeriesKind = "installment" | "recurrence";
 
 export type FinancialEntry = {

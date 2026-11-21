@@ -1,19 +1,21 @@
 import type { EntityRecord } from "../entities/types";
+import {
+  jsonRequest,
+  requestJson as fetchJson,
+  type FetchLike,
+} from "../http/client";
 import type {
   Business,
   BusinessList,
   BusinessMutationInput,
   BusinessNote,
   BusinessResponsible,
+  BusinessResponsibleContactOption,
   BusinessResponsibleUserOption,
 } from "./types";
 
 export const BUSINESSES_CHANGED_EVENT = "demanda:businesses-changed";
-
-export type FetchLike = (
-  input: RequestInfo | URL,
-  init?: RequestInit,
-) => Promise<Response>;
+export type { FetchLike };
 
 export class BusinessApiError extends Error {
   constructor(
@@ -25,31 +27,15 @@ export class BusinessApiError extends Error {
   }
 }
 
-async function requestJson<T>(
+function requestJson<T>(
   fetcher: FetchLike,
   input: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetcher(input, init);
-  if (!response.ok) {
-    let message = "Não foi possível concluir a operação com o negócio.";
-    try {
-      const payload = (await response.json()) as { message?: unknown };
-      if (typeof payload.message === "string") message = payload.message;
-    } catch {
-      // A mensagem genérica também cobre respostas sem JSON.
-    }
-    throw new BusinessApiError(response.status, message);
-  }
-  return (await response.json()) as T;
-}
-
-function jsonRequest(method: "POST" | "PUT", body: unknown): RequestInit {
-  return {
-    method,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  };
+  return fetchJson<T>(fetcher, input, init, {
+    fallbackMessage: "Não foi possível concluir a operação com o negócio.",
+    createError: (status, message) => new BusinessApiError(status, message),
+  });
 }
 
 export type BusinessListOptions = {
@@ -194,6 +180,17 @@ export function listBusinessResponsibleUsers(
   return requestJson<BusinessResponsibleUserOption[]>(
     fetcher,
     "/api/business-responsibles/users",
+    { signal },
+  );
+}
+
+export function listBusinessResponsibleContacts(
+  fetcher: FetchLike = fetch,
+  signal?: AbortSignal,
+): Promise<BusinessResponsibleContactOption[]> {
+  return requestJson<BusinessResponsibleContactOption[]>(
+    fetcher,
+    "/api/business-responsibles/contacts",
     { signal },
   );
 }

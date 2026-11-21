@@ -69,6 +69,7 @@ describe("records domain cards", () => {
         ...baseRecord,
         nome: "Site",
         negocio: "Cliente",
+        contractName: "Contrato anual",
         dataFim: "2026-08-20",
       },
       [],
@@ -77,6 +78,7 @@ describe("records domain cards", () => {
     expect(business).toMatchObject({ primary: "Ana", primaryMore: "+1" });
     expect(project).toMatchObject({
       secondary: "Cliente",
+      relation: "Contrato anual",
       completion: "20/08/2026",
     });
   });

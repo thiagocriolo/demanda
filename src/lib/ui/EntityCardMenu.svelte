@@ -17,13 +17,17 @@
   let open = $state(false);
   let root: HTMLDivElement;
 
-  const actions = [
+  const allActions = [
     { id: "view", label: "Ver", icon: Eye },
     { id: "edit", label: "Editar", icon: Pencil },
     { id: "copy", label: "Copiar", icon: Copy },
     { id: "archive", label: "Arquivar", icon: Archive },
     { id: "delete", label: "Excluir", icon: Trash2 },
   ] satisfies { id: EntityCardAction; label: string; icon: typeof Eye }[];
+
+  const actions = allActions.filter(
+    (action) => item.kind !== "contrato" || action.id !== "archive",
+  );
 
   function toggle(event: MouseEvent): void {
     event.stopPropagation();

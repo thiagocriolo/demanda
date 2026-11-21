@@ -1,3 +1,4 @@
+export type EngagementType = "fee" | "personal";
 export type ProjectContractType = "one_off" | "recurring";
 
 export type ProjectTag = {
@@ -29,18 +30,11 @@ export type ProjectServiceSummary = {
   archivedAt: string | null;
 };
 
-export type ProjectInstallment = {
-  id: string;
-  number: number;
-  dueDate: string;
-  amountCents: number;
-  status: string;
-};
-
 export type Project = {
   id: string;
   workspaceId: string;
   sourceServiceId: string | null;
+  contract?: { id: string; name: string } | null;
   isInstitutional: boolean;
   isActive: boolean;
   name: string;
@@ -49,10 +43,13 @@ export type Project = {
   status: string;
   startDate: string;
   endDate: string | null;
+  engagementType?: EngagementType;
   briefing: string;
   tags: ProjectTag[];
   responsibles: ProjectResponsible[];
+  /** @deprecated Finance is being migrated to Contract. */
   contractType: ProjectContractType;
+  /** @deprecated Finance is being migrated to Contract. */
   amountCents: number;
   firstDueDate: string | null;
   paymentMethod: string;
@@ -64,39 +61,49 @@ export type Project = {
   updatedAt: string;
 };
 
-export type ProjectInstallmentInput = {
-  number: number;
-  dueDate: string;
-  amountCents: number;
-  status: string;
-};
+/** @deprecated Use ContractInstallment. */
+export type ProjectInstallment = { id: string; number: number; dueDate: string; amountCents: number; status: string };
+/** @deprecated Use ContractInstallmentInput. */
+export type ProjectInstallmentInput = Omit<ProjectInstallment, "id">;
 
 export type ProjectMutationInput = {
   name: string;
-  businessId: string;
+  /** Ignored by the server; retained temporarily for legacy form data. */
+  businessId?: string;
+  contractId?: string;
   serviceIds: string[];
   status: string;
   startDate: string;
   endDate: string | null;
+  engagementType?: EngagementType;
   briefing: string;
   tagLabels: string[];
-  responsibleUserIds: string[];
-  contractType: ProjectContractType;
-  amountCents: number;
-  firstDueDate: string | null;
-  paymentMethod: string;
-  paymentTerms: string;
-  financeNotes: string;
-  installments: ProjectInstallmentInput[];
+  responsibleUserIds?: string[];
+  /** @deprecated Finance belongs to Contract. */
+  contractType?: ProjectContractType;
+  /** @deprecated Finance belongs to Contract. */
+  amountCents?: number;
+  /** @deprecated Finance belongs to Contract. */
+  firstDueDate?: string | null;
+  /** @deprecated Finance belongs to Contract. */
+  paymentMethod?: string;
+  /** @deprecated Finance belongs to Contract. */
+  paymentTerms?: string;
+  /** @deprecated Finance belongs to Contract. */
+  financeNotes?: string;
+  /** @deprecated Finance belongs to Contract. */
+  installments?: ProjectInstallmentInput[];
 };
 
 export type ProjectFromServiceInput = {
   serviceId: string;
   additionalServiceIds?: string[];
   name: string;
-  businessId: string;
+  businessId?: string;
+  contractId?: string;
   startDate: string;
   endDate?: string | null;
+  engagementType?: EngagementType;
   status?: string;
   briefing?: string;
   tagLabels?: string[];
@@ -146,7 +153,7 @@ export type Service = {
   defaultBriefing: string;
   tags: ProjectTag[];
   responsibles: ProjectResponsible[];
-  defaultContractType: ProjectContractType;
+  defaultContractType: "one_off" | "recurring";
   defaultAmountCents: number;
   defaultInstallmentCount: number;
   defaultPaymentMethod: string;
@@ -167,7 +174,7 @@ export type ServiceMutationInput = {
   defaultBriefing: string;
   tagLabels: string[];
   responsibleUserIds: string[];
-  defaultContractType: ProjectContractType;
+  defaultContractType: "one_off" | "recurring";
   defaultAmountCents: number;
   defaultInstallmentCount: number;
   defaultPaymentMethod: string;

@@ -9,10 +9,11 @@ import type {
 import { isIsoDate } from "../../agenda/date-utils";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
 import {
-  requireActiveWorkspacePermission,
   requireWorkspacePermission,
   requireWorkspacePermissionForUpdate,
+  workspaceIdFromContext,
 } from "../authorization/workspace-context";
+import { appendDataChangeAuditLog } from "../authorization/audit";
 import { affectedRows, type Database } from "../db/database";
 import {
   agendaEntries,
@@ -43,11 +44,6 @@ export class AgendaInvalidMovementError extends Error {
     super(message);
     this.name = "AgendaInvalidMovementError";
   }
-}
-
-function workspaceIdFromContext(context: RequestAuthorizationContext): string {
-  return requireActiveWorkspacePermission(context, "workspace:read").workspace
-    .id;
 }
 
 function kindForMode(mode: AgendaMode): AgendaEntityKind {
@@ -394,6 +390,18 @@ export async function moveWorkspaceAgenda(
               ),
             );
         }
+        await appendDataChangeAuditLog(transaction, {
+          userId: context.user.id,
+          workspaceId,
+        }, {
+          action: `${kind}.due_date_changed`,
+          targetType: kind,
+          targetId: item.id,
+          changes: [
+            { field: "dueDate", before: row.scheduledDate, after: item.date },
+          ],
+          metadata: { source: "agenda" },
+        });
       }
       const updated = await transaction
         .update(agendaEntries)
@@ -411,6 +419,31 @@ export async function moveWorkspaceAgenda(
           ),
         );
       if (affectedRows(updated) !== 1) throw new AgendaVersionConflictError();
+      const changes = [
+        ...(row.scheduledDate === item.date
+          ? []
+          : [{ field: "date", before: row.scheduledDate, after: item.date }]),
+        ...(row.position === item.order
+          ? []
+          : [{ field: "position", before: row.position, after: item.order }]),
+        ...(row.durationMinutes === item.durationMinutes
+          ? []
+          : [{
+              field: "durationMinutes",
+              before: row.durationMinutes,
+              after: item.durationMinutes,
+            }]),
+      ];
+      await appendDataChangeAuditLog(transaction, {
+        userId: context.user.id,
+        workspaceId,
+      }, {
+        action: "agenda.placement_changed",
+        targetType: "agenda",
+        targetId: row.id,
+        changes,
+        metadata: { entityType: kind, entityId: item.id },
+      });
     }
     return readSnapshot(transaction, workspaceId);
   });

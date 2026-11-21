@@ -1,4 +1,10 @@
 import type { EntityRecord } from "../entities/types";
+import { centsToMoney as formatCents } from "../finance/money";
+import {
+  jsonRequest,
+  requestJson as fetchJson,
+  type FetchLike,
+} from "../http/client";
 import {
   GLOBAL_WORKSPACE_SCOPE_ID,
   isGlobalWorkspaceScope,
@@ -13,7 +19,6 @@ import type {
   ProjectBusiness,
   ProjectFromServiceInput,
   ProjectInstallment,
-  ProjectInstallmentInput,
   ProjectList,
   ProjectMutationInput,
   ProjectOptions,
@@ -23,11 +28,7 @@ import type {
 } from "./types";
 
 export const PROJECTS_CHANGED_EVENT = "demanda:projects-changed";
-
-export type FetchLike = (
-  input: RequestInfo | URL,
-  init?: RequestInit,
-) => Promise<Response>;
+export type { FetchLike };
 
 export class ProjectApiError extends Error {
   constructor(
@@ -39,31 +40,15 @@ export class ProjectApiError extends Error {
   }
 }
 
-async function requestJson<T>(
+function requestJson<T>(
   fetcher: FetchLike,
   input: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetcher(input, init);
-  if (!response.ok) {
-    let message = "Não foi possível concluir a operação com o projeto.";
-    try {
-      const payload = (await response.json()) as { message?: unknown };
-      if (typeof payload.message === "string") message = payload.message;
-    } catch {
-      // A mensagem genérica também cobre respostas sem JSON.
-    }
-    throw new ProjectApiError(response.status, message);
-  }
-  return (await response.json()) as T;
-}
-
-function jsonRequest(method: "POST" | "PUT", body: unknown): RequestInit {
-  return {
-    method,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  };
+  return fetchJson<T>(fetcher, input, init, {
+    fallbackMessage: "Não foi possível concluir a operação com o projeto.",
+    createError: (status, message) => new ProjectApiError(status, message),
+  });
 }
 
 export type ProjectListOptions = {
@@ -398,36 +383,6 @@ function parseObject<T>(value: string | undefined): T | undefined {
   }
 }
 
-function formatCents(cents: number): string {
-  const safe = Math.max(0, Math.round(Number.isFinite(cents) ? cents : 0));
-  return `${Math.floor(safe / 100).toLocaleString("pt-BR")},${String(safe % 100).padStart(2, "0")}`;
-}
-
-function moneyToCents(value: string | undefined): number {
-  const raw = (value ?? "").trim().replace(/\s|R\$/giu, "");
-  if (!raw) return 0;
-  const negative = raw.includes("-");
-  const decimalSeparator = Math.max(raw.lastIndexOf(","), raw.lastIndexOf("."));
-  let digits: string;
-  if (
-    decimalSeparator >= 0 &&
-    raw.length - decimalSeparator - 1 >= 1 &&
-    raw.length - decimalSeparator - 1 <= 2
-  ) {
-    const integer = raw.slice(0, decimalSeparator).replace(/\D/gu, "") || "0";
-    const decimal = raw
-      .slice(decimalSeparator + 1)
-      .replace(/\D/gu, "")
-      .padEnd(2, "0")
-      .slice(0, 2);
-    digits = `${integer}${decimal}`;
-  } else {
-    digits = `${raw.replace(/\D/gu, "")}00`;
-  }
-  const cents = Number(digits);
-  return Number.isSafeInteger(cents) ? (negative ? -cents : cents) : 0;
-}
-
 function normalizeDate(value: string | undefined): string | null {
   const raw = (value ?? "").trim();
   if (!raw) return null;
@@ -456,45 +411,6 @@ function displayInstallments(installments: ProjectInstallment[]): string {
   );
 }
 
-function installmentInputs(
-  value: string | undefined,
-  fallback: ProjectInstallment[],
-): ProjectInstallmentInput[] {
-  const parsed = parseArray<Record<string, unknown>>(value);
-  const source: Record<string, unknown>[] =
-    value === undefined
-      ? fallback.map((installment) => ({ ...installment }))
-      : parsed;
-  return source.flatMap((item, index) => {
-    const dueDateValue =
-      typeof item.dueDate === "string"
-        ? item.dueDate
-        : typeof item.due_date === "string"
-          ? item.due_date
-          : "";
-    const dueDate = normalizeDate(dueDateValue);
-    if (!dueDate) return [];
-    const amountCents =
-      typeof item.amountCents === "number"
-        ? Math.max(0, Math.round(item.amountCents))
-        : moneyToCents(
-            typeof item.amount === "string" ? item.amount : undefined,
-          );
-    const number =
-      typeof item.number === "number" && Number.isInteger(item.number)
-        ? item.number
-        : index + 1;
-    return [
-      {
-        number: Math.max(1, number),
-        dueDate,
-        amountCents,
-        status: typeof item.status === "string" ? item.status : "pending",
-      },
-    ];
-  });
-}
-
 export function projectToEntityRecord(project: Project): EntityRecord {
   const serviceNames = project.services.map(({ name }) => name);
   const responsibleNames = project.responsibles.map(({ name }) => name);
@@ -516,6 +432,9 @@ export function projectToEntityRecord(project: Project): EntityRecord {
     business_name: project.business.name,
     businessWorkspaceId: project.workspaceId,
     business_workspace_id: project.workspaceId,
+    ...(project.contract
+      ? { contractId: project.contract.id, contractName: project.contract.name }
+      : {}),
     servicos: serviceNames.join(", "),
     service_tags: serviceNames.join(", "),
     serviceIds: JSON.stringify(project.services.map(({ id }) => id)),
@@ -587,12 +506,8 @@ export function entityValuesToProjectInput(
   values: Record<string, string>,
   current?: EntityRecord,
 ): ProjectMutationInput {
-  const relations = projectRelationsFromRecord(current);
   const serviceIds = parseArray<unknown>(
     values.serviceIds ?? current?.serviceIds,
-  ).filter((value): value is string => typeof value === "string");
-  const responsibleUserIds = parseArray<unknown>(
-    values.responsibleUserIds ?? current?.responsibleUserIds,
   ).filter((value): value is string => typeof value === "string");
   const explicitTags = parseArray<unknown>(
     values.tagLabels ?? current?.tagLabels,
@@ -602,17 +517,18 @@ export function entityValuesToProjectInput(
       ? explicitTags
       : uniqueStrings((values.tags ?? current?.tags ?? "").split(/[,;]+/u));
   const selectedStatus = values.status?.trim() ?? "";
-  const contractValue =
-    values.contract_type ?? values.tipoContrato ?? current?.contract_type;
+  const contractId = (values.contractId ?? current?.contractId ?? "").trim();
+  const businessId = (
+    values.negocioId ??
+    values.business_id ??
+    current?.negocioId ??
+    ""
+  ).trim();
 
   return {
     name: (values.nome ?? values.name ?? "").trim(),
-    businessId: (
-      values.negocioId ??
-      values.business_id ??
-      current?.negocioId ??
-      ""
-    ).trim(),
+    ...(contractId ? { contractId } : {}),
+    ...(businessId ? { businessId } : {}),
     serviceIds: uniqueStrings(serviceIds),
     status:
       selectedStatus === "arquivado"
@@ -627,30 +543,16 @@ export function entityValuesToProjectInput(
       ""
     ).trim(),
     tagLabels: uniqueStrings(tagLabels),
-    responsibleUserIds: uniqueStrings(responsibleUserIds),
-    contractType:
-      contractValue === "recurring" ||
-      contractValue?.toLocaleLowerCase("pt-BR") === "recorrente"
-        ? "recurring"
-        : "one_off",
-    amountCents:
-      values.amountCents && /^\d+$/u.test(values.amountCents)
-        ? Number(values.amountCents)
-        : moneyToCents(values.valor ?? values.amount),
-    firstDueDate: normalizeDate(
-      values.primeiroVencimento ?? values.payment_date,
-    ),
-    paymentMethod: (
-      values.paymentMethod ??
-      current?.paymentMethod ??
-      ""
-    ).trim(),
-    paymentTerms: (values.paymentTerms ?? current?.paymentTerms ?? "").trim(),
-    financeNotes: (values.financeNotes ?? current?.financeNotes ?? "").trim(),
-    installments: installmentInputs(
-      values.installments ?? values.parcelasDetalhadas,
-      relations.installments,
-    ),
+    ...(["fee", "personal"].includes(
+      (values.tipoEngajamento ?? values.engagementType ?? "").toLocaleLowerCase(
+        "pt-BR",
+      ),
+    )
+      ? {
+          engagementType: (values.tipoEngajamento ?? values.engagementType)
+            .toLocaleLowerCase("pt-BR") as "fee" | "personal",
+        }
+      : {}),
   };
 }
 
@@ -668,7 +570,8 @@ export function entityValuesToProjectFromServiceInput(
     serviceId,
     additionalServiceIds: project.serviceIds.filter((id) => id !== serviceId),
     name: project.name,
-    businessId: project.businessId,
+    ...(project.contractId ? { contractId: project.contractId } : {}),
+    ...(project.businessId ? { businessId: project.businessId } : {}),
     startDate: project.startDate,
   };
 
@@ -685,16 +588,6 @@ export function entityValuesToProjectFromServiceInput(
   if (includes("status")) input.status = project.status;
   if (includes("briefing")) input.briefing = project.briefing;
   if (includes("tagLabels")) input.tagLabels = project.tagLabels;
-  if (includes("responsibleUserIds")) {
-    input.responsibleUserIds = project.responsibleUserIds;
-  }
-  if (includes("contractType")) input.contractType = project.contractType;
-  if (includes("amountCents")) input.amountCents = project.amountCents;
-  if (includes("firstDueDate")) input.firstDueDate = project.firstDueDate;
-  if (includes("paymentMethod")) input.paymentMethod = project.paymentMethod;
-  if (includes("paymentTerms")) input.paymentTerms = project.paymentTerms;
-  if (includes("financeNotes")) input.financeNotes = project.financeNotes;
-  if (includes("installments")) input.installments = project.installments;
 
   return input;
 }

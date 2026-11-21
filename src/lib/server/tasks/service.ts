@@ -15,6 +15,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { affectedRows, type Database } from "../db/database";
+import { databaseConstraint, toIsoTimestamp as iso } from "../db/helpers";
 import {
   businesses,
   projects,
@@ -27,9 +28,9 @@ import {
   workspaceMembers,
 } from "../db/schema";
 import {
-  requireActiveWorkspacePermission,
   requireWorkspacePermission,
   requireWorkspacePermissionForUpdate,
+  workspaceIdFromContext,
   type RequestAuthorizationContext,
 } from "../authorization/workspace-context";
 import type {
@@ -58,6 +59,7 @@ import {
   type TaskListQuery,
 } from "./validation";
 import { touchWorkspaceConfiguration } from "../settings/version";
+import { appendDataChangeAuditLog } from "../authorization/audit";
 
 type TaskDatabase = Pick<Database, "select" | "insert" | "update" | "delete">;
 
@@ -115,32 +117,6 @@ export class TaskArchivedError extends Error {
     super("A tarefa arquivada não pode ser alterada.");
     this.name = "TaskArchivedError";
   }
-}
-
-function workspaceIdFromContext(context: RequestAuthorizationContext): string {
-  return requireActiveWorkspacePermission(context, "workspace:read").workspace
-    .id;
-}
-
-function iso(value: Date | null): string | null {
-  return value?.toISOString() ?? null;
-}
-
-function databaseConstraint(error: unknown): string | undefined {
-  const visited = new Set<unknown>();
-  let current = error;
-  while (current && typeof current === "object" && !visited.has(current)) {
-    visited.add(current);
-    if ("constraint" in current && typeof current.constraint === "string") {
-      return current.constraint;
-    }
-    if ("sqlMessage" in current && typeof current.sqlMessage === "string") {
-      const match = /CONSTRAINT `([^`]+)`/u.exec(current.sqlMessage);
-      if (match?.[1]) return match[1];
-    }
-    current = "cause" in current ? current.cause : undefined;
-  }
-  return undefined;
 }
 
 function translateTaskConstraint(error: unknown): never {
@@ -310,6 +286,7 @@ async function hydrateTasks(
       id: row.id,
       name: row.name,
       durationMinutes: row.durationMinutes,
+      executionAt: iso(row.executionAt),
       status:
         row.statusKey === SUBTASK_COMPLETED_STATUS
           ? SUBTASK_COMPLETED_STATUS
@@ -368,6 +345,7 @@ async function hydrateTasks(
         status: row.statusKey,
         briefing: row.description,
         dueDate: row.dueDate,
+        engagementType: row.engagementType,
         tags: tagsByTask.get(row.id) ?? [],
         responsibles: responsiblesByTask.get(row.id) ?? [],
         subtasks,
@@ -392,11 +370,12 @@ async function validateAndLockProject(
   workspaceId: string,
   projectId: string,
   previouslyLinkedProjectId?: string,
-): Promise<{ projectId: string; businessId: string }> {
+): Promise<{ projectId: string; businessId: string; engagementType: "fee" | "personal" }> {
   const [row] = await database
     .select({
       projectId: projects.id,
       businessId: projects.businessId,
+      engagementType: projects.engagementType,
       projectArchivedAt: projects.archivedAt,
       businessArchivedAt: businesses.archivedAt,
     })
@@ -414,7 +393,11 @@ async function validateAndLockProject(
   ) {
     throw new TaskRelationsInvalidError();
   }
-  return { projectId: row.projectId, businessId: row.businessId };
+  return {
+    projectId: row.projectId,
+    businessId: row.businessId,
+    engagementType: row.engagementType,
+  };
 }
 
 async function validateAndLockMembers(
@@ -577,6 +560,7 @@ async function insertSubtasks(
       taskId,
       name: subtask.name,
       durationMinutes: subtask.durationMinutes,
+      executionAt: subtask.executionAt ? new Date(subtask.executionAt) : null,
       statusKey: subtask.status,
       sortOrder,
       completedAt: subtask.status === SUBTASK_COMPLETED_STATUS ? now : null,
@@ -815,71 +799,44 @@ export async function createWorkspaceTask(
         workspaceId,
         "workspace:write",
       );
-      const project = await validateAndLockProject(
+      const created = await createWorkspaceTaskInTransaction(
         transaction,
         workspaceId,
-        input.projectId,
-      );
-      await validateAndLockMembers(
-        transaction,
-        workspaceId,
-        input.responsibleUserIds,
-      );
-      const tagRows = await resolveAndLockTags(
-        transaction,
-        workspaceId,
-        input.tagLabels,
-      );
-      const now = new Date();
-      const id = randomUUID();
-      await transaction.insert(tasks).values({
-        id,
-        workspaceId,
-        projectId: project.projectId,
-        businessId: project.businessId,
-        name: input.name,
-        description: input.briefing,
-        categoryKey: input.category || null,
-        priorityKey: input.priority,
-        statusKey: input.status,
-        dueDate: input.dueDate,
-        sortOrder: input.sortOrder ?? 0,
-        boardOrder: {},
-        completedAt: input.status === TASK_COMPLETED_STATUS ? now : null,
-        createdAt: now,
-        updatedAt: now,
-      });
-      const [createdRaw] = await transaction
-        .select()
-        .from(tasks)
-        .where(eq(tasks.id, id))
-        .limit(1);
-      const createdRows = createdRaw ? [createdRaw] : [];
-      if (createdRows.length !== 1) {
-        throw new Error("A tarefa não pôde ser criada.");
-      }
-      const created = createdRows[0]!;
-      await insertTaskRelations(
-        transaction,
-        workspaceId,
-        created.id,
-        tagRows,
-        input.responsibleUserIds,
-      );
-      await insertSubtasks(
-        transaction,
-        workspaceId,
-        created.id,
-        input.subtasks,
-        now,
-      );
-      const [task] = await hydrateTasks(
-        transaction,
-        [created],
         context.user.id,
+        input,
       );
-      if (!task) throw new Error("A tarefa não pôde ser carregada.");
-      return task;
+      await appendDataChangeAuditLog(transaction, {
+        userId: context.user.id,
+        workspaceId,
+      }, {
+        action: "task.created",
+        targetType: "task",
+        targetId: created.id,
+        changes: [
+          { field: "name", before: null, after: input.name },
+          { field: "status", before: null, after: input.status },
+          { field: "priority", before: null, after: input.priority },
+          { field: "dueDate", before: null, after: input.dueDate },
+        ],
+      });
+      for (const subtask of created.subtasks) {
+        await appendDataChangeAuditLog(transaction, {
+          userId: context.user.id,
+          workspaceId,
+        }, {
+          action: "subtask.created",
+          targetType: "subtask",
+          targetId: subtask.id,
+          changes: [
+            { field: "name", before: null, after: subtask.name },
+            { field: "durationMinutes", before: null, after: subtask.durationMinutes },
+            { field: "status", before: null, after: subtask.status },
+            { field: "sortOrder", before: null, after: subtask.sortOrder },
+          ],
+          metadata: { taskId: created.id },
+        });
+      }
+      return created;
     });
   } catch (error) {
     if (
@@ -890,6 +847,80 @@ export async function createWorkspaceTask(
     }
     translateTaskConstraint(error);
   }
+}
+
+/** Reusable transactional primitive for validated first-party imports. */
+export async function createWorkspaceTaskInTransaction(
+  transaction: TaskDatabase,
+  workspaceId: string,
+  actorUserId: string,
+  input: TaskCreateInput,
+): Promise<Task> {
+  if (input.boardOrder && Object.keys(input.boardOrder).length > 0) {
+    throw new TaskRelationsInvalidError();
+  }
+  assertCompletionAllowed(input.status, input.subtasks);
+  const project = await validateAndLockProject(
+    transaction,
+    workspaceId,
+    input.projectId,
+  );
+  if (input.engagementType === "fee" && project.engagementType !== "fee") {
+    throw new TaskRelationsInvalidError();
+  }
+  await validateAndLockMembers(
+    transaction,
+    workspaceId,
+    input.responsibleUserIds,
+  );
+  const tagRows = await resolveAndLockTags(
+    transaction,
+    workspaceId,
+    input.tagLabels,
+  );
+  const now = new Date();
+  const id = randomUUID();
+  await transaction.insert(tasks).values({
+    id,
+    workspaceId,
+    projectId: project.projectId,
+    businessId: project.businessId,
+    name: input.name,
+    description: input.briefing,
+    categoryKey: input.category || null,
+    priorityKey: input.priority,
+    statusKey: input.status,
+    dueDate: input.dueDate,
+    engagementType: input.engagementType ?? "personal",
+    sortOrder: input.sortOrder ?? 0,
+    boardOrder: {},
+    completedAt: input.status === TASK_COMPLETED_STATUS ? now : null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const [createdRaw] = await transaction
+    .select()
+    .from(tasks)
+    .where(eq(tasks.id, id))
+    .limit(1);
+  if (!createdRaw) throw new Error("A tarefa não pôde ser criada.");
+  await insertTaskRelations(
+    transaction,
+    workspaceId,
+    createdRaw.id,
+    tagRows,
+    input.responsibleUserIds,
+  );
+  await insertSubtasks(
+    transaction,
+    workspaceId,
+    createdRaw.id,
+    input.subtasks,
+    now,
+  );
+  const [task] = await hydrateTasks(transaction, [createdRaw], actorUserId);
+  if (!task) throw new Error("A tarefa não pôde ser carregada.");
+  return task;
 }
 
 async function synchronizeSubtasks(
@@ -953,6 +984,7 @@ async function synchronizeSubtasks(
       .set({
         name: subtask.name,
         durationMinutes: subtask.durationMinutes,
+        executionAt: subtask.executionAt ? new Date(subtask.executionAt) : null,
         statusKey: subtask.status,
         sortOrder,
         completedAt,
@@ -979,6 +1011,9 @@ async function synchronizeSubtasks(
                 taskId,
                 name: subtask.name,
                 durationMinutes: subtask.durationMinutes,
+                executionAt: subtask.executionAt
+                  ? new Date(subtask.executionAt)
+                  : null,
                 statusKey: subtask.status,
                 sortOrder,
                 completedAt:
@@ -1018,6 +1053,12 @@ export async function updateWorkspaceTask(
       if (existing.version !== input.version) {
         throw new TaskVersionConflictError();
       }
+      const [beforeTask] = await hydrateTasks(
+        transaction,
+        [existing],
+        context.user.id,
+      );
+      if (!beforeTask) throw new TaskNotFoundError();
       if (
         input.boardOrder &&
         !taskBoardOrdersEqual(input.boardOrder, existing.boardOrder)
@@ -1031,6 +1072,9 @@ export async function updateWorkspaceTask(
         input.projectId,
         existing.projectId,
       );
+      if (input.engagementType === "fee" && project.engagementType !== "fee") {
+        throw new TaskRelationsInvalidError();
+      }
       await validateAndLockMembers(
         transaction,
         workspaceId,
@@ -1071,6 +1115,7 @@ export async function updateWorkspaceTask(
           priorityKey: input.priority,
           statusKey: input.status,
           dueDate: input.dueDate,
+          engagementType: input.engagementType ?? "personal",
           sortOrder: input.sortOrder ?? existing.sortOrder,
           boardOrder,
           completedAt,
@@ -1085,6 +1130,22 @@ export async function updateWorkspaceTask(
           ),
         );
       if (affectedRows(taskRows) !== 1) throw new TaskVersionConflictError();
+      await appendDataChangeAuditLog(transaction, {
+        userId: context.user.id,
+        workspaceId,
+      }, {
+        action: "task.updated",
+        targetType: "task",
+        targetId: taskId,
+        changes: [
+          { field: "name", before: existing.name, after: input.name },
+          { field: "briefing", before: existing.description, after: input.briefing },
+          { field: "category", before: existing.categoryKey, after: input.category || null },
+          { field: "priority", before: existing.priorityKey, after: input.priority },
+          { field: "status", before: existing.statusKey, after: input.status },
+          { field: "dueDate", before: existing.dueDate, after: input.dueDate },
+        ].filter((change) => change.before !== change.after),
+      });
       const [updated] = await transaction
         .select()
         .from(tasks)
@@ -1128,6 +1189,51 @@ export async function updateWorkspaceTask(
         context.user.id,
       );
       if (!task) throw new TaskNotFoundError();
+      const previousSubtasks = new Map(
+        beforeTask.subtasks.map((subtask) => [subtask.id, subtask]),
+      );
+      const nextSubtasks = new Map(
+        task.subtasks.map((subtask) => [subtask.id, subtask]),
+      );
+      for (const subtask of task.subtasks) {
+        const previous = previousSubtasks.get(subtask.id);
+        await appendDataChangeAuditLog(transaction, {
+          userId: context.user.id,
+          workspaceId,
+        }, {
+          action: previous ? "subtask.updated" : "subtask.created",
+          targetType: "subtask",
+          targetId: subtask.id,
+          changes: [
+            { field: "name", before: previous?.name ?? null, after: subtask.name },
+            {
+              field: "durationMinutes",
+              before: previous?.durationMinutes ?? null,
+              after: subtask.durationMinutes,
+            },
+            { field: "status", before: previous?.status ?? null, after: subtask.status },
+            {
+              field: "sortOrder",
+              before: previous?.sortOrder ?? null,
+              after: subtask.sortOrder,
+            },
+          ].filter((change) => change.before !== change.after),
+          metadata: { taskId },
+        });
+      }
+      for (const previous of beforeTask.subtasks) {
+        if (nextSubtasks.has(previous.id)) continue;
+        await appendDataChangeAuditLog(transaction, {
+          userId: context.user.id,
+          workspaceId,
+        }, {
+          action: "subtask.archived",
+          targetType: "subtask",
+          targetId: previous.id,
+          changes: [{ field: "archived", before: false, after: true }],
+          metadata: { taskId },
+        });
+      }
       return task;
     });
   } catch (error) {
@@ -1363,6 +1469,30 @@ export async function updateWorkspaceTaskBoard(
           );
         if (affectedRows(changedRows) !== 1)
           throw new TaskVersionConflictError();
+        await appendDataChangeAuditLog(transaction, {
+          userId: context.user.id,
+          workspaceId,
+        }, {
+          action: `task.board_${input.view}_changed`,
+          targetType: "task",
+          targetId: update.id,
+          changes: [
+            {
+              field: `${input.view}Position`,
+              before: task.boardOrder[input.view] ?? 0,
+              after: update.position,
+            },
+            ...(input.view === "status"
+              ? [{ field: "status", before: task.statusKey, after: update.columnKey }]
+              : []),
+            ...(input.view === "priority"
+              ? [{ field: "priority", before: task.priorityKey, after: update.columnKey }]
+              : []),
+            ...(input.view === "project"
+              ? [{ field: "projectId", before: task.projectId, after: relation!.projectId }]
+              : []),
+          ].filter((change) => change.before !== change.after),
+        });
         const [changed] = await transaction
           .select()
           .from(tasks)
@@ -1474,6 +1604,22 @@ export async function setWorkspaceTaskState(
         ),
       );
     if (affectedRows(changedRows) !== 1) throw new TaskVersionConflictError();
+    await appendDataChangeAuditLog(transaction, {
+      userId: context.user.id,
+      workspaceId,
+    }, {
+      action: "task.status_changed",
+      targetType: "task",
+      targetId: taskId,
+      changes: [
+        { field: "status", before: existing.statusKey, after: input.status },
+        {
+          field: "completedAt",
+          before: existing.completedAt?.toISOString() ?? null,
+          after: input.status === TASK_COMPLETED_STATUS ? now.toISOString() : null,
+        },
+      ],
+    });
     const [updated] = await transaction
       .select()
       .from(tasks)
@@ -1572,6 +1718,23 @@ export async function setWorkspaceSubtaskState(
       );
     if (affectedRows(updatedTaskRows) !== 1)
       throw new TaskVersionConflictError();
+    await appendDataChangeAuditLog(transaction, {
+      userId: context.user.id,
+      workspaceId,
+    }, {
+      action: "subtask.status_changed",
+      targetType: "subtask",
+      targetId: subtaskId,
+      changes: [
+        { field: "status", before: subtaskRow.statusKey, after: input.status },
+        {
+          field: "completedAt",
+          before: subtaskRow.completedAt?.toISOString() ?? null,
+          after: input.status === SUBTASK_COMPLETED_STATUS ? now.toISOString() : null,
+        },
+      ],
+      metadata: { taskId },
+    });
     const [updatedTask] = await transaction
       .select()
       .from(tasks)
@@ -1637,6 +1800,15 @@ export async function archiveWorkspaceTask(
         ),
       );
     if (affectedRows(archivedRows) !== 1) throw new TaskVersionConflictError();
+    await appendDataChangeAuditLog(transaction, {
+      userId: context.user.id,
+      workspaceId,
+    }, {
+      action: "task.archived",
+      targetType: "task",
+      targetId: taskId,
+      changes: [{ field: "archivedAt", before: null, after: now.toISOString() }],
+    });
     const [updated] = await transaction
       .select()
       .from(tasks)
@@ -1681,5 +1853,14 @@ export async function deleteWorkspaceTask(
         ),
       );
     if (affectedRows(deleted) !== 1) throw new TaskVersionConflictError();
+    await appendDataChangeAuditLog(transaction, {
+      userId: context.user.id,
+      workspaceId,
+    }, {
+      action: "task.deleted",
+      targetType: "task",
+      targetId: taskId,
+      changes: [{ field: "deleted", before: false, after: true }],
+    });
   });
 }

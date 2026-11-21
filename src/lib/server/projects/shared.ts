@@ -1,10 +1,8 @@
 import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { ProjectResponsible } from "../../projects/types";
-import {
-  requireActiveWorkspacePermission,
-  type RequestAuthorizationContext,
-} from "../authorization/workspace-context";
+import { workspaceIdFromContext } from "../authorization/workspace-context";
 import { affectedRows, type Database } from "../db/database";
+import { databaseConstraint, toIsoTimestamp as iso } from "../db/helpers";
 import {
   projectTags,
   serviceTags,
@@ -20,38 +18,10 @@ export type ProjectDatabase = Pick<
   "select" | "insert" | "update" | "delete"
 >;
 
-export function workspaceIdFromContext(
-  context: RequestAuthorizationContext,
-): string {
-  return requireActiveWorkspacePermission(context, "workspace:read").workspace
-    .id;
-}
-
-export function iso(value: Date | null): string | null {
-  return value?.toISOString() ?? null;
-}
+export { databaseConstraint, iso, workspaceIdFromContext };
 
 export function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (character) => `\\${character}`);
-}
-
-export function databaseConstraint(error: unknown): string | undefined {
-  const visited = new Set<unknown>();
-  let current = error;
-  while (current && typeof current === "object" && !visited.has(current)) {
-    visited.add(current);
-    if ("constraint" in current && typeof current.constraint === "string") {
-      return current.constraint;
-    }
-    if ("sqlMessage" in current && typeof current.sqlMessage === "string") {
-      const match =
-        /CONSTRAINT `([^`]+)`/u.exec(current.sqlMessage) ??
-        /for key ['`]([^'`]+)['`]/u.exec(current.sqlMessage);
-      if (match?.[1]) return match[1].split(".").at(-1);
-    }
-    current = "cause" in current ? current.cause : undefined;
-  }
-  return undefined;
 }
 
 export async function memberDetails(
@@ -82,14 +52,17 @@ export async function validateAndLockMembers(
   workspaceId: string,
   userIds: string[],
   errorFactory: () => Error,
+  options: { min?: number } = {},
 ): Promise<void> {
+  const min = options.min ?? 1;
   if (
-    userIds.length < 1 ||
+    userIds.length < min ||
     userIds.length > 20 ||
     new Set(userIds).size !== userIds.length
   ) {
     throw errorFactory();
   }
+  if (!userIds.length) return;
   const rows = await database
     .select({ userId: workspaceMembers.userId })
     .from(workspaceMembers)

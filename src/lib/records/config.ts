@@ -1,5 +1,6 @@
 import {
   businessConfig,
+  contractConfig,
   deliveryConfig,
   peopleConfig,
   projectConfig,
@@ -17,9 +18,9 @@ export const recordsTabConfigs: Record<RecordsTab, RecordsTabConfig> = {
     config: peopleConfig,
     kind: "pessoa",
     statusField: "tipo",
-    placeholder: "Buscar contatos",
-    emptyLabel: "contato",
-    createLabel: "contato",
+    placeholder: "Buscar pessoas",
+    emptyLabel: "pessoa",
+    createLabel: "pessoa",
   },
   negocios: {
     config: businessConfig,
@@ -28,6 +29,14 @@ export const recordsTabConfigs: Record<RecordsTab, RecordsTabConfig> = {
     placeholder: "Buscar negócios",
     emptyLabel: "negócio",
     createLabel: "negócio",
+  },
+  contratos: {
+    config: contractConfig,
+    kind: "contrato",
+    statusField: "status",
+    placeholder: "Buscar contratos",
+    emptyLabel: "contrato",
+    createLabel: "contrato",
   },
   projetos: {
     config: projectConfig,
@@ -41,8 +50,8 @@ export const recordsTabConfigs: Record<RecordsTab, RecordsTabConfig> = {
     config: deliveryConfig,
     kind: "tarefa",
     statusField: "status",
-    placeholder: "Buscar tarefas",
-    emptyLabel: "tarefa",
-    createLabel: "tarefa",
+    placeholder: "Buscar entregas",
+    emptyLabel: "entrega",
+    createLabel: "entrega",
   },
 };

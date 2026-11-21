@@ -5,12 +5,10 @@ import type {
 } from "./api-types";
 import type { FinanceEntry, FinanceEntryDraft } from "./finance";
 import {
-  GLOBAL_WORKSPACE_SCOPE_ID,
-  isGlobalWorkspaceScope,
-  workspaceIdsForRequestScope,
-} from "../workspaces/workspace-scope";
-
-type FetchLike = typeof fetch;
+  jsonRequest,
+  requestJson,
+  type FetchLike,
+} from "../http/client";
 
 export class FinanceApiError extends Error {
   constructor(
@@ -22,23 +20,15 @@ export class FinanceApiError extends Error {
   }
 }
 
-async function request(
+function request(
   path: string,
   init: RequestInit | undefined,
   fetcher: FetchLike,
 ): Promise<FinancialSnapshot> {
-  const response = await fetcher(path, init);
-  if (!response.ok) {
-    let message = "Não foi possível concluir a operação financeira.";
-    try {
-      const payload = (await response.json()) as { message?: unknown };
-      if (typeof payload.message === "string") message = payload.message;
-    } catch {
-      // Respostas sem JSON usam a mensagem segura acima.
-    }
-    throw new FinanceApiError(response.status, message);
-  }
-  return (await response.json()) as FinancialSnapshot;
+  return requestJson<FinancialSnapshot>(fetcher, path, init, {
+    fallbackMessage: "Não foi possível concluir a operação financeira.",
+    createError: (status, message) => new FinanceApiError(status, message),
+  });
 }
 
 function cents(value: number): number {
@@ -119,29 +109,6 @@ export async function loadFinancialSnapshot(
   query: FinancialQuery = {},
   fetcher: FetchLike = fetch,
 ): Promise<FinancialSnapshot> {
-  if (!query.workspaceId && isGlobalWorkspaceScope()) {
-    const snapshots = await Promise.all(
-      workspaceIdsForRequestScope().map((workspaceId) =>
-        loadFinancialSnapshot({ ...query, workspaceId }, fetcher),
-      ),
-    );
-    const sum = (key: keyof FinancialSnapshot["totals"]): number =>
-      snapshots.reduce((total, snapshot) => total + snapshot.totals[key], 0);
-    return {
-      workspaceId: GLOBAL_WORKSPACE_SCOPE_ID,
-      entries: snapshots.flatMap(({ entries }) => entries),
-      totals: {
-        revenueCents: sum("revenueCents"),
-        expenseCents: sum("expenseCents"),
-        settledRevenueCents: sum("settledRevenueCents"),
-        settledExpenseCents: sum("settledExpenseCents"),
-        openRevenueCents: sum("openRevenueCents"),
-        openExpenseCents: sum("openExpenseCents"),
-        balanceCents: sum("balanceCents"),
-        expectedBalanceCents: sum("expectedBalanceCents"),
-      },
-    };
-  }
   const params = new URLSearchParams();
   if (query.workspaceId) params.set("workspaceId", query.workspaceId);
   if (query.from) params.set("from", query.from);
@@ -161,11 +128,7 @@ export function createFinanceEntry(
 ): Promise<FinancialSnapshot> {
   return request(
     "/api/finance",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(draftToFinancialInput(draft)),
-    },
+    jsonRequest("POST", draftToFinancialInput(draft)),
     fetcher,
   );
 }
@@ -178,11 +141,7 @@ export function updateFinanceEntry(
 ): Promise<FinancialSnapshot> {
   return request(
     `/api/finance/${encodeURIComponent(entryId)}`,
-    {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...draftToFinancialInput(draft), version }),
-    },
+    jsonRequest("PUT", { ...draftToFinancialInput(draft), version }),
     fetcher,
   );
 }
@@ -195,11 +154,7 @@ export function changeFinanceEntryState(
 ): Promise<FinancialSnapshot> {
   return request(
     `/api/finance/${encodeURIComponent(entryId)}/state`,
-    {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ version, action }),
-    },
+    jsonRequest("PATCH", { version, action }),
     fetcher,
   );
 }
@@ -211,11 +166,7 @@ export function deleteFinanceEntry(
 ): Promise<FinancialSnapshot> {
   return request(
     `/api/finance/${encodeURIComponent(entryId)}`,
-    {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ version }),
-    },
+    jsonRequest("DELETE", { version }),
     fetcher,
   );
 }

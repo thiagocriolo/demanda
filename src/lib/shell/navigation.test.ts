@@ -33,7 +33,7 @@ import { resolvePageTitle, resolveTopbarTitle } from "./page-title";
 
 describe("navegação das áreas", () => {
   it("mantém os itens operacionais em Meu negócio", () => {
-    expect(navigationMode("/registros")).toBe("config");
+    expect(navigationMode("/clientes")).toBe("business");
     expect(navigationMode("/ferramentas/recursos")).toBe("config");
     expect(navigationMode("/financeiro")).toBe("config");
   });
@@ -43,7 +43,7 @@ describe("navegação das áreas", () => {
       "Meu negócio",
     );
     expect(configNavigation.map(({ label }) => label)).toEqual([
-      "Registros",
+      "Clientes",
       "Modelos",
       "Ferramentas",
       "Financeiro",
@@ -51,7 +51,7 @@ describe("navegação das áreas", () => {
       "Configurações",
     ]);
     expect(workspaceNavigation.map(({ label }) => label)).not.toContain(
-      "Registros",
+      "Clientes",
     );
   });
 

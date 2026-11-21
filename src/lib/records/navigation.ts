@@ -2,15 +2,17 @@ import type { TabItem } from "../ui/Tabs.svelte";
 import type { RecordsTab } from "./types";
 
 export const recordsTabRoutes: Record<RecordsTab, string> = {
-  pessoas: "/registros/contatos",
-  negocios: "/registros/negócios",
-  projetos: "/registros/projetos",
-  tarefas: "/registros/tarefas",
+  pessoas: "/clientes/contatos",
+  negocios: "/clientes/negócios",
+  contratos: "/clientes/contratos",
+  projetos: "/clientes/projetos",
+  tarefas: "/clientes/tarefas",
 };
 
 export const recordsTabs: TabItem[] = [
   { id: "pessoas", label: "Contatos" },
   { id: "negocios", label: "Negócios" },
+  { id: "contratos", label: "Contratos" },
   { id: "projetos", label: "Projetos" },
   { id: "tarefas", label: "Tarefas" },
 ];

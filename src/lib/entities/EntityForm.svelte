@@ -5,12 +5,9 @@
 <script lang="ts">
   import {
     businessResponsiblesFromRecord,
+    listBusinessResponsibleContacts,
     listBusinessResponsibleUsers,
   } from "$lib/businesses/client";
-  import {
-    contactToEntityRecord,
-    listAllActiveContacts,
-  } from "$lib/contacts/client";
   import {
     currentSettings,
     loadSettingsFromServer,
@@ -184,17 +181,25 @@
     selectedPeople = selectedPeopleFromRecord(record, retainedPeople);
 
     try {
-      const [contacts, users] = await Promise.all([
-        listAllActiveContacts({
-          orderBy: "name_asc",
-          signal: controller.signal,
-        }),
+      const [contactsResult, usersResult] = await Promise.allSettled([
+        listBusinessResponsibleContacts(fetch, controller.signal),
         listBusinessResponsibleUsers(fetch, controller.signal),
       ]);
+      if (controller.signal.aborted) return;
+
+      const contacts =
+        contactsResult.status === "fulfilled" ? contactsResult.value : [];
+      const users = usersResult.status === "fulfilled" ? usersResult.value : [];
       const activePeople = contacts
-        .map(contactToEntityRecord)
-        .filter((person) => Boolean(person.nome))
-        .map(toPeopleSelectorItem);
+        .filter((contact) => Boolean(contact.name))
+        .map((contact): GlobalSelectorItem => ({
+          id: `contact:${contact.id}`,
+          label: contact.name,
+          description: [contact.profession, "Contato"]
+            .filter(Boolean)
+            .join(" · "),
+          updatedAt: contact.id,
+        }));
       const activeUsers = users.map((user): GlobalSelectorItem => ({
         id: `user:${user.id}`,
         label: user.name,
@@ -210,6 +215,13 @@
       for (const user of activeUsers) optionsById.set(user.id, user);
       people = [...optionsById.values()];
       selectedPeople = selectedPeopleFromRecord(record, people);
+      if (
+        contactsResult.status === "rejected" ||
+        usersResult.status === "rejected"
+      ) {
+        peopleLoadError =
+          "Alguns contatos ou usuários responsáveis não puderam ser carregados.";
+      }
     } catch {
       if (controller.signal.aborted) return;
       people = retainedPeople;
@@ -260,17 +272,6 @@
       return options;
     }
     return [...options, { value: storedValue, label: storedValue }];
-  }
-
-  function toPeopleSelectorItem(person: EntityRecord): GlobalSelectorItem {
-    return {
-      id: `contact:${person.id}`,
-      label: person.nome,
-      description: [person.cargo, person.email, "Contato"]
-        .filter(Boolean)
-        .join(" · "),
-      updatedAt: person.updatedAt,
-    };
   }
 
   function storedResponsibleIds(value: string | undefined): string[] {
@@ -369,7 +370,10 @@
   function submit(event: SubmitEvent): void {
     event.preventDefault();
     if (viewOnly) return;
-    if (config.key === "negocios" && (peopleLoading || peopleLoadError)) {
+    if (
+      config.key === "negocios" &&
+      (peopleLoading || (peopleLoadError && people.length === 0))
+    ) {
       peopleValidationMessage = peopleLoading
         ? "Aguarde o carregamento dos contatos."
         : peopleLoadError;
@@ -482,9 +486,9 @@
                       : "Nenhum contato ou usuário disponível."}
                     icon={FieldIcon}
                     showInitials
-                    disabled={viewOnly ||
-                      peopleLoading ||
-                      Boolean(peopleLoadError)}
+                    dropdownPosition="auto"
+                    maxResults={5}
+                    disabled={viewOnly || peopleLoading}
                     required={field.required}
                     invalid={Boolean(peopleValidationMessage)}
                     errorMessage={peopleValidationMessage}
@@ -495,7 +499,7 @@
                     <p class="people-state" aria-live="polite">
                       Carregando contatos e usuários…
                     </p>
-                  {:else if peopleLoadError}
+                  {:else if peopleLoadError && people.length === 0}
                     <p class="people-state people-error" role="alert">
                       {peopleLoadError}
                       <button
@@ -678,7 +682,7 @@
   .dialog.business-dialog {
     width: min(830px, 100%);
   }
-  header {
+  .dialog > header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -957,7 +961,7 @@
       max-height: calc(100dvh - 16px);
       border-radius: var(--radius-lg);
     }
-    header {
+    .dialog > header {
       padding: 14px 14px 12px;
     }
     .body {

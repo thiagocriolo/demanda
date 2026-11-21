@@ -1,4 +1,9 @@
-export type EntityCardKind = "pessoa" | "negocio" | "projeto" | "tarefa";
+export type EntityCardKind =
+  | "pessoa"
+  | "negocio"
+  | "contrato"
+  | "projeto"
+  | "tarefa";
 
 export type EntityCardAction = "view" | "edit" | "copy" | "archive" | "delete";
 

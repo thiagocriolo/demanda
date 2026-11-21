@@ -13,6 +13,8 @@ import { createDatabasePool } from "../../src/lib/server/db/pool";
 import {
   auditLogs,
   businesses,
+  contractInstallments,
+  contracts,
   financialEntries,
   projectInstallments,
   projects,
@@ -51,18 +53,13 @@ async function withRollback(
 async function insertUser(database: Database, label: string) {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
   const id = randomUUID();
-  await database
-    .insert(users)
-    .values({
-      id,
-      name: label,
-      username: `${label.toLowerCase()}_${suffix}`,
-      email: `${label.toLowerCase()}-${suffix}@example.test`,
-    });
-  const [user] = await database
-    .select()
-    .from(users)
-    .where(eq(users.id, id));
+  await database.insert(users).values({
+    id,
+    name: label,
+    username: `${label.toLowerCase()}_${suffix}`,
+    email: `${label.toLowerCase()}-${suffix}@example.test`,
+  });
+  const [user] = await database.select().from(users).where(eq(users.id, id));
   if (!user) throw new Error("Usuário financeiro não criado.");
   return user;
 }
@@ -109,14 +106,12 @@ async function fixture(database: Database, label = "BE12") {
   const owner = await insertUser(database, `${label}Owner`);
   const outsider = await insertUser(database, `${label}Outsider`);
   const workspaceId = randomUUID();
-  await database
-    .insert(workspaces)
-    .values({
-      id: workspaceId,
-      name: `${label} workspace`,
-      kind: "shared",
-      ownerUserId: owner.id,
-    });
+  await database.insert(workspaces).values({
+    id: workspaceId,
+    name: `${label} workspace`,
+    kind: "shared",
+    ownerUserId: owner.id,
+  });
   const [workspace] = await database
     .select()
     .from(workspaces)
@@ -128,14 +123,12 @@ async function fixture(database: Database, label = "BE12") {
     role: "owner",
   });
   const privateWorkspaceId = randomUUID();
-  await database
-    .insert(workspaces)
-    .values({
-      id: privateWorkspaceId,
-      name: `${label} registros privados`,
-      kind: "personal",
-      ownerUserId: owner.id,
-    });
+  await database.insert(workspaces).values({
+    id: privateWorkspaceId,
+    name: `${label} registros privados`,
+    kind: "personal",
+    ownerUserId: owner.id,
+  });
   const [privateWorkspace] = await database
     .select()
     .from(workspaces)
@@ -149,70 +142,66 @@ async function fixture(database: Database, label = "BE12") {
     role: "owner",
   });
   const businessId = randomUUID();
-  await database
-    .insert(businesses)
-    .values({
-      id: businessId,
-      workspaceId: privateWorkspace.id,
-      ownerUserId: owner.id,
-      name: `${label} negócio`,
-      categoryKey: "cliente",
-      stageKey: "ativo",
-    });
+  await database.insert(businesses).values({
+    id: businessId,
+    workspaceId: privateWorkspace.id,
+    ownerUserId: owner.id,
+    name: `${label} negócio`,
+    categoryKey: "cliente",
+    stageKey: "ativo",
+  });
   const [business] = await database
     .select()
     .from(businesses)
     .where(eq(businesses.id, businessId));
   if (!business) throw new Error("Negócio financeiro não criado.");
   const projectId = randomUUID();
-  await database
-    .insert(projects)
-    .values({
-      id: projectId,
-      workspaceId: workspace.id,
-      businessId: business.id,
-      name: `${label} projeto`,
-      statusKey: "execucao",
-      amountCents: 10_001,
-      contractType: "one_off",
-      firstDueDate: "2026-07-31",
-      financeNotes: "Gerado pelo projeto",
-    });
+  await database.insert(projects).values({
+    id: projectId,
+    workspaceId: workspace.id,
+    businessId: business.id,
+    name: `${label} projeto`,
+    statusKey: "execucao",
+    amountCents: 10_001,
+    contractType: "one_off",
+    firstDueDate: "2026-07-31",
+    financeNotes: "Gerado pelo projeto",
+  });
   const [project] = await database
     .select()
     .from(projects)
     .where(eq(projects.id, projectId));
   if (!project) throw new Error("Projeto financeiro não criado.");
   const installmentIds = [randomUUID(), randomUUID()];
-  await database
-    .insert(projectInstallments)
-    .values([
-      {
-        id: installmentIds[0],
-        workspaceId: workspace.id,
-        projectId: project.id,
-        number: 1,
-        dueDate: "2026-07-31",
-        amountCents: 5_000,
-        statusKey: "pending",
-      },
-      {
-        id: installmentIds[1],
-        workspaceId: workspace.id,
-        projectId: project.id,
-        number: 2,
-        dueDate: "2026-08-31",
-        amountCents: 5_001,
-        statusKey: "pending",
-      },
-    ]);
+  await database.insert(projectInstallments).values([
+    {
+      id: installmentIds[0],
+      workspaceId: workspace.id,
+      projectId: project.id,
+      number: 1,
+      dueDate: "2026-07-31",
+      amountCents: 5_000,
+      statusKey: "pending",
+    },
+    {
+      id: installmentIds[1],
+      workspaceId: workspace.id,
+      projectId: project.id,
+      number: 2,
+      dueDate: "2026-08-31",
+      amountCents: 5_001,
+      statusKey: "pending",
+    },
+  ]);
   const installments = await database
     .select()
     .from(projectInstallments)
-    .where(and(
-      eq(projectInstallments.projectId, project.id),
-      eq(projectInstallments.workspaceId, workspace.id),
-    ));
+    .where(
+      and(
+        eq(projectInstallments.projectId, project.id),
+        eq(projectInstallments.workspaceId, workspace.id),
+      ),
+    );
   return {
     owner,
     outsider,
@@ -462,6 +451,62 @@ describe("BE-12: Financeiro persistente", () => {
           ),
         );
       expect(installment?.status).toBe("settled");
+    }));
+
+  it("carrega e liquida parcelas de contrato do usuário mesmo quando pertencem a outro workspace do próprio usuário", () =>
+    withRollback(async (transaction) => {
+      const data = await fixture(transaction, "Personal");
+      const contractId = randomUUID();
+      await transaction.insert(contracts).values({
+        id: contractId,
+        workspaceId: data.privateWorkspace.id,
+        ownerUserId: data.owner.id,
+        businessId: data.business.id,
+        name: "Contrato José",
+        contractType: "one_off",
+        amountCents: 600_000,
+        firstDueDate: "2026-11-20",
+      });
+      await transaction.insert(contractInstallments).values(
+        Array.from({ length: 5 }, (_, index) => ({
+          id: randomUUID(),
+          workspaceId: data.privateWorkspace.id,
+          contractId,
+          number: index + 1,
+          dueDate: `202${index < 2 ? 6 : 7}-${String(((10 + index) % 12) + 1).padStart(2, "0")}-20`,
+          amountCents: 120_000,
+          statusKey: "pending",
+        })),
+      );
+
+      // Sessão ativa está no workspace compartilhado, enquanto o contrato foi criado no workspace pessoal.
+      const snapshot = await getFinancialSnapshot(
+        transaction,
+        data.ownerContext,
+      );
+      const contractEntries = snapshot.entries.filter(
+        ({ source, title }) =>
+          source === "contract" && title === "Contrato José",
+      );
+      expect(contractEntries).toHaveLength(5);
+      expect(
+        contractEntries.reduce((sum, item) => sum + item.amountCents, 0),
+      ).toBe(600_000);
+      expect(contractEntries[0]?.businessName).toBe(data.business.name);
+
+      const first = contractEntries[0]!;
+      const settled = await changeFinancialEntryState(
+        transaction,
+        data.ownerContext,
+        first.id,
+        { version: first.version, action: "settle" },
+      );
+      expect(settled.entries.find(({ id }) => id === first.id)?.status).toBe(
+        "settled",
+      );
+      expect(
+        settled.entries.filter(({ source }) => source === "contract"),
+      ).toHaveLength(5);
     }));
 });
 

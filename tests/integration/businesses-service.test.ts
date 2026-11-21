@@ -10,6 +10,7 @@ import {
   BusinessResponsiblesInvalidError,
   createWorkspaceBusiness,
   getWorkspaceBusiness,
+  listBusinessResponsibleContacts,
   listBusinessResponsibleUsers,
   listWorkspaceBusinesses,
   updateWorkspaceBusiness,
@@ -480,6 +481,18 @@ describe("BE-06: servico privado de negocios", () => {
       expect(candidates.map(({ id }) => id)).toEqual([owner.id, connected.id]);
       expect(candidates[0]?.current).toBe(true);
 
+      const contactCandidates = await listBusinessResponsibleContacts(
+        database,
+        ownerContext,
+      );
+      expect(contactCandidates).toEqual([
+        {
+          id: contact.id,
+          name: "Contato cadastrado",
+          profession: "Estrategista",
+        },
+      ]);
+
       const created = await createWorkspaceBusiness(database, ownerContext, {
         ...input("Misto", [contact.id]),
         responsibleUserIds: [owner.id, connected.id],
@@ -510,6 +523,48 @@ describe("BE-06: servico privado de negocios", () => {
           responsibleUserIds: [outsider.id],
         }),
       ).rejects.toBeInstanceOf(BusinessResponsiblesInvalidError);
+    });
+  });
+
+  it("permite associar a mesma pessoa a quantos negocios forem necessarios", async () => {
+    await withRollback(async (database) => {
+      const owner = await insertUser(database, "UnlimitedOwner");
+      const personal = await insertWorkspace(database, owner.id, "Pessoal");
+      const shared = await insertWorkspace(
+        database,
+        owner.id,
+        "Operacao compartilhada",
+        "shared",
+      );
+      const contact = await insertContact(
+        database,
+        owner.id,
+        shared.id,
+        "Pessoa com varios negocios",
+      );
+      const ownerContext = context(owner, personal, "owner");
+
+      const first = await createWorkspaceBusiness(
+        database,
+        ownerContext,
+        input("Primeiro negocio", [contact.id]),
+      );
+      const second = await createWorkspaceBusiness(
+        database,
+        ownerContext,
+        input("Segundo negocio", [contact.id]),
+      );
+
+      expect(first.workspaceId).toBe(shared.id);
+      expect(second.workspaceId).toBe(shared.id);
+      expect(first.responsibles[0]).toMatchObject({
+        kind: "contact",
+        contactId: contact.id,
+      });
+      expect(second.responsibles[0]).toMatchObject({
+        kind: "contact",
+        contactId: contact.id,
+      });
     });
   });
 

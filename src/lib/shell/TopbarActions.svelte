@@ -20,8 +20,8 @@
   const configSave = getContext<ConfigSaveContext>(CONFIG_SAVE_CONTEXT);
 
   let showCardScale = $derived(
-    page.url.pathname === "/registros" ||
-      page.url.pathname.startsWith("/registros/"),
+    page.url.pathname === "/clientes" ||
+      page.url.pathname.startsWith("/clientes/"),
   );
   let showSave = $derived(
     (isConfigPath(page.url.pathname) ||

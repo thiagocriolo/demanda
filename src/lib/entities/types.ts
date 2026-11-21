@@ -40,7 +40,7 @@ export type EntityRecord = {
 export type EntitySeed = Record<string, string>;
 
 export type EntityConfig = {
-  key: "pessoas" | "negocios" | "projetos" | "entregas";
+  key: "pessoas" | "negocios" | "contratos" | "projetos" | "entregas";
   singular: string;
   plural: string;
   description: string;

@@ -6,12 +6,15 @@ import type {
 } from "./api-types";
 import type { ScheduleMap } from "./types";
 import {
+  jsonRequest,
+  requestJson,
+  type FetchLike,
+} from "../http/client";
+import {
   GLOBAL_WORKSPACE_SCOPE_ID,
   isGlobalWorkspaceScope,
   workspaceIdsForRequestScope,
 } from "../workspaces/workspace-scope";
-
-type FetchLike = typeof fetch;
 
 export class CronogramaApiError extends Error {
   constructor(
@@ -23,23 +26,15 @@ export class CronogramaApiError extends Error {
   }
 }
 
-async function request(
+function request(
   input: string,
   init: RequestInit | undefined,
   fetcher: FetchLike,
 ): Promise<CronogramaSnapshot> {
-  const response = await fetcher(input, init);
-  if (!response.ok) {
-    let message = "Não foi possível atualizar o Cronograma.";
-    try {
-      const payload = (await response.json()) as { message?: unknown };
-      if (typeof payload.message === "string") message = payload.message;
-    } catch {
-      // Respostas sem JSON usam a mensagem segura acima.
-    }
-    throw new CronogramaApiError(response.status, message);
-  }
-  return (await response.json()) as CronogramaSnapshot;
+  return requestJson<CronogramaSnapshot>(fetcher, input, init, {
+    fallbackMessage: "Não foi possível atualizar o Cronograma.",
+    createError: (status, message) => new CronogramaApiError(status, message),
+  });
 }
 
 export async function loadCronogramaSnapshot(
@@ -74,11 +69,7 @@ export function saveCronogramaEntry(
 ): Promise<CronogramaSnapshot> {
   return request(
     `/api/cronograma/${encodeURIComponent(subtaskId)}`,
-    {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-    },
+    jsonRequest("PUT", input),
     fetcher,
   );
 }
@@ -90,11 +81,7 @@ export function deleteCronogramaEntry(
 ): Promise<CronogramaSnapshot> {
   return request(
     `/api/cronograma/${encodeURIComponent(subtaskId)}`,
-    {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ version }),
-    },
+    jsonRequest("DELETE", { version }),
     fetcher,
   );
 }
@@ -105,11 +92,7 @@ export function saveCronogramaReorganization(
 ): Promise<CronogramaSnapshot> {
   return request(
     "/api/cronograma/reorganize",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-    },
+    jsonRequest("POST", input),
     fetcher,
   );
 }

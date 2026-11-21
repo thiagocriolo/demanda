@@ -1,4 +1,9 @@
 import {
+  jsonRequest,
+  requestJson as fetchJson,
+  type FetchLike,
+} from "../http/client";
+import {
   isGlobalWorkspaceScope,
   workspaceIdsForRequestScope,
 } from "$lib/workspaces/workspace-scope";
@@ -15,7 +20,6 @@ import type {
 } from "./types";
 
 export const TOOLS_CHANGED_EVENT = "demanda:tools-changed";
-type FetchLike = typeof fetch;
 
 export class ToolApiError extends Error {
   constructor(
@@ -27,31 +31,15 @@ export class ToolApiError extends Error {
   }
 }
 
-async function requestJson<T>(
+function requestJson<T>(
   fetcher: FetchLike,
   input: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetcher(input, init);
-  if (!response.ok) {
-    let message = "Não foi possível concluir a operação em Ferramentas.";
-    try {
-      const payload = (await response.json()) as { message?: unknown };
-      if (typeof payload.message === "string") message = payload.message;
-    } catch {
-      // A mensagem genérica cobre respostas sem JSON.
-    }
-    throw new ToolApiError(response.status, message);
-  }
-  return (await response.json()) as T;
-}
-
-function jsonRequest(method: "POST" | "PUT", body: unknown): RequestInit {
-  return {
-    method,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  };
+  return fetchJson<T>(fetcher, input, init, {
+    fallbackMessage: "Não foi possível concluir a operação em Ferramentas.",
+    createError: (status, message) => new ToolApiError(status, message),
+  });
 }
 
 async function loadWorkspaceTools(

@@ -3,19 +3,23 @@
   import type { Snippet } from "svelte";
 
   let {
-    title,
+    title = "",
     eyebrow,
     icon: Icon,
+    titleContent,
     actions,
+    children,
   } = $props<{
-    title: string;
+    title?: string;
     eyebrow?: string;
     icon?: LucideIcon;
+    titleContent?: Snippet;
     actions?: Snippet;
+    children?: Snippet;
   }>();
 </script>
 
-<header class="page-header">
+<header class="page-header" class:has-body={Boolean(children)}>
   <div class="page-header__main">
     {#if Icon}
       <span class="page-header__icon" aria-hidden="true">
@@ -25,9 +29,17 @@
 
     <div class="page-header__copy">
       {#if eyebrow}<span class="page-header__eyebrow">{eyebrow}</span>{/if}
-      <h1>{title}</h1>
+      {#if titleContent}
+        {@render titleContent()}
+      {:else}
+        <h1>{title}</h1>
+      {/if}
     </div>
   </div>
+
+  {#if children}
+    <div class="page-header__body">{@render children()}</div>
+  {/if}
 
   {#if actions}
     <div class="page-header__actions">{@render actions()}</div>
@@ -100,6 +112,14 @@
     flex: 0 0 auto;
     align-items: center;
   }
+  .page-header__body {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    justify-content: center;
+  }
   .page-header__eyebrow {
     display: inline-flex;
     align-items: center;
@@ -120,6 +140,18 @@
     font-size: clamp(var(--text-2xl), 2.4vw, 30px);
     line-height: 1.08;
     letter-spacing: -0.04em;
+  }
+  @media (max-width: 1180px) {
+    .page-header.has-body {
+      flex-wrap: wrap;
+    }
+    .page-header.has-body .page-header__body {
+      order: 3;
+      flex: 1 0 100%;
+      justify-content: stretch;
+      padding-top: 16px;
+      border-top: 1px solid rgba(46, 86, 255, 0.12);
+    }
   }
   @media (max-width: 640px) {
     .page-header {

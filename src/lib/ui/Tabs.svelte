@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { onMount, tick } from "svelte";
 
   export type TabItem = {
     id: string;
     label: string;
     badge?: string | number;
+    /** Quando informado, a aba representa uma seção navegável da aplicação. */
+    href?: string;
   };
 
   let {
@@ -110,9 +113,13 @@
     );
   }
 
-  function select(id: string): void {
-    value = id;
-    onchange?.(id);
+  function select(item: TabItem): void {
+    if (item.href) {
+      void goto(item.href);
+      return;
+    }
+    value = item.id;
+    onchange?.(item.id);
     scheduleMeasure();
   }
 
@@ -136,8 +143,7 @@
           : event.key === "ArrowRight"
             ? (index + 1) % items.length
             : (index - 1 + items.length) % items.length;
-    value = items[next].id;
-    onchange?.(items[next].id);
+    select(items[next]);
     scheduleMeasure();
     requestAnimationFrame(() => {
       document.getElementById(tabId(items[next].id))?.focus();
@@ -177,7 +183,7 @@
       }`.trim()}
       data-state={value === item.id ? "active" : "inactive"}
       style:z-index={stack(index)}
-      onclick={() => select(item.id)}
+      onclick={() => select(item)}
       onkeydown={(event) => move(event, index)}
     >
       {item.label}

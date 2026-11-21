@@ -4,6 +4,7 @@ import type {
   ProjectMutationInput,
   ServiceMutationInput,
 } from "../../projects/types";
+import { normalizeKey } from "../db/helpers";
 
 const MAX_MONEY_CENTS = Number.MAX_SAFE_INTEGER;
 
@@ -21,17 +22,6 @@ const optionalText = (maximum: number) =>
     .trim()
     .max(maximum)
     .transform((value) => value.replace(/\s+/g, " "));
-
-function normalizeKey(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "_")
-    .replace(/^[_-]+|[_-]+$/g, "")
-    .replace(/_{2,}/g, "_");
-}
 
 const normalizedKey = z
   .string()
@@ -118,91 +108,27 @@ const installmentSchema = z
   })
   .strict();
 
-function validateInstallments(
-  value: {
-    amountCents?: number;
-    firstDueDate?: string | null;
-    installments?: { number: number; dueDate: string; amountCents: number }[];
-  },
-  context: z.RefinementCtx,
-  requireForPositiveAmount: boolean,
-): void {
-  const installments = value.installments ?? [];
-  if (
-    requireForPositiveAmount &&
-    (value.amountCents ?? 0) > 0 &&
-    !installments.length
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["installments"],
-      message: "Contratos pontuais com valor exigem parcelas.",
-    });
-  }
-  for (let index = 0; index < installments.length; index += 1) {
-    const installment = installments[index];
-    if (installment?.number !== index + 1) {
-      context.addIssue({
-        code: "custom",
-        path: ["installments", index, "number"],
-        message: "As parcelas devem ser numeradas continuamente a partir de 1.",
-      });
-    }
-    if (
-      index > 0 &&
-      installment &&
-      installments[index - 1]!.dueDate > installment.dueDate
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["installments", index, "dueDate"],
-        message: "Os vencimentos devem estar em ordem cronologica.",
-      });
-    }
-  }
-  if (
-    installments.length &&
-    value.firstDueDate !== undefined &&
-    value.firstDueDate !== installments[0]?.dueDate
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["firstDueDate"],
-      message: "O primeiro vencimento deve coincidir com a primeira parcela.",
-    });
-  }
-  if (
-    value.amountCents !== undefined &&
-    installments.length &&
-    installments.reduce((sum, item) => sum + item.amountCents, 0) !==
-      value.amountCents
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["installments"],
-      message: "A soma das parcelas deve ser igual ao valor do projeto.",
-    });
-  }
-}
-
 const projectMutationObject = z
   .object({
     name: collapsedText(140),
-    businessId: z.string().uuid(),
+    /** Business is derived from the contract on the server. */
+    businessId: z.string().uuid().optional(),
+    contractId: z.string().uuid().optional(),
     serviceIds: uniqueUuidArray(0, 20),
     status: lifecycleStatus,
     startDate: isoDate,
     endDate: nullableIsoDate,
+    engagementType: z.enum(["fee", "personal"]).default("personal"),
     briefing: z.string().trim().max(10_000),
     tagLabels,
-    responsibleUserIds: uniqueUuidArray(1, 20),
-    contractType: z.enum(["one_off", "recurring"]),
-    amountCents: moneyCents,
-    firstDueDate: nullableIsoDate,
-    paymentMethod: optionalText(120),
-    paymentTerms: z.string().trim().max(2_000),
-    financeNotes: z.string().trim().max(4_000),
-    installments: z.array(installmentSchema).max(99),
+    responsibleUserIds: uniqueUuidArray(0, 20).default([]),
+    contractType: z.enum(["one_off", "recurring"]).default("one_off"),
+    amountCents: moneyCents.default(0),
+    firstDueDate: nullableIsoDate.default(null),
+    paymentMethod: optionalText(120).default(""),
+    paymentTerms: z.string().trim().max(2_000).default(""),
+    financeNotes: z.string().trim().max(4_000).default(""),
+    installments: z.array(installmentSchema).max(99).default([]),
   })
   .strict();
 
@@ -215,7 +141,6 @@ export const projectMutationSchema = projectMutationObject
         message: "A data final nao pode ser anterior a data inicial.",
       });
     }
-    validateInstallments(value, context, value.contractType === "one_off");
   })
   .transform((value): ProjectMutationInput => value);
 
@@ -228,13 +153,15 @@ export const projectFromServiceSchema = z
     serviceId: z.string().uuid(),
     additionalServiceIds: uniqueUuidArray(0, 19).optional(),
     name: collapsedText(140),
-    businessId: z.string().uuid(),
+    businessId: z.string().uuid().optional(),
+    contractId: z.string().uuid().optional(),
     startDate: isoDate,
     endDate: nullableIsoDate.optional(),
+    engagementType: z.enum(["fee", "personal"]).optional(),
     status: lifecycleStatus.optional(),
     briefing: z.string().trim().max(10_000).optional(),
     tagLabels: tagLabels.optional(),
-    responsibleUserIds: uniqueUuidArray(1, 20).optional(),
+    responsibleUserIds: uniqueUuidArray(0, 20).optional(),
     contractType: z.enum(["one_off", "recurring"]).optional(),
     amountCents: moneyCents.optional(),
     firstDueDate: nullableIsoDate.optional(),
@@ -259,11 +186,6 @@ export const projectFromServiceSchema = z
         message: "A data final nao pode ser anterior a data inicial.",
       });
     }
-    validateInstallments(
-      value,
-      context,
-      value.contractType === "one_off" && value.amountCents !== undefined,
-    );
   })
   .transform((value): ProjectFromServiceInput => value);
 

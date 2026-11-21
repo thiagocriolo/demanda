@@ -699,7 +699,7 @@
                     {#if entry.detail}<span>{entry.detail}</span>{/if}
                     {#if entry.businessName}<span>{entry.businessName}</span
                       >{/if}
-                    {#if entry.source === "projeto"}<a href="/registros"
+                    {#if entry.source === "projeto"}<a href="/clientes"
                         >abrir projeto</a
                       >{/if}
                   </p>

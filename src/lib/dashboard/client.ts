@@ -1,3 +1,4 @@
+import { requestJson } from "../http/client";
 import type {
   DashboardPeriod,
   DashboardSnapshot,
@@ -15,23 +16,15 @@ export class DashboardApiError extends Error {
   }
 }
 
-async function request<T>(
+function request<T>(
   url: string,
   fetcher: typeof fetch,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetcher(url, init);
-  if (!response.ok) {
-    let message = "Não foi possível carregar os dados.";
-    try {
-      const payload = (await response.json()) as { message?: unknown };
-      if (typeof payload.message === "string") message = payload.message;
-    } catch {
-      // A mensagem genérica cobre respostas sem JSON.
-    }
-    throw new DashboardApiError(response.status, message);
-  }
-  return (await response.json()) as T;
+  return requestJson<T>(fetcher, url, init, {
+    fallbackMessage: "Não foi possível carregar os dados.",
+    createError: (status, message) => new DashboardApiError(status, message),
+  });
 }
 
 export function localIsoDate(date = new Date()): string {

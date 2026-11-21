@@ -71,6 +71,7 @@
     id: string;
     nome: string;
     duracao: string;
+    executionAt: string;
     status: string;
   };
 
@@ -78,6 +79,7 @@
     id: string;
     nome: string;
     duracao: string;
+    executionAt: string;
     status: string;
   };
 
@@ -173,10 +175,10 @@
   let viewOnly = $derived(resolvedMode === "view");
   let title = $derived(
     resolvedMode === "view"
-      ? "Detalhes da tarefa"
+      ? "Detalhes da entrega"
       : resolvedMode === "edit"
-        ? "Editar tarefa"
-        : "Nova tarefa",
+        ? "Editar entrega"
+        : "Nova entrega",
   );
   let recordHref = $derived(
     record?.id ? recordPageHref("tarefa", record.id) : undefined,
@@ -191,7 +193,7 @@
   let createLabel = $derived(
     config.createAction.toLocaleLowerCase("pt-BR").includes("tarefa")
       ? config.createAction
-      : "Criar tarefa",
+      : "Criar entrega",
   );
   let availableProjects = $derived(
     form.negocioId
@@ -314,6 +316,39 @@
     return "";
   }
 
+  function localExecutionAt(value: string): string {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    const offset = parsed.getTimezoneOffset() * 60_000;
+    return new Date(parsed.getTime() - offset).toISOString().slice(0, 16);
+  }
+
+  function serializedExecutionAt(value: string): string {
+    if (!value) return "";
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+  }
+
+  function subtaskExecutionLabel(value: string): string {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+
+    const date = new Intl.DateTimeFormat("pt-BR", {
+      day: "numeric",
+      month: "long",
+    }).format(parsed);
+    const hours = parsed.getHours();
+    const minutes = parsed.getMinutes();
+    const time =
+      minutes === 0
+        ? `${hours} horas`
+        : `${hours}h${String(minutes).padStart(2, "0")}`;
+
+    return `${date}, às ${time}`;
+  }
+
   function newSubtask(
     values: Partial<Omit<TaskSubtask, "localId">> = {},
   ): TaskSubtask {
@@ -325,6 +360,7 @@
       duracao: normalizedDuration(
         values.duracao ?? defaultSubtaskDuration ?? "1",
       ),
+      executionAt: localExecutionAt(values.executionAt ?? ""),
       status: values.status ?? "pendente",
     };
   }
@@ -369,6 +405,7 @@
             "duration",
             "duration_hours",
           ),
+          executionAt: recordValue(candidate, "executionAt", "execution_at"),
           status: recordValue(candidate, "status") || "pendente",
         }),
       ];
@@ -857,6 +894,22 @@
       ?.focus();
   }
 
+  async function addSubtaskOnEnter(
+    event: KeyboardEvent,
+    subtask: TaskSubtask,
+  ): Promise<void> {
+    if (
+      event.key !== "Enter" ||
+      event.isComposing ||
+      !subtask.nome.trim() ||
+      subtasks.length >= 10
+    )
+      return;
+
+    event.preventDefault();
+    await addSubtask();
+  }
+
   function removeSubtask(localId: string): void {
     if (subtasks.length === 1) {
       subtasks = [newSubtask()];
@@ -872,6 +925,7 @@
         id: subtask.id || crypto.randomUUID(),
         nome: subtask.nome.trim(),
         duracao: normalizedDuration(subtask.duracao),
+        executionAt: serializedExecutionAt(subtask.executionAt),
         status: subtask.status || "pendente",
       }));
   }
@@ -910,6 +964,7 @@
         id: crypto.randomUUID(),
         nome: form.nome.trim(),
         duracao: defaultSubtaskDuration,
+        executionAt: "",
         status: "pendente",
       });
     }
@@ -1281,7 +1336,11 @@
           {#if subtasks.length > 0}
             <div class="subtask-list">
               {#each subtasks as subtask (subtask.localId)}
-                <div class="subtask-row" data-subtask-id={subtask.localId}>
+                <div
+                  class="subtask-row"
+                  class:subtask-row--editable={!viewOnly}
+                  data-subtask-id={subtask.localId}
+                >
                   <label
                     class="subtask-check"
                     class:subtask-check--checked={subtaskCompleted(
@@ -1311,21 +1370,7 @@
                     </span>
                   </label>
 
-                  <div class="control">
-                    <span class="control-icon" aria-hidden="true">
-                      <ListTodo size={16} strokeWidth={1.8} />
-                    </span>
-                    <input
-                      bind:value={subtask.nome}
-                      type="text"
-                      maxlength="120"
-                      disabled={viewOnly}
-                      placeholder="Nome da subtarefa"
-                      aria-label="Nome da subtarefa"
-                    />
-                  </div>
-
-                  <div class="control">
+                  <div class="control subtask-duration-control">
                     <span class="control-icon" aria-hidden="true">
                       <Timer size={16} strokeWidth={1.8} />
                     </span>
@@ -1338,18 +1383,57 @@
                       required={Boolean(subtask.nome.trim())}
                       disabled={viewOnly}
                       placeholder="Duração"
-                      aria-label="Duração da subtarefa em horas"
+                      aria-label="Duração da tarefa em horas"
                       onchange={() =>
                         (subtask.duracao = normalizedDuration(subtask.duracao))}
                     />
+                    <span class="duration-unit" aria-hidden="true">h</span>
+                  </div>
+
+                  <div class="control subtask-name-control">
+                    <span class="control-icon" aria-hidden="true">
+                      <ListTodo size={16} strokeWidth={1.8} />
+                    </span>
+                    <input
+                      bind:value={subtask.nome}
+                      type="text"
+                      maxlength="120"
+                      disabled={viewOnly}
+                      placeholder="Nome da tarefa"
+                      aria-label="Nome da tarefa"
+                      onkeydown={(event) => addSubtaskOnEnter(event, subtask)}
+                    />
+                  </div>
+
+                  <div class="subtask-date">
+                    <span class="subtask-date-label"
+                      >{subtaskExecutionLabel(subtask.executionAt)}</span
+                    >
+                    {#if viewOnly}
+                      <span class="subtask-date-picker" aria-hidden="true">
+                        <CalendarDays size={16} strokeWidth={1.8} />
+                      </span>
+                    {:else}
+                      <label
+                        class="subtask-date-picker"
+                        title="Alterar data e hora da tarefa"
+                      >
+                        <CalendarDays size={16} strokeWidth={1.8} />
+                        <input
+                          bind:value={subtask.executionAt}
+                          type="datetime-local"
+                          aria-label="Data e hora de execução da tarefa"
+                        />
+                      </label>
+                    {/if}
                   </div>
 
                   {#if !viewOnly}
                     <button
                       class="remove-subtask"
                       type="button"
-                      aria-label="Remover subtarefa"
-                      title="Remover subtarefa"
+                      aria-label="Remover tarefa"
+                      title="Remover tarefa"
                       onclick={() => removeSubtask(subtask.localId)}
                     >
                       <Trash2 size={17} strokeWidth={1.9} />
@@ -1488,7 +1572,7 @@
     animation: rise var(--motion-base) ease-out;
   }
 
-  header {
+  .dialog > header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1781,28 +1865,151 @@
 
   .subtask-list {
     display: grid;
-    gap: 8px;
+    gap: 6px;
   }
 
   .subtask-row {
     display: grid;
-    grid-template-columns: 58px minmax(200px, 1fr) 82px 58px;
-    gap: 8px;
+    grid-template-columns: 50px 76px minmax(180px, 1fr) minmax(190px, 210px);
+    gap: 0;
     align-items: center;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+    transition:
+      border-color var(--motion-fast) ease,
+      box-shadow var(--motion-fast) ease,
+      background var(--motion-fast) ease;
+  }
+
+  .subtask-row--editable {
+    grid-template-columns: 50px 76px minmax(180px, 1fr) minmax(
+        190px,
+        210px
+      ) 50px;
+  }
+
+  .subtask-row:hover {
+    background: var(--surface-soft);
+  }
+
+  .subtask-row:focus-within {
+    border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent);
+  }
+
+  .subtask-row > .control {
+    min-height: 50px;
+    padding: 0 12px;
+    border: 0;
+    border-left: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .subtask-row > .control:focus-within {
+    border-left-color: var(--border);
+    box-shadow: none;
+  }
+
+  .subtask-row .control input {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .subtask-duration-control {
+    grid-template-columns: 16px 22px auto;
+    gap: 4px;
+    padding-inline: 9px !important;
+  }
+
+  .subtask-duration-control input {
+    width: 22px;
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  .subtask-duration-control input::-webkit-inner-spin-button,
+  .subtask-duration-control input::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
+  }
+
+  .duration-unit {
+    color: var(--muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .subtask-date {
+    display: flex;
+    min-width: 0;
+    min-height: 50px;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 0 8px;
+  }
+
+  .subtask-date-label {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.3;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .subtask-date-picker {
+    position: relative;
+    display: inline-grid;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    place-items: center;
+  }
+
+  label.subtask-date-picker {
+    cursor: pointer;
+    transition:
+      color var(--motion-fast) ease,
+      background var(--motion-fast) ease;
+  }
+
+  label.subtask-date-picker:hover,
+  label.subtask-date-picker:focus-within {
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+  }
+
+  .subtask-date-picker input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
   }
 
   .subtask-check {
     position: relative;
     display: grid;
-    width: 58px;
-    height: 58px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
+    width: 50px;
+    height: 50px;
+    border: 0;
+    border-radius: var(--radius-lg) 0 0 var(--radius-lg);
     color: var(--muted);
-    background: var(--panel);
+    background: transparent;
     cursor: pointer;
     transition:
-      border-color var(--motion-fast) ease,
       color var(--motion-fast) ease,
       background var(--motion-fast) ease;
     place-items: center;
@@ -1810,11 +2017,10 @@
 
   .subtask-check:hover,
   .subtask-check:focus-within {
-    border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+    color: var(--primary);
   }
 
   .subtask-check--checked {
-    border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
     color: var(--primary);
     background: color-mix(in srgb, var(--primary) 7%, var(--panel));
   }
@@ -1842,22 +2048,22 @@
 
   .remove-subtask {
     display: inline-flex;
-    width: 58px;
-    min-width: 58px;
-    height: 58px;
-    min-height: 58px;
+    width: 50px;
+    min-width: 50px;
+    height: 50px;
+    min-height: 50px;
     align-items: center;
     justify-content: center;
     padding: 0;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
+    border: 0;
+    border-left: 1px solid var(--border);
+    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
     color: var(--danger);
-    background: var(--panel);
+    background: transparent;
     box-shadow: none;
   }
 
   .remove-subtask:hover {
-    border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
     background: color-mix(in srgb, var(--danger) 7%, var(--panel));
   }
 
@@ -2011,7 +2217,7 @@
       border-radius: var(--radius-lg);
     }
 
-    header {
+    .dialog > header {
       padding: 14px 14px 12px;
     }
 
@@ -2037,7 +2243,8 @@
 
     .two-column-grid,
     .three-column-grid,
-    .subtask-row {
+    .subtask-row,
+    .subtask-row.subtask-row--editable {
       grid-template-columns: minmax(0, 1fr);
     }
 

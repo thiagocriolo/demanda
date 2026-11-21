@@ -5,6 +5,7 @@ import {
   authSessions,
   auditLogs,
   businesses,
+  contracts,
   projectResponsibles,
   projects,
   projectServices,
@@ -75,6 +76,7 @@ export type WorkspaceProjectPreviewView = {
   workspaceId: string;
   name: string;
   businessName: string;
+  contractName: string | null;
   status: string;
   endDate: string | null;
   responsibleNames: string[];
@@ -165,6 +167,7 @@ export async function listUserWorkspaces(
       workspaceId: projects.workspaceId,
       name: projects.name,
       businessName: businesses.name,
+      contractName: contracts.name,
       status: projects.statusKey,
       endDate: projects.endDate,
       createdAt: projects.createdAt,
@@ -172,6 +175,7 @@ export async function listUserWorkspaces(
     })
     .from(projects)
     .innerJoin(businesses, eq(businesses.id, projects.businessId))
+    .leftJoin(contracts, eq(contracts.id, projects.contractId))
     .where(
       and(
         inArray(projects.workspaceId, ids),
@@ -298,6 +302,7 @@ export async function listUserWorkspaces(
           workspaceId: project.workspaceId,
           name: project.name,
           businessName: project.businessName,
+          contractName: project.contractName ?? null,
           status: project.status,
           endDate: project.endDate,
           responsibleNames: projectResponsibleRows

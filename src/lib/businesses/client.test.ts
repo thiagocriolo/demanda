@@ -6,6 +6,7 @@ import {
   businessToEntityRecord,
   entityValuesToBusinessInput,
   listAllActiveBusinesses,
+  listBusinessResponsibleContacts,
   listBusinessResponsibleUsers,
   listBusinesses,
   type FetchLike,
@@ -232,6 +233,30 @@ describe("cliente de negócios", () => {
     expect(fetcher).toHaveBeenCalledWith("/api/business-responsibles/users", {
       signal: undefined,
     });
+  });
+
+  it("busca os contatos do seletor sem carregar detalhes do CRUD", async () => {
+    const fetcher = vi.fn(async () =>
+      Response.json([
+        {
+          id: business.responsibles[0].contactId,
+          name: "Maria",
+          profession: "Designer",
+        },
+      ]),
+    ) as FetchLike;
+
+    await expect(listBusinessResponsibleContacts(fetcher)).resolves.toEqual([
+      {
+        id: business.responsibles[0].contactId,
+        name: "Maria",
+        profession: "Designer",
+      },
+    ]);
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/business-responsibles/contacts",
+      { signal: undefined },
+    );
   });
 
   it("mantém a etapa real ao mapear e editar um negócio arquivado", () => {

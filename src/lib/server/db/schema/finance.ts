@@ -19,6 +19,7 @@ import {
 import { applicationSchema, check, createdAt, timestamp, updatedAt, uuid } from "./base";
 
 import { users } from "./identity";
+import { contractInstallments, contracts } from "./contracts";
 import { projects } from "./projects";
 import { workspaces } from "./workspace";
 
@@ -92,10 +93,16 @@ export const financialEntries = applicationSchema.table(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
+    /** Finance is private to the user, even when its contract is operationally shared. */
+    ownerUserId: uuid("owner_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     projectId: uuid("project_id"),
     projectInstallmentId: uuid("project_installment_id"),
+    contractId: uuid("contract_id"),
+    contractInstallmentId: uuid("contract_installment_id"),
     source: varchar("source", { length: 16 })
-      .$type<"manual" | "project">()
+      .$type<"manual" | "project" | "contract">()
       .notNull(),
     type: varchar("type", { length: 16 })
       .$type<"revenue" | "expense">()
@@ -145,6 +152,10 @@ export const financialEntries = applicationSchema.table(
       table.workspaceId,
       table.id,
     ),
+    unique("financial_entries_owner_contract_installment_unique").on(
+      table.ownerUserId,
+      table.contractInstallmentId,
+    ),
     unique("financial_entries_workspace_project_installment_unique").on(
       table.workspaceId,
       table.projectInstallmentId,
@@ -159,8 +170,25 @@ export const financialEntries = applicationSchema.table(
       columns: [table.workspaceId, table.projectInstallmentId],
       foreignColumns: [projectInstallments.workspaceId, projectInstallments.id],
     }).onDelete("cascade"),
+    foreignKey({
+      name: "financial_entries_workspace_contract_foreign_key",
+      columns: [table.workspaceId, table.contractId],
+      foreignColumns: [contracts.workspaceId, contracts.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "financial_entries_workspace_contract_installment_foreign_key",
+      columns: [table.workspaceId, table.contractInstallmentId],
+      foreignColumns: [contractInstallments.workspaceId, contractInstallments.id],
+    }).onDelete("cascade"),
     index("financial_entries_workspace_due_status_index").on(
       table.workspaceId,
+      table.dueDate,
+      table.status,
+      table.deletedAt,
+      table.id,
+    ),
+    index("financial_entries_owner_due_status_index").on(
+      table.ownerUserId,
       table.dueDate,
       table.status,
       table.deletedAt,
@@ -183,14 +211,20 @@ export const financialEntries = applicationSchema.table(
       table.projectId,
       table.deletedAt,
     ),
+    index("financial_entries_workspace_contract_index").on(
+      table.workspaceId,
+      table.contractId,
+      table.deletedAt,
+    ),
     check(
       "financial_entries_source_allowed",
-      sql`${table.source} in ('manual', 'project')`,
+      sql`${table.source} in ('manual', 'project', 'contract')`,
     ),
     check(
       "financial_entries_source_consistent",
       sql`(${table.source} = 'manual' and ${table.projectId} is null and ${table.projectInstallmentId} is null)
-        or (${table.source} = 'project' and ${table.projectId} is not null and ${table.projectInstallmentId} is not null)`,
+        or (${table.source} = 'project' and ${table.projectId} is not null and ${table.projectInstallmentId} is not null)
+        or (${table.source} = 'contract' and ${table.contractId} is not null and ${table.contractInstallmentId} is not null)`,
     ),
     check(
       "financial_entries_type_allowed",

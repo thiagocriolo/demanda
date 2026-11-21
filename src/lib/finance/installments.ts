@@ -1,4 +1,5 @@
 import type { FinanceInstallment } from "./finance";
+import { splitCents } from "./money";
 
 function toCents(value: number): number {
   return Math.max(0, Math.round((Number.isFinite(value) ? value : 0) * 100));
@@ -6,14 +7,6 @@ function toCents(value: number): number {
 
 function fromCents(value: number): number {
   return value / 100;
-}
-
-function splitCents(total: number, count: number): number[] {
-  if (count <= 0) return [];
-  const base = Math.trunc(total / count);
-  const values = Array.from({ length: count }, () => base);
-  values[count - 1] += total - base * count;
-  return values;
 }
 
 export function addMonthsToFinanceDate(value: string, offset: number): string {

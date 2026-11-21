@@ -79,9 +79,9 @@ function safeInteger(value: string | number): number {
 
 function targetHref(targetType: string): string {
   if (targetType === "task") return "/pauta";
-  if (targetType === "project") return "/registros/projetos";
-  if (targetType === "business") return "/registros/negócios";
-  if (targetType === "contact") return "/registros/contatos";
+  if (targetType === "project") return "/clientes/projetos";
+  if (targetType === "business") return "/clientes/negócios";
+  if (targetType === "contact") return "/clientes/contatos";
   if (targetType === "financial_entry") return "/financeiro";
   if (targetType === "stored_file" || targetType === "user")
     return "/social/usuario";
@@ -229,7 +229,7 @@ export async function getDashboardSnapshot(
     workload: snapshot.workload,
     todaySchedule: snapshot.schedule.map((item) => ({
       ...item,
-      href: item.kind === "task" ? "/pauta" : "/registros/projetos",
+      href: item.kind === "task" ? "/pauta" : "/clientes/projetos",
     })),
     activities: snapshot.activities.map((item) => ({
       ...item,
@@ -306,7 +306,7 @@ export async function searchWorkspace(
   const rows = rawRows<SearchRow>(result);
   const items = rows.map((item) => ({
     ...item,
-    href: `/registros/${
+    href: `/clientes/${
       item.kind === "contact"
         ? "contatos"
         : item.kind === "business"

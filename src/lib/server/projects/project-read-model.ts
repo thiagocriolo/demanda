@@ -22,10 +22,14 @@ import type {
   ProjectTag,
 } from "../../projects/types";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
-import { requireWorkspacePermission } from "../authorization/workspace-context";
+import {
+  requireWorkspacePermission,
+  WorkspaceNotFoundError,
+} from "../authorization/workspace-context";
 import type { Database } from "../db/database";
 import {
   businesses,
+  contracts,
   projectInstallments,
   projectResponsibles,
   projects,
@@ -66,6 +70,21 @@ export async function findScopedProjectRow(
   return row ?? null;
 }
 
+export async function findProjectRowById(
+  database: ProjectDatabase,
+  projectId: string,
+  lock = false,
+): Promise<typeof projects.$inferSelect | null> {
+  let query = database
+    .select()
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (lock) query = query.for("update") as typeof query;
+  const [row] = await query;
+  return row ?? null;
+}
+
 export async function hydrateProjects(
   database: ProjectDatabase,
   rows: (typeof projects.$inferSelect)[],
@@ -84,6 +103,13 @@ export async function hydrateProjects(
     })
     .from(businesses)
     .where(inArray(businesses.id, businessIds));
+  const contractIds = rows.flatMap(({ contractId }) => (contractId ? [contractId] : []));
+  const contractRows = contractIds.length
+    ? await database
+        .select({ id: contracts.id, name: contracts.name })
+        .from(contracts)
+        .where(inArray(contracts.id, contractIds))
+    : [];
   const serviceRows = await database
     .select({
       projectId: projectServices.projectId,
@@ -170,6 +196,7 @@ export async function hydrateProjects(
   const businessById = new Map(
     businessRows.map((business) => [business.id, business]),
   );
+  const contractById = new Map(contractRows.map((contract) => [contract.id, contract]));
   const servicesByProject = new Map<string, ProjectServiceSummary[]>();
   const tagsByProject = new Map<string, ProjectTag[]>();
   const responsiblesByProject = new Map<string, ProjectResponsible[]>();
@@ -225,6 +252,7 @@ export async function hydrateProjects(
       id: row.id,
       workspaceId: row.workspaceId,
       sourceServiceId: row.sourceServiceId,
+      contract: row.contractId ? (contractById.get(row.contractId) ?? null) : null,
       isInstitutional: row.isInstitutional,
       isActive: row.isActive,
       name: row.name,
@@ -240,6 +268,7 @@ export async function hydrateProjects(
       status: row.statusKey,
       startDate: row.startDate ?? "",
       endDate: row.endDate,
+      engagementType: row.engagementType as Project["engagementType"],
       briefing: row.briefing,
       tags: tagsByProject.get(row.id) ?? [],
       responsibles: responsiblesByProject.get(row.id) ?? [],
@@ -267,6 +296,11 @@ function projectSearchCondition(query: string): SQL | undefined {
       select 1 from ${businesses}
       where ${businesses.id} = ${projects.businessId}
         and ${businesses.name} like ${pattern} escape '!'
+    )`,
+    sql`exists (
+      select 1 from ${contracts}
+      where ${contracts.id} = ${projects.contractId}
+        and ${contracts.name} like ${pattern} escape '!'
     )`,
     sql`exists (
       select 1 from ${projectServices}
@@ -471,15 +505,21 @@ export async function getWorkspaceProject(
   context: RequestAuthorizationContext,
   projectId: string,
 ): Promise<Project> {
-  const workspaceId = workspaceIdFromContext(context);
-  await requireWorkspacePermission(
-    database,
-    context.user.id,
-    workspaceId,
-    "workspace:read",
-  );
-  const row = await findScopedProjectRow(database, workspaceId, projectId);
+  const row = await findProjectRowById(database, projectId);
   if (!row) throw new ProjectNotFoundError();
+  try {
+    await requireWorkspacePermission(
+      database,
+      context.user.id,
+      row.workspaceId,
+      "workspace:read",
+    );
+  } catch (cause) {
+    if (cause instanceof WorkspaceNotFoundError) {
+      throw new ProjectNotFoundError();
+    }
+    throw cause;
+  }
   const [project] = await hydrateProjects(database, [row], context.user.id);
   if (!project) throw new ProjectNotFoundError();
   return project;

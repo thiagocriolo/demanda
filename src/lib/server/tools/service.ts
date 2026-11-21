@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { affectedRows, type Database } from "../db/database";
+import { databaseConstraint, toIsoTimestamp as iso } from "../db/helpers";
 import {
   businesses,
   projects,
@@ -76,27 +77,6 @@ export class ToolInputError extends Error {
     super(message);
     this.name = "ToolInputError";
   }
-}
-
-function databaseConstraint(cause: unknown): string | undefined {
-  const visited = new Set<unknown>();
-  let current = cause;
-  while (current && typeof current === "object" && !visited.has(current)) {
-    visited.add(current);
-    if ("constraint" in current && typeof current.constraint === "string") {
-      return current.constraint;
-    }
-    if ("sqlMessage" in current && typeof current.sqlMessage === "string") {
-      const match = /CONSTRAINT `([^`]+)`/u.exec(current.sqlMessage);
-      if (match?.[1]) return match[1];
-    }
-    current = "cause" in current ? current.cause : undefined;
-  }
-  return undefined;
-}
-
-function iso(value: Date | null): string | null {
-  return value?.toISOString() ?? null;
 }
 
 async function workspaceIdForRead(

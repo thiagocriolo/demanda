@@ -26,6 +26,7 @@ import {
 } from "./base";
 
 import { businesses } from "./crm";
+import { contracts } from "./contracts";
 import { services, tags } from "./services";
 import { workspaceMembers, workspaces } from "./workspace";
 
@@ -39,6 +40,8 @@ export const projects = applicationSchema.table(
     businessId: uuid("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade" }),
+    /** New projects are executed under one commercial agreement. */
+    contractId: uuid("contract_id"),
     sourceServiceId: uuid("source_service_id"),
     isInstitutional: boolean("is_institutional").default(false).notNull(),
     isActive: boolean("is_active").default(true).notNull(),
@@ -47,9 +50,11 @@ export const projects = applicationSchema.table(
     briefing: text("briefing").default("").notNull(),
     startDate: date("start_date", { mode: "string" }),
     endDate: date("end_date", { mode: "string" }),
-    contractType: varchar("contract_type", { length: 16 })
-      .default("one_off")
+    engagementType: varchar("engagement_type", { length: 16 })
+      .$type<"fee" | "personal">()
+      .default("personal")
       .notNull(),
+    contractType: varchar("contract_type", { length: 16 }).default("one_off").notNull(),
     amountCents: bigint("amount_cents", { mode: "number" }),
     firstDueDate: date("first_due_date", { mode: "string" }),
     paymentMethod: varchar("payment_method", { length: 120 }),
@@ -74,6 +79,15 @@ export const projects = applicationSchema.table(
       columns: [table.workspaceId, table.sourceServiceId],
       foreignColumns: [services.workspaceId, services.id],
     }),
+    foreignKey({
+      name: "projects_workspace_contract_business_foreign_key",
+      columns: [table.workspaceId, table.contractId, table.businessId],
+      foreignColumns: [
+        contracts.workspaceId,
+        contracts.id,
+        contracts.businessId,
+      ],
+    }).onDelete("restrict"),
     index("projects_workspace_updated_id_index").on(
       table.workspaceId,
       table.updatedAt,
@@ -118,21 +132,16 @@ export const projects = applicationSchema.table(
       sql`${table.statusKey} <> 'arquivado'`,
     ),
     check(
-      "projects_contract_type_allowed",
-      sql`${table.contractType} in ('one_off', 'recurring')`,
+      "projects_engagement_type_allowed",
+      sql`${table.engagementType} in ('fee', 'personal')`,
     ),
-    check(
-      "projects_amount_cents_safe",
-      sql`${table.amountCents} is null or ${table.amountCents} between 0 and 9007199254740991`,
-    ),
+    check("projects_contract_type_allowed", sql`${table.contractType} in ('one_off', 'recurring')`),
+    check("projects_amount_cents_safe", sql`${table.amountCents} is null or ${table.amountCents} between 0 and 9007199254740991`),
     check(
       "projects_dates_ordered",
       sql`${table.startDate} is null or ${table.endDate} is null or ${table.endDate} >= ${table.startDate}`,
     ),
-    check(
-      "projects_payment_method_not_blank",
-      sql`${table.paymentMethod} is null or length(btrim(${table.paymentMethod})) > 0`,
-    ),
+    check("projects_payment_method_not_blank", sql`${table.paymentMethod} is null or length(btrim(${table.paymentMethod})) > 0`),
     check(
       "projects_updated_not_before_creation",
       sql`${table.updatedAt} >= ${table.createdAt}`,

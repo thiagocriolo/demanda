@@ -79,7 +79,7 @@ export const taskRecordsDomain: RecordsDomain<TaskFacets> = {
       ...baseCard(config, record),
       primary: record.negocio || "Negócio não informado",
       secondary: record.projeto || "Projeto não informado",
-      relation: record.categoria || record.descricao || "Tarefa planejada",
+      relation: record.categoria || record.descricao || "Entrega planejada",
       responsible: record.responsavel || "Sem responsável",
       responsibleAvatarUrl: responsibleUser?.avatarUrl,
       steps: taskSteps(record.subtarefas),

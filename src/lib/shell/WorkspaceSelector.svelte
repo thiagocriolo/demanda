@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import {
     loadActiveWorkspaceId,
     loadWorkspaces,
@@ -78,6 +80,9 @@
     selectedId = workspace.id;
     await setActiveWorkspaceId(workspace.id);
     open = false;
+    if (/^\/workspaces\/[^/]+\/?$/.test(page.url.pathname)) {
+      await goto(`/workspaces/${workspace.id}`);
+    }
   }
 
   function toggleMenu(): void {
@@ -88,25 +93,39 @@
     }
     open = !open;
   }
+
+  function openWorkspace(): void {
+    void goto(`/workspaces/${selectedId}`);
+  }
 </script>
 
 <div class="workspace-selector" class:compact bind:this={root}>
-  <button
+  <div
     class="trigger"
-    type="button"
-    aria-haspopup="listbox"
-    aria-expanded={open}
+    class:open
     aria-label={`Workspace: ${selected?.name ?? "Pessoal"}`}
-    title={compact ? `Workspace: ${selected?.name ?? "Pessoal"}` : undefined}
-    onclick={toggleMenu}
   >
-    <span class="trigger-icon"><LayoutGrid size={17} /></span>
-    <span class="trigger-copy">
-      <small>Workspace</small>
-      <strong>{selected?.name ?? "Pessoal"}</strong>
-    </span>
-    <ChevronDown class={open ? "rotated" : ""} size={15} aria-hidden="true" />
-  </button>
+    <button
+      class="workspace-view"
+      type="button"
+      title={compact ? `Workspace: ${selected?.name ?? "Pessoal"}` : undefined}
+      onclick={openWorkspace}
+    >
+      <span class="trigger-icon"><LayoutGrid size={17} /></span>
+      <span class="trigger-copy">
+        <small>Workspace</small>
+        <strong>{selected?.name ?? "Pessoal"}</strong>
+      </span>
+    </button>
+    <button
+      class="workspace-menu"
+      type="button"
+      aria-haspopup="listbox"
+      aria-expanded={open}
+      aria-label="Selecionar outro workspace"
+      onclick={toggleMenu}
+    ><ChevronDown class={open ? "rotated" : ""} size={15} aria-hidden="true" /></button>
+  </div>
 
   {#if open}
     <div
@@ -177,7 +196,7 @@
   }
   .trigger {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     width: 100%;
     min-width: 0;
     min-height: 48px;
@@ -186,14 +205,34 @@
     padding: 5px 10px;
     border: 1px solid var(--border);
     border-radius: 11px;
-    color: var(--ink-700);
     background: var(--surface);
-    text-align: left;
   }
   .trigger:hover,
-  .trigger[aria-expanded="true"] {
+  .trigger.open {
     border-color: var(--border-strong);
     background: var(--surface-hover);
+  }
+  .workspace-view {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    padding: 0;
+    border: 0;
+    color: var(--ink-700);
+    background: transparent;
+    text-align: left;
+  }
+  .workspace-menu {
+    display: grid;
+    width: 28px;
+    height: 34px;
+    place-items: center;
+    border: 0;
+    border-left: 1px solid var(--border);
+    color: var(--ink-400);
+    background: transparent;
   }
   .trigger-icon,
   .option-icon {
@@ -234,7 +273,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .trigger :global(.lucide-chevron-down) {
+  .workspace-menu :global(.lucide-chevron-down) {
     color: var(--ink-400);
     transition: transform var(--motion-fast);
   }
@@ -345,13 +384,16 @@
     min-height: 48px;
     padding: 0;
   }
+  .compact .workspace-view {
+    grid-template-columns: 48px;
+  }
   .compact .trigger-icon {
     width: 100%;
     height: 100%;
     background: transparent;
   }
   .compact .trigger-copy,
-  .compact .trigger :global(.lucide-chevron-down) {
+  .compact .workspace-menu {
     display: none;
   }
   @media (max-width: 1120px) {
@@ -373,7 +415,7 @@
       padding: 5px;
     }
     .trigger-copy,
-    .trigger :global(.lucide-chevron-down) {
+    .workspace-menu {
       display: none;
     }
     .menu {

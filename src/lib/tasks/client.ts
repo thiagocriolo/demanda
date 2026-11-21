@@ -1,4 +1,9 @@
 import type { EntityRecord } from "$lib/entities/types";
+import {
+  jsonRequest,
+  requestJson as fetchJson,
+  type FetchLike,
+} from "../http/client";
 import { PROJECTS_CHANGED_EVENT } from "../projects/client";
 import type { ProjectResponsible, ProjectTag } from "$lib/projects/types";
 import {
@@ -25,11 +30,7 @@ import type {
 } from "./types";
 
 export const TASKS_CHANGED_EVENT = "demanda:tasks-changed";
-
-export type FetchLike = (
-  input: RequestInfo | URL,
-  init?: RequestInit,
-) => Promise<Response>;
+export type { FetchLike };
 
 export class TaskApiError extends Error {
   constructor(
@@ -41,31 +42,15 @@ export class TaskApiError extends Error {
   }
 }
 
-async function requestJson<T>(
+function requestJson<T>(
   fetcher: FetchLike,
   input: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetcher(input, init);
-  if (!response.ok) {
-    let message = "Não foi possível concluir a operação com a tarefa.";
-    try {
-      const payload = (await response.json()) as { message?: unknown };
-      if (typeof payload.message === "string") message = payload.message;
-    } catch {
-      // A mensagem genérica também cobre respostas sem JSON.
-    }
-    throw new TaskApiError(response.status, message);
-  }
-  return (await response.json()) as T;
-}
-
-function jsonRequest(method: "POST" | "PUT", body: unknown): RequestInit {
-  return {
-    method,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  };
+  return fetchJson<T>(fetcher, input, init, {
+    fallbackMessage: "Não foi possível concluir a operação com a tarefa.",
+    createError: (status, message) => new TaskApiError(status, message),
+  });
 }
 
 export type TaskListOptions = {
@@ -367,6 +352,7 @@ export function taskToEntityRecord(task: Task): EntityRecord {
     nome: subtask.name,
     duracao: durationHours(subtask.durationMinutes),
     durationMinutes: subtask.durationMinutes,
+    ...(subtask.executionAt ? { executionAt: subtask.executionAt } : {}),
     status: subtask.status,
     sequence: subtask.sortOrder,
   }));
@@ -424,6 +410,8 @@ export function taskToEntityRecord(task: Task): EntityRecord {
     data_entrega: task.dueDate ?? "",
     dueDate: task.dueDate ?? "",
     due_date: task.dueDate ?? "",
+    tipoEngajamento: task.engagementType === "fee" ? "Fee" : "Pessoal",
+    engagementType: task.engagementType ?? "personal",
     duracao: durationHours(task.durationMinutes),
     duration: durationHours(task.durationMinutes),
     durationMinutes: String(task.durationMinutes),
@@ -553,11 +541,16 @@ function subtaskInputs(
       typeof item.id === "string" && item.id.trim()
         ? item.id.trim()
         : undefined;
+    const executionAt =
+      typeof item.executionAt === "string" && item.executionAt.trim()
+        ? item.executionAt.trim()
+        : null;
     return [
       {
         ...(id ? { id } : {}),
         name,
         durationMinutes,
+        ...(executionAt ? { executionAt } : {}),
         status:
           typeof item.status === "string" && item.status.trim()
             ? item.status.trim()
@@ -685,6 +678,11 @@ function mutationFields(
         current?.dataEntrega ??
         current?.dueDate,
     ),
+    engagementType:
+      (values.tipoEngajamento ?? values.engagementType ?? "")
+        .toLocaleLowerCase("pt-BR") === "fee"
+        ? "fee"
+        : "personal",
     sortOrder: integer(
       values.sortOrder ?? values.ordem ?? current?.sortOrder ?? current?.ordem,
     ),

@@ -54,6 +54,7 @@ export type WorkspaceProjectPreview = {
   workspaceId: string;
   name: string;
   businessName: string;
+  contractName?: string | null;
   status: string;
   endDate: string | null;
   responsibleNames: string[];

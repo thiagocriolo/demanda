@@ -5,6 +5,8 @@ import type { SettingsState } from "../settings/types";
 const fixtures = vi.hoisted(() => ({
   settings: undefined as SettingsState | undefined,
   savedPayloads: [] as SettingsState[],
+  businesses: [] as Array<{ id: string; name: string }>,
+  projects: [] as Array<{ id: string; name: string }>,
 }));
 
 vi.mock("$lib/contacts/client", () => ({
@@ -13,12 +15,12 @@ vi.mock("$lib/contacts/client", () => ({
 }));
 vi.mock("$lib/businesses/client", () => ({
   createBusiness: vi.fn(),
-  listBusinesses: vi.fn(),
+  listBusinesses: vi.fn(async () => ({ items: fixtures.businesses })),
 }));
 vi.mock("$lib/projects/client", () => ({
   createProject: vi.fn(),
   getProjectOptions: vi.fn(),
-  listProjects: vi.fn(),
+  listProjects: vi.fn(async () => ({ items: fixtures.projects })),
 }));
 vi.mock("$lib/tasks/client", () => ({ createTask: vi.fn() }));
 vi.mock("$lib/workspaces/workspace-storage", () => ({
@@ -49,6 +51,8 @@ describe("ações de modelos do assistente", () => {
     vi.resetModules();
     fixtures.settings = freshSettings();
     fixtures.savedPayloads = [];
+    fixtures.businesses = [];
+    fixtures.projects = [];
   });
 
   it("usa o ID persistido do serviço na entrega dependente", async () => {
@@ -74,5 +78,53 @@ describe("ações de modelos do assistente", () => {
     expect(fixtures.savedPayloads[1]?.deliveryTemplates.at(-1)).toMatchObject({
       projectTemplateId: "service-persisted",
     });
+  });
+
+  it("detecta dependências externas ausentes antes de executar o lote", async () => {
+    const { preflightRecordCommandQueue } = await import("./record-actions");
+    const issues = await preflightRecordCommandQueue([
+      {
+        id: "task-institucional",
+        command: {
+          kind: "task",
+          name: "Campanha de Natal",
+          projectName: "Institucional",
+        },
+        dependsOn: [],
+      },
+    ]);
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        commandId: "task-institucional",
+        message: expect.stringContaining("Institucional"),
+      }),
+    ]);
+  });
+
+  it("não procura no servidor um projeto que será criado no mesmo lote", async () => {
+    const { preflightRecordCommandQueue } = await import("./record-actions");
+    const issues = await preflightRecordCommandQueue([
+      {
+        id: "project",
+        command: {
+          kind: "project",
+          name: "Institucional",
+          businessRef: "business",
+        },
+        dependsOn: ["business"],
+      },
+      {
+        id: "task",
+        command: {
+          kind: "task",
+          name: "Campanha de Natal",
+          projectRef: "project",
+        },
+        dependsOn: ["project"],
+      },
+    ]);
+
+    expect(issues).toEqual([]);
   });
 });

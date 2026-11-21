@@ -15,6 +15,7 @@
     CalendarCheck2,
     Check,
     CheckSquare,
+    CircleDollarSign,
     FileText,
     FolderKanban,
     ListTodo,
@@ -153,6 +154,7 @@
   function kindLabel(kind: EntityCardKind): string {
     if (kind === "pessoa") return "pessoa";
     if (kind === "negocio") return "negócio";
+    if (kind === "contrato") return "contrato";
     if (kind === "projeto") return "projeto";
     return "tarefa";
   }
@@ -344,7 +346,7 @@
               >
             </span>
           </footer>
-        {:else if item.kind === "projeto"}
+        {:else if item.kind === "projeto" || item.kind === "contrato"}
           <div class="wc-card-body">
             <span
               class="wc-card-meta wc-card-info wc-card-info--secondary wc-card-meta--business"
@@ -376,6 +378,20 @@
             </span>
           </div>
           <footer class="wc-card-footer wc-card-footer--projeto">
+            {#if item.kind === "contrato"}
+              <span class="wc-card-counter wc-card-counter--ratio">
+                <span class="icon"><FolderKanban size={15} /></span>
+                <span class="wc-card-counter__label">Projetos</span><strong
+                  >{item.counts?.[0] ?? 0}</strong
+                >
+              </span>
+              <span class="wc-card-counter wc-card-counter--delivery">
+                <span class="icon"><CircleDollarSign size={15} /></span>
+                <span class="wc-card-counter__label">Valor</span><strong
+                  >{item.counts?.[1] ?? "R$ 0,00"}</strong
+                >
+              </span>
+            {:else}
             <span class="wc-card-counter wc-card-counter--ratio">
               <span class="icon"><CheckSquare size={15} /></span>
               <span class="wc-card-counter__label">Tarefas</span><strong
@@ -388,6 +404,7 @@
                 >{item.completion ?? item.counts?.[1]}</strong
               >
             </span>
+            {/if}
           </footer>
         {:else}
           <div class="wc-card-body">
@@ -599,6 +616,8 @@
 
   .wc-card-head {
     min-width: 0;
+    padding: 0;
+    border: 0;
     display: grid;
     grid-template-columns: 1fr;
     align-items: center;

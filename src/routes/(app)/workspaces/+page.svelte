@@ -195,9 +195,9 @@
       workspaceId: project.workspaceId,
       nome: project.name,
       negocio: project.businessName,
+      contractName: project.contractName ?? "",
       status: project.status,
       dataFim: project.endDate ?? "",
-      responsavel: project.responsibleNames.join(", "),
       servicos: project.serviceNames.join(", "),
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
@@ -509,7 +509,7 @@
                 ? "Pessoal"
                 : "Colaborativo"}</small
             >
-            <h2>{workspace.name}</h2>
+            <h2><a href={`/workspaces/${workspace.id}`}>{workspace.name}</a></h2>
           </div>
         </div>
 
@@ -633,7 +633,9 @@
       <header>
         <div>
           <small>Gerenciar workspace</small>
-          <h2 id="manage-title">{managedWorkspace.name}</h2>
+          <h2 id="manage-title">
+            <a href={`/workspaces/${managedWorkspace.id}`}>{managedWorkspace.name}</a>
+          </h2>
         </div>
         <button
           class="close-button"

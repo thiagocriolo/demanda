@@ -95,17 +95,32 @@
     );
   }
 
-  function addSubtask(): void {
+  async function addSubtask(): Promise<void> {
     if (subtasks.length >= 10) return;
     const subtask = newSubtask();
     subtasks = [...subtasks, subtask];
-    void tick().then(() =>
-      formNode
-        ?.querySelector<HTMLInputElement>(
-          `[data-subtask-id="${subtask.localId}"] input[type="text"]`,
-        )
-        ?.focus(),
-    );
+    await tick();
+    formNode
+      ?.querySelector<HTMLInputElement>(
+        `[data-subtask-id="${subtask.localId}"] input[type="text"]`,
+      )
+      ?.focus();
+  }
+
+  async function addSubtaskOnEnter(
+    event: KeyboardEvent,
+    subtask: DraftSubtask,
+  ): Promise<void> {
+    if (
+      event.key !== "Enter" ||
+      event.isComposing ||
+      !subtask.nome.trim() ||
+      subtasks.length >= 10
+    )
+      return;
+
+    event.preventDefault();
+    await addSubtask();
   }
 
   function removeSubtask(localId: string): void {
@@ -268,6 +283,7 @@
                     maxlength="120"
                     placeholder="Nome da subtarefa"
                     aria-label="Nome da subtarefa"
+                    onkeydown={(event) => addSubtaskOnEnter(event, subtask)}
                   />
                 </div>
 

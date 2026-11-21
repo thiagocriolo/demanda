@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Search, SlidersHorizontal, X } from "@lucide/svelte";
+  import type { Snippet } from "svelte";
 
   export type FilterOption = { value: string; label: string; count?: number };
   let {
@@ -8,12 +9,14 @@
     query = $bindable(""),
     placeholder = "Buscar...",
     showTitle = true,
+    extras,
   } = $props<{
     options: FilterOption[];
     selected: string;
     query?: string;
     placeholder?: string;
     showTitle?: boolean;
+    extras?: Snippet;
   }>();
 </script>
 
@@ -36,17 +39,22 @@
       </button>
     {/each}
   </div>
-  <label>
-    <Search size={16} aria-hidden="true" />
-    <span class="sr-only">Pesquisar</span>
-    <input bind:value={query} {placeholder} />
-    {#if query}<button
-        class="clear"
-        type="button"
-        aria-label="Limpar busca"
-        onclick={() => (query = "")}><X size={15} /></button
-      >{/if}
-  </label>
+  <div class="controls">
+    <label>
+      <Search size={16} aria-hidden="true" />
+      <span class="sr-only">Pesquisar</span>
+      <input bind:value={query} {placeholder} />
+      {#if query}<button
+          class="clear"
+          type="button"
+          aria-label="Limpar busca"
+          onclick={() => (query = "")}><X size={15} /></button
+        >{/if}
+    </label>
+    {#if extras}
+      {@render extras()}
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -103,13 +111,18 @@
     font-size: 10px;
     text-align: center;
   }
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
   label {
     display: flex;
     width: min(240px, 100%);
     min-height: 36px;
     align-items: center;
     gap: 7px;
-    margin-left: auto;
     padding: 0 10px;
     border: 1px solid var(--border);
     border-radius: 9px;
@@ -154,9 +167,13 @@
     .options {
       flex: 1 1 100%;
     }
+    .controls {
+      width: 100%;
+      flex-wrap: wrap;
+      margin-left: 0;
+    }
     label {
       width: 100%;
-      margin-left: 0;
     }
   }
 </style>

@@ -656,7 +656,7 @@ export async function getContactOperationalDashboard(
         description: overdue
           ? `Tarefa vencida em ${nextTask.dueDate}. Priorize esta ação.`
           : `Próximo prazo: ${nextTask.dueDate}.`,
-        href: `/registros/tarefas/${nextTask.id}`,
+        href: `/clientes/tarefas/${nextTask.id}`,
         tone: overdue ? ("urgent" as const) : ("upcoming" as const),
       }
     : undefined;

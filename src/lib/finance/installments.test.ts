@@ -33,4 +33,12 @@ describe("finance installments", () => {
     expect(rebalanced.map((item) => item.amount)).toEqual([40, 30, 30]);
     expect(financeInstallmentsTotal(rebalanced)).toBe(100);
   });
+
+  it("redistributes subsequent installments after the first one changes", () => {
+    const installments = buildFinanceInstallments(500, 4, "2026-07-13");
+    const rebalanced = rebalanceFinanceInstallments(installments, 0, 200, 500);
+
+    expect(rebalanced.map((item) => item.amount)).toEqual([200, 100, 100, 100]);
+    expect(financeInstallmentsTotal(rebalanced)).toBe(500);
+  });
 });

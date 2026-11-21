@@ -32,9 +32,131 @@
       type="font/woff"
       crossorigin
     />
+    <style>
+      #app-loading-screen {
+        position: fixed;
+        z-index: 2147483647;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: #f7f7f7;
+        color: #0f172a;
+        font-family: "Pogonia", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        transition: opacity 180ms ease, visibility 180ms ease;
+      }
+
+      #app-loading-screen[data-complete="true"] {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+
+      .app-loading-content {
+        width: min(100%, 320px);
+      }
+
+      .app-loading-brand {
+        display: block;
+        margin-bottom: 18px;
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+
+      .app-loading-message {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 9px;
+        color: #64748b;
+        font-size: 13px;
+      }
+
+      .app-loading-track {
+        height: 6px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.1);
+      }
+
+      .app-loading-bar {
+        width: 3%;
+        height: 100%;
+        border-radius: inherit;
+        background: #2e56ff;
+        transition: width 180ms ease-out;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #app-loading-screen,
+        .app-loading-bar {
+          transition: none;
+        }
+      }
+    </style>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
+    <div
+      id="app-loading-screen"
+      role="status"
+      aria-live="polite"
+      aria-label="Carregando a aplicação"
+    >
+      <div class="app-loading-content">
+        <span class="app-loading-brand">Demanda</span>
+        <div class="app-loading-message">
+          <span>Preparando seu espaço</span>
+          <span id="app-loading-percent">3%</span>
+        </div>
+        <div
+          class="app-loading-track"
+          role="progressbar"
+          aria-label="Progresso do carregamento"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="3"
+        >
+          <div id="app-loading-bar" class="app-loading-bar"></div>
+        </div>
+      </div>
+    </div>
     <div style="display: contents">%sveltekit.body%</div>
+    <script>
+      (() => {
+        const screen = document.getElementById("app-loading-screen");
+        const bar = document.getElementById("app-loading-bar");
+        const percent = document.getElementById("app-loading-percent");
+        const progress = screen?.querySelector("[role=progressbar]");
+        if (!screen || !bar || !percent || !progress) return;
+
+        let value = 3;
+        let timer;
+
+        const setProgress = (next) => {
+          value = Math.max(value, Math.min(100, next));
+          bar.style.width = `${value}%`;
+          percent.textContent = `${value}%`;
+          progress.setAttribute("aria-valuenow", String(value));
+        };
+
+        // O evento load só ocorre quando os recursos dependentes do documento
+        // (scripts, estilos, fontes e imagens não-lazy) terminaram de carregar.
+        // Até lá, o avanço gradual dá retorno visual sem fingir que terminou.
+        timer = window.setInterval(() => {
+          if (value < 90) setProgress(value + Math.max(1, Math.round((90 - value) / 8)));
+        }, 180);
+
+        const finish = () => {
+          window.clearInterval(timer);
+          setProgress(100);
+          window.setTimeout(() => screen.setAttribute("data-complete", "true"), 160);
+        };
+
+        if (document.readyState === "complete") finish();
+        else window.addEventListener("load", finish, { once: true });
+      })();
+    </script>
   </body>
 </html>

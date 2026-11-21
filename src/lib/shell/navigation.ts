@@ -40,7 +40,7 @@ export const workspaceNavigation: NavigationItem[] = [
 ];
 
 export const configNavigation: NavigationItem[] = [
-  { label: "Registros", href: "/registros", icon: GalleryVerticalEnd },
+  { label: "Clientes", href: "/clientes", icon: GalleryVerticalEnd },
   { label: "Modelos", href: "/meunegocio", icon: BriefcaseBusiness },
   { label: "Ferramentas", href: "/ferramentas", icon: Wrench },
   { label: "Financeiro", href: "/financeiro", icon: BadgeDollarSign },
@@ -95,8 +95,8 @@ export function isBusinessPath(pathname: string): boolean {
   const path = decodeURIComponent(pathname).replace(/\/$/, "") || "/";
   return (
     isConfigPath(path) ||
-    path === "/registros" ||
-    path.startsWith("/registros/") ||
+    path === "/clientes" ||
+    path.startsWith("/clientes/") ||
     path === "/ferramentas" ||
     path.startsWith("/ferramentas/") ||
     path === "/financeiro" ||

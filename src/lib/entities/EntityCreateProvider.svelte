@@ -6,6 +6,7 @@
     type EntityCreateContext,
   } from "./create-context";
   import DeleteConfirmation from "./DeleteConfirmation.svelte";
+  import ContractForm from "./ContractForm.svelte";
   import EntityForm from "./EntityForm.svelte";
   import ProjectForm from "./ProjectForm.svelte";
   import TaskForm from "./TaskForm.svelte";
@@ -42,6 +43,7 @@
   const configKeyByKind: Record<EntityCardKind, EntityConfig["key"]> = {
     pessoa: "pessoas",
     negocio: "negocios",
+    contrato: "contratos",
     projeto: "projetos",
     tarefa: "entregas",
   };
@@ -223,7 +225,7 @@
       id: "",
       createdAt: "",
       updatedAt: "",
-      workspaceId: loadActiveWorkspaceId(),
+      workspaceId: project.workspaceId || loadActiveWorkspaceId(),
       nome: "",
       negocio: project.negocio,
       negocioId: project.negocioId,
@@ -265,14 +267,16 @@
     reset();
   }
 
-  async function confirmDelete(): Promise<void> {
+  async function confirmDelete(retainFinancialEntries = false): Promise<void> {
     if (!activeConfig || !activeRecord) return;
     const adapter = getEntityPersistenceAdapter(activeConfig.key);
     if (adapter) {
       const epoch = beginRequest();
       if (epoch === undefined) return;
       try {
-        await adapter.delete(activeRecord.id, activeRecord);
+        await adapter.delete(activeRecord.id, activeRecord, {
+          retainFinancialEntries,
+        });
         if (!isCurrentRequest(epoch)) return;
         reset();
       } catch (cause) {
@@ -300,7 +304,7 @@
       return "Projetos, tarefas e lançamentos financeiros vinculados também serão removidos.";
     }
     if (config.key === "projetos") {
-      return "Tarefas e lançamentos financeiros vinculados também serão removidos.";
+      return "Tarefas vinculadas também serão removidas.";
     }
     if (config.key === "entregas") {
       return "Subtarefas e blocos do cronograma vinculados também serão removidos.";
@@ -334,6 +338,15 @@
       onarchive={archiveActive}
       ondelete={() => (deleting = true)}
     />
+  {:else if activeConfig.key === "contratos"}
+    <ContractForm
+      record={activeRecord}
+      mode={formMode}
+      oncancel={reset}
+      onsave={save}
+      onedit={() => (formMode = "edit")}
+      ondelete={() => (deleting = true)}
+    />
   {:else if activeConfig.key === "projetos"}
     <ProjectForm
       record={activeRecord}
@@ -363,8 +376,11 @@
   <DeleteConfirmation
     entityName={activeRecord.nome ?? activeConfig.singular}
     oncancel={cancelDelete}
-    onarchive={archiveActive}
+    onarchive={activeConfig.key === "contratos" ? undefined : archiveActive}
     onconfirm={confirmDelete}
+    onkeepfinancialentries={() => confirmDelete(true)}
+    contractFinancialEntries={activeConfig.key === "contratos"}
+    allowArchive={activeConfig.key !== "contratos"}
     deleteWarning={deleteWarningFor(activeConfig)}
   />
 {/if}

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeKey } from "../db/helpers";
 import type {
   TaskBoardInput,
   TaskCreateInput,
@@ -16,17 +17,6 @@ const collapsedText = (maximum: number) =>
     .min(1)
     .max(maximum)
     .transform((value) => value.replace(/\s+/g, " "));
-
-function normalizeKey(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "_")
-    .replace(/^[_-]+|[_-]+$/g, "")
-    .replace(/_{2,}/g, "_");
-}
 
 const normalizedKey = z
   .string()
@@ -64,6 +54,9 @@ function isRealIsoDate(value: string): boolean {
 const isoDate = z.string().refine(isRealIsoDate, {
   message: "Data inválida; use AAAA-MM-DD.",
 });
+const nullableExecutionAt = z
+  .union([z.string().datetime({ offset: true }), z.null()])
+  .transform((value) => (value ? new Date(value).toISOString() : null));
 
 const version = z.number().int().min(1).max(2_147_483_646);
 
@@ -126,6 +119,7 @@ const subtaskBase = z
       .refine((value) => value % 30 === 0, {
         message: "A duração precisa usar intervalos de 30 minutos.",
       }),
+    executionAt: nullableExecutionAt.default(null),
     status: subtaskStatus,
   })
   .strict();
@@ -146,6 +140,7 @@ const contentShape = {
   priority: normalizedKey,
   briefing: z.string().trim().max(10_000),
   dueDate: z.union([isoDate, z.null()]),
+  engagementType: z.enum(["fee", "personal"]).default("personal"),
   tagLabels,
   responsibleUserIds: uniqueUuidArray(1).length(1, {
     message: "A tarefa deve ter exatamente um responsavel.",

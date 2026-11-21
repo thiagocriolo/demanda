@@ -602,14 +602,14 @@ Verificação em 14/07/2026:
 Objetivo: oferecer uma passagem controlada do protótipo local para o banco.
 
 - [ ] Inventariar todas as chaves, versões e migrations atuais.
-- [ ] Importar `demanda:crud:entregas` e sua chave de versão somente por fluxo
+- [x] Importar `demanda:crud:entregas` e sua chave de versão somente por fluxo
       explícito e validado; a aplicação não lê, altera nem exclui esse legado desde
       a BE-08.
 - [ ] Corrigir a diferença entre prefixos `demanda:` e `demanda.` no financeiro.
-- [ ] Criar um formato de importação tipado e versionado.
-- [ ] Validar o arquivo inteiro antes de começar a gravar.
-- [ ] Importar tudo em uma transação idempotente.
-- [ ] Exibir relatório de importados, ignorados e inválidos.
+- [x] Criar um formato de importação tipado e versionado.
+- [x] Validar o arquivo inteiro antes de começar a gravar.
+- [x] Importar tudo em uma transação idempotente.
+- [x] Exibir relatório de importados, ignorados e inválidos.
 - [ ] Remover seeds automáticos do fluxo de produção.
 
 Critério de aceite: importar o mesmo backup duas vezes não duplica registros e
@@ -648,10 +648,10 @@ automatizada, e falhas de produção podem ser diagnosticadas sem expor segredos
 
 Objetivo: executar a aplicação e suas migrations de maneira repetível.
 
-- [ ] Criar imagem/artefato imutável do servidor Node.
+- [x] Criar imagem/artefato imutável do servidor Node.
 - [ ] Separar build, migration e inicialização da aplicação.
 - [ ] Configurar secrets, TLS, proxy e armazenamento persistente.
-- [ ] Criar endpoints de liveness e readiness.
+- [x] Criar endpoints de liveness e readiness.
 - [ ] Automatizar backup e testar restauração de banco e arquivos.
 - [ ] Definir rollback de aplicação e estratégia de migration compatível.
 - [ ] Documentar runbook de incidentes e manutenção.

@@ -1,5 +1,7 @@
 <script lang="ts">
-  import type { ActionData, PageData } from "./$types";
+  import { invalidateAll } from "$app/navigation";
+  import type { LayoutData } from "../../$types";
+  import { refreshWorkspaceSnapshot } from "$lib/workspaces/workspace-storage";
   import ComingSoon from "$lib/settings/ComingSoon.svelte";
   import ConfigScaffold from "$lib/settings/ConfigScaffold.svelte";
   import ConfigSaveController from "$lib/settings/ConfigSaveController.svelte";
@@ -14,6 +16,11 @@
     resetPersonalSettings,
     savePersonalSettings,
   } from "$lib/settings/client";
+  import {
+    importLegacyDeliveries,
+    legacyDeliveriesFromBrowser,
+  } from "$lib/legacy-imports/client";
+  import type { SystemTab } from "$lib/settings/routes";
   import type { SettingsState } from "$lib/settings/types";
   import type { TabItem } from "$lib/ui/Tabs.svelte";
   import {
@@ -27,17 +34,30 @@
   } from "@lucide/svelte";
   import { onMount } from "svelte";
 
-  type Props = { data: PageData; form: ActionData };
+  type Props = {
+    data: LayoutData & {
+      security: {
+        currentSessionId: string;
+        sessions: Array<{ id: string; lastSeenAt?: Date | string | null }>;
+      };
+    };
+    form?: { message?: string } | null;
+    initialTab?: SystemTab;
+  };
 
-  let { data, form }: Props = $props();
+  let { data, form, initialTab = "geral" }: Props = $props();
 
   const tabs: TabItem[] = [
     { id: "geral", label: "Geral" },
-    { id: "interface", label: "Interface" },
     { id: "seguranca", label: "Segurança" },
     { id: "dados", label: "Dados" },
     { id: "avancado", label: "Avançado" },
   ];
+  const routedTabs = tabs.map((tab) => ({
+    ...tab,
+    href: `/config/sistema/${tab.id}`,
+  }));
+
   const filtersByTab: Record<string, ConfigFilter[]> = {
     geral: [
       { value: "inicializacao", label: "Inicialização" },
@@ -66,12 +86,13 @@
   };
 
   let settings = $state<SettingsState>(freshSettings());
-  let activeTab = $state("geral");
+  let activeTab = $state<string>("geral");
   let activeFilter = $state("inicializacao");
   let savedSettings = $state("");
   let dataMessage = $state("");
   let restoreFile = $state<File>();
   let resetConfirmation = $state("");
+  let legacyImporting = $state(false);
   let filters = $derived(filtersByTab[activeTab] ?? []);
   let hasUnsavedChanges = $derived(
     savedSettings !== "" && JSON.stringify(settings) !== savedSettings,
@@ -81,7 +102,11 @@
     activeSessions.find(({ id }) => id === data.security.currentSessionId),
   );
 
-  function formatSessionDate(value: Date | string | undefined): string {
+  $effect(() => {
+    activeTab = initialTab;
+  });
+
+  function formatSessionDate(value: Date | string | null | undefined): string {
     if (!value) return "Sem registro";
     return new Intl.DateTimeFormat("pt-BR", {
       dateStyle: "short",
@@ -163,6 +188,7 @@
       settings = await resetPersonalSettings();
       savedSettings = JSON.stringify(settings);
       resetConfirmation = "";
+      await Promise.all([refreshWorkspaceSnapshot(), invalidateAll()]);
       dataMessage = "Todos os dados da conta foram apagados";
     } catch (error) {
       dataMessage =
@@ -171,13 +197,40 @@
           : "Não foi possível resetar os dados da conta.";
     }
   }
+
+  async function importLegacyDeliveryStorage(): Promise<void> {
+    if (legacyImporting) return;
+    try {
+      const payload = legacyDeliveriesFromBrowser();
+      if (!payload) {
+        dataMessage = "Nenhuma entrega legada foi encontrada neste navegador.";
+        return;
+      }
+      if (
+        !window.confirm(
+          `Importar ${payload.records.length} entrega(s) legada(s) para o workspace ativo? Os dados locais não serão apagados.`,
+        )
+      )
+        return;
+      legacyImporting = true;
+      const report = await importLegacyDeliveries(payload);
+      dataMessage = `Migração concluída: ${report.imported} importada(s), ${report.ignored} já existente(s), ${report.invalid} inválida(s).`;
+    } catch (error) {
+      dataMessage =
+        error instanceof Error
+          ? error.message
+          : "Não foi possível importar as entregas legadas.";
+    } finally {
+      legacyImporting = false;
+    }
+  }
 </script>
 
 <svelte:head><title>Configurações · Demanda</title></svelte:head>
 
 <ConfigSaveController dirty={hasUnsavedChanges} onsave={save} />
 
-<ConfigScaffold {tabs} bind:activeTab {filters} bind:activeFilter>
+<ConfigScaffold tabs={routedTabs} bind:activeTab {filters} bind:activeFilter>
   {#if activeTab === "geral" && activeFilter === "inicializacao"}
     <SettingsCard
       title="Inicialização"
@@ -191,7 +244,7 @@
             >Pauta</option
           ><option value="agenda">Agenda</option><option value="cronograma"
             >Cronograma</option
-          ><option value="registros">Registros</option><option
+          ><option value="clientes">Clientes</option><option
             value="financeiro">Financeiro</option
           ><option value="last">Último local acessado</option></select
         ></label
@@ -508,6 +561,21 @@
       >
       {#if dataMessage}<p class="settings-notice">{dataMessage}</p>{/if}
     </SettingsCard>
+    <SettingsCard
+      title="Migrar entregas deste navegador"
+      description="Importa somente a cópia legada demanda:crud:entregas, após validar os projetos vinculados. A cópia local não é alterada e a importação pode ser repetida sem duplicar tarefas."
+    >
+      <button
+        class="settings-button"
+        type="button"
+        disabled={legacyImporting}
+        onclick={importLegacyDeliveryStorage}
+        ><Upload size={16} />{legacyImporting
+          ? "Validando e importando…"
+          : "Importar entregas legadas"}</button
+      >
+      {#if dataMessage}<p class="settings-notice">{dataMessage}</p>{/if}
+    </SettingsCard>
   {:else if activeTab === "dados" && activeFilter === "restaurar"}
     <SettingsCard
       title="Restaurar backup"
@@ -534,7 +602,7 @@
   {:else if activeTab === "dados"}
     <SettingsCard
       title="Resetar dados"
-      description="Apaga do banco os dados pessoais, arquivos, interações e todo o conteúdo do seu workspace pessoal. A conta e a senha permanecem. Esta ação não pode ser desfeita."
+      description="Remove todos os dados da conta — pessoas, negócios, contratos, financeiro, arquivos e workspaces — e cria um novo workspace pessoal vazio. Somente nome, avatar, e-mail, telefone e o acesso à conta permanecem. Esta ação não pode ser desfeita."
       tone="danger"
     >
       <label class="settings-field"

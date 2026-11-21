@@ -49,7 +49,7 @@ export function contactDetail(contact: Contact): RecordDetail {
   return {
     id: contact.id,
     kind: "pessoa",
-    typeLabel: "Contato",
+    typeLabel: "Pessoa",
     title: contact.name,
     status: contact.archivedAt ? "Arquivado" : contact.status,
     archived: Boolean(contact.archivedAt),
@@ -60,7 +60,7 @@ export function contactDetail(contact: Contact): RecordDetail {
     ],
     sections: [
       {
-        title: "Canais de contato",
+        title: "Canais da pessoa",
         fields: [
           {
             label: "Telefones",
@@ -118,6 +118,50 @@ export function businessDetail(business: Business): RecordDetail {
   };
 }
 
+export function contractDetail(contract: {
+  id: string;
+  name: string;
+  businessName: string;
+  amountCents: number;
+  firstDueDate: string | null;
+  paymentMethod: string | null;
+  paymentTerms: string | null;
+  financeNotes: string | null;
+  archivedAt: Date | null;
+  updatedAt: Date;
+}): RecordDetail {
+  return {
+    id: contract.id,
+    kind: "contrato",
+    typeLabel: "Contrato",
+    title: contract.name,
+    status: contract.archivedAt ? "Arquivado" : "Ativo",
+    archived: Boolean(contract.archivedAt),
+    updatedAt: date(contract.updatedAt.toISOString()),
+    fields: [
+      { label: "Negócio", value: contract.businessName },
+      {
+        label: "Valor",
+        value: (contract.amountCents / 100).toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        }),
+      },
+      { label: "Primeiro vencimento", value: date(contract.firstDueDate) },
+      { label: "Forma de pagamento", value: text(contract.paymentMethod) },
+    ],
+    sections: [
+      {
+        title: "Financeiro",
+        fields: [
+          { label: "Condições", value: text(contract.paymentTerms) },
+          { label: "Observações", value: text(contract.financeNotes) },
+        ],
+      },
+    ],
+  };
+}
+
 export function projectDetail(project: Project): RecordDetail {
   return {
     id: project.id,
@@ -128,13 +172,10 @@ export function projectDetail(project: Project): RecordDetail {
     archived: Boolean(project.archivedAt),
     updatedAt: date(project.updatedAt),
     fields: [
+      { label: "Contrato", value: text(project.contract?.name) },
       { label: "Negócio", value: project.business.name },
       { label: "Início", value: date(project.startDate) },
       { label: "Conclusão", value: date(project.endDate) },
-      {
-        label: "Contrato",
-        value: project.contractType === "recurring" ? "Recorrente" : "Pontual",
-      },
       { label: "Exibição", value: project.isActive ? "On" : "Off" },
     ],
     sections: [
@@ -144,10 +185,6 @@ export function projectDetail(project: Project): RecordDetail {
           {
             label: "Serviços",
             value: list(project.services.map(({ name }) => name)),
-          },
-          {
-            label: "Responsáveis",
-            value: list(project.responsibles.map(({ name }) => name)),
           },
           { label: "Tags", value: list(project.tags.map(({ name }) => name)) },
           { label: "Briefing", value: text(project.briefing) },
@@ -161,7 +198,7 @@ export function taskDetail(task: Task): RecordDetail {
   return {
     id: task.id,
     kind: "tarefa",
-    typeLabel: "Tarefa",
+    typeLabel: "Entrega",
     title: task.name,
     status: task.archivedAt ? "Arquivado" : task.status,
     archived: Boolean(task.archivedAt),
@@ -186,7 +223,7 @@ export function taskDetail(task: Task): RecordDetail {
         ],
       },
       {
-        title: "Subtarefas",
+        title: "Tarefas",
         fields: [
           {
             label: "Itens",

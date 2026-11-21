@@ -32,6 +32,55 @@ async function applyRuntimeSchema(database: Database): Promise<void> {
   );
   await addColumnIfMissing(
     database,
+    "contracts",
+    "contract_type",
+    "varchar(16) NOT NULL DEFAULT 'one_off'",
+  );
+  await addColumnIfMissing(
+    database,
+    "contracts",
+    "start_date",
+    "date NULL",
+  );
+  await addColumnIfMissing(
+    database,
+    "contracts",
+    "end_date",
+    "date NULL",
+  );
+  // The managed runtime does not execute Drizzle migrations on deploy. These
+  // additive columns keep the personal-contract and private-finance queries
+  // compatible with databases created before migration 0015.
+  await addColumnIfMissing(
+    database,
+    "contracts",
+    "owner_user_id",
+    "char(36) NULL",
+  );
+  await database.execute(
+    sql.raw(`
+      UPDATE contracts c
+      INNER JOIN businesses b ON b.id = c.business_id
+      SET c.owner_user_id = b.owner_user_id
+      WHERE c.owner_user_id IS NULL OR c.owner_user_id <> b.owner_user_id
+    `),
+  );
+  await addColumnIfMissing(
+    database,
+    "financial_entries",
+    "owner_user_id",
+    "char(36) NULL",
+  );
+  await database.execute(
+    sql.raw(`
+      UPDATE financial_entries f
+      INNER JOIN workspaces w ON w.id = f.workspace_id
+      SET f.owner_user_id = w.owner_user_id
+      WHERE f.owner_user_id IS NULL
+    `),
+  );
+  await addColumnIfMissing(
+    database,
     "service_task_templates",
     "recurrence_type",
     "varchar(16) NOT NULL DEFAULT 'one_off'",

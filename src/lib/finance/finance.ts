@@ -72,6 +72,42 @@ export function formatFinanceDate(date: string): string {
   return year && month && day ? `${day}.${month}.${year}` : date;
 }
 
+export const MONTH_SHORT_LABELS = [
+  "Jan",
+  "Fev",
+  "Mar",
+  "Abr",
+  "Mai",
+  "Jun",
+  "Jul",
+  "Ago",
+  "Set",
+  "Out",
+  "Nov",
+  "Dez",
+] as const;
+
+export function parseYearMonth(value: string): { year: number; month: number } {
+  const match = /^(\d{4})-(\d{2})$/.exec(value);
+  if (!match) {
+    const today = new Date();
+    return { year: today.getFullYear(), month: today.getMonth() + 1 };
+  }
+  const year = Number(match[1]);
+  const month = Math.min(12, Math.max(1, Number(match[2])));
+  return { year, month };
+}
+
+export function formatYearMonth(year: number, month: number): string {
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`;
+}
+
+export function shiftMonth(value: string, offset: number): string {
+  const { year, month } = parseYearMonth(value);
+  const date = new Date(Date.UTC(year, month - 1 + offset, 1));
+  return formatYearMonth(date.getUTCFullYear(), date.getUTCMonth() + 1);
+}
+
 export function formatMonth(month: string): string {
   const [year, monthNumber] = month.split("-").map(Number);
   if (!year || !monthNumber) return "Planejamento financeiro";

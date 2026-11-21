@@ -1,3 +1,5 @@
+import { databaseConstraint } from "../db/helpers";
+
 export class SettingsVersionConflictError extends Error {
   readonly status = 409;
 
@@ -29,23 +31,6 @@ export class SettingsConflictError extends Error {
     super(message);
     this.name = "SettingsConflictError";
   }
-}
-
-function databaseConstraint(error: unknown): string | undefined {
-  const visited = new Set<unknown>();
-  let current = error;
-  while (current && typeof current === "object" && !visited.has(current)) {
-    visited.add(current);
-    if ("constraint" in current && typeof current.constraint === "string") {
-      return current.constraint;
-    }
-    if ("sqlMessage" in current && typeof current.sqlMessage === "string") {
-      const match = /CONSTRAINT `([^`]+)`/u.exec(current.sqlMessage);
-      if (match?.[1]) return match[1];
-    }
-    current = "cause" in current ? current.cause : undefined;
-  }
-  return undefined;
 }
 
 export function translateSettingsConstraint(error: unknown): never {

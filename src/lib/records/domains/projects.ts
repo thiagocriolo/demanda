@@ -60,7 +60,7 @@ export const projectRecordsDomain: RecordsDomain<ProjectFacets> = {
       ...baseCard(config, record),
       secondary: record.negocio || record.cliente || "Negócio não informado",
       relation:
-        record.responsavel || record.servicos || "Responsável não informado",
+        record.contractName || record.servicos || "Contrato não informado",
       completion: formatDate(record.dataFim || record.prazo),
     };
   },

@@ -18,6 +18,7 @@ import type {
   BusinessMutationInput,
   BusinessNote,
   BusinessResponsible,
+  BusinessResponsibleContactOption,
   BusinessResponsibleUserOption,
 } from "../../businesses/types";
 import {
@@ -25,6 +26,7 @@ import {
   INSTITUTIONAL_PROJECT_STATUS,
 } from "../../projects/institutional";
 import { affectedRows, type Database } from "../db/database";
+import { databaseConstraint, escapeLikeMySql } from "../db/helpers";
 import {
   businessNotes,
   businessResponsibles,
@@ -82,12 +84,38 @@ async function personalWorkspaceIdForOwner(
   return workspace.id;
 }
 
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
-}
+async function workspaceIdForNewBusiness(
+  database: BusinessDatabase,
+  ownerUserId: string,
+  contactIds: string[],
+): Promise<string> {
+  if (!contactIds.length) {
+    return personalWorkspaceIdForOwner(database, ownerUserId);
+  }
 
-function escapeLikeMySql(value: string): string {
-  return value.replace(/[!%_]/g, (character) => `!${character}`);
+  // Um negócio e seus contatos precisam pertencer ao mesmo workspace por
+  // causa da chave estrangeira composta em business_responsibles. Isso também
+  // preserva contatos e negócios importados para workspaces compartilhados.
+  const rows = await database
+    .select({ id: contacts.id, workspaceId: contacts.workspaceId })
+    .from(contacts)
+    .where(
+      and(
+        eq(contacts.ownerUserId, ownerUserId),
+        inArray(contacts.id, contactIds),
+      ),
+    )
+    .orderBy(asc(contacts.id))
+    .for("update");
+
+  if (rows.length !== contactIds.length) {
+    throw new BusinessResponsiblesInvalidError();
+  }
+  const workspaceIds = new Set(rows.map(({ workspaceId }) => workspaceId));
+  if (workspaceIds.size !== 1) {
+    throw new BusinessResponsiblesInvalidError();
+  }
+  return rows[0]!.workspaceId;
 }
 
 function searchCondition(query: string): SQL | undefined {
@@ -497,23 +525,6 @@ async function insertBusinessDetails(
   }
 }
 
-function databaseConstraint(error: unknown): string | undefined {
-  const visited = new Set<unknown>();
-  let current = error;
-  while (current && typeof current === "object" && !visited.has(current)) {
-    visited.add(current);
-    if ("constraint" in current && typeof current.constraint === "string") {
-      return current.constraint;
-    }
-    if ("sqlMessage" in current && typeof current.sqlMessage === "string") {
-      const match = /CONSTRAINT `([^`]+)`/u.exec(current.sqlMessage);
-      if (match?.[1]) return match[1];
-    }
-    current = "cause" in current ? current.cause : undefined;
-  }
-  return undefined;
-}
-
 function translateBusinessConstraint(error: unknown): never {
   const constraint = databaseConstraint(error);
   if (
@@ -568,6 +579,26 @@ export async function listBusinessResponsibleUsers(
     ...user,
     current: user.id === actorUserId,
   }));
+}
+
+export async function listBusinessResponsibleContacts(
+  database: Database,
+  context: RequestAuthorizationContext,
+): Promise<BusinessResponsibleContactOption[]> {
+  return database
+    .select({
+      id: contacts.id,
+      name: contacts.name,
+      profession: contacts.profession,
+    })
+    .from(contacts)
+    .where(
+      and(
+        eq(contacts.ownerUserId, context.user.id),
+        isNull(contacts.archivedAt),
+      ),
+    )
+    .orderBy(asc(sql`lower(${contacts.name})`), asc(contacts.id));
 }
 
 async function listWorkspaceBusinessesInTransaction(
@@ -676,9 +707,10 @@ export async function createWorkspaceBusiness(
   const ownerUserId = context.user.id;
   try {
     return await database.transaction(async (transaction) => {
-      const workspaceId = await personalWorkspaceIdForOwner(
+      const workspaceId = await workspaceIdForNewBusiness(
         transaction,
         ownerUserId,
+        input.responsibleContactIds,
       );
       await validateAndLockResponsibles(
         transaction,

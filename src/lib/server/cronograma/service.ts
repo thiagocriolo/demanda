@@ -11,11 +11,12 @@ import { defaultPersonalSettings } from "../../settings/defaults";
 import type { PersonalSettingsState } from "../../settings/types";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
 import {
-  requireActiveWorkspacePermission,
   requireWorkspacePermission,
   requireWorkspacePermissionForUpdate,
+  workspaceIdFromContext,
 } from "../authorization/workspace-context";
 import { affectedRows, type Database } from "../db/database";
+import { databaseConstraint } from "../db/helpers";
 import {
   cronogramaBlocks,
   taskResponsibles,
@@ -25,6 +26,7 @@ import {
   workspaces,
 } from "../db/schema";
 import { personalSettingsSchema } from "../settings/validation";
+import { appendDataChangeAuditLog } from "../authorization/audit";
 
 type CronogramaDatabase = Pick<
   Database,
@@ -67,23 +69,6 @@ export class CronogramaSubtaskNotFoundError extends Error {
     super("A subtarefa não existe ou não está ativa neste workspace.");
     this.name = "CronogramaSubtaskNotFoundError";
   }
-}
-
-function databaseConstraint(error: unknown): string | undefined {
-  let current = error;
-  for (let depth = 0; depth < 4 && current; depth += 1) {
-    if (typeof current !== "object") return undefined;
-    if ("constraint" in current && typeof current.constraint === "string") {
-      return current.constraint;
-    }
-    current = "cause" in current ? current.cause : undefined;
-  }
-  return undefined;
-}
-
-function workspaceIdFromContext(context: RequestAuthorizationContext): string {
-  return requireActiveWorkspacePermission(context, "workspace:read").workspace
-    .id;
 }
 
 async function lockWorkspace(
@@ -629,6 +614,20 @@ export async function saveCronogramaBlock(
           durationMinutes: input.durationMinutes,
         });
       }
+      await appendDataChangeAuditLog(transaction, {
+        userId: context.user.id,
+        workspaceId,
+      }, {
+        action: current ? "cronograma.block_changed" : "cronograma.block_created",
+        targetType: "cronograma",
+        targetId: current?.id ?? subtaskId,
+        changes: [
+          { field: "date", before: current?.scheduledDate ?? null, after: input.date },
+          { field: "startMinutes", before: current?.startMinutes ?? null, after: input.startMinutes },
+          { field: "durationMinutes", before: current?.durationMinutes ?? null, after: input.durationMinutes },
+        ].filter((change) => change.before !== change.after),
+        metadata: { taskId: subtask.taskId, subtaskId },
+      });
       return readSnapshot(transaction, workspaceId, {
         responsibleUserId: context.user.id,
       });
@@ -697,6 +696,20 @@ export async function deleteCronogramaBlock(
         ),
       );
     if (affectedRows(deleted) !== 1) throw new CronogramaVersionConflictError();
+    await appendDataChangeAuditLog(transaction, {
+      userId: context.user.id,
+      workspaceId,
+    }, {
+      action: "cronograma.block_deleted",
+      targetType: "cronograma",
+      targetId: current.id,
+      changes: [
+        { field: "date", before: current.scheduledDate, after: null },
+        { field: "startMinutes", before: current.startMinutes, after: null },
+        { field: "durationMinutes", before: current.durationMinutes, after: null },
+      ],
+      metadata: { taskId: current.taskId, subtaskId },
+    });
     return readSnapshot(transaction, workspaceId, {
       responsibleUserId: context.user.id,
     });
@@ -805,6 +818,37 @@ export async function reorganizeCronogramaBlocks(
           );
       }
       await transaction.insert(cronogramaBlocks).values(candidates);
+      for (const candidate of candidates) {
+        const previous = currentBySubtaskId.get(candidate.subtaskId);
+        await appendDataChangeAuditLog(transaction, {
+          userId: context.user.id,
+          workspaceId,
+        }, {
+          action: previous
+            ? "cronograma.block_changed"
+            : "cronograma.block_created",
+          targetType: "cronograma",
+          targetId: candidate.id,
+          changes: [
+            {
+              field: "date",
+              before: previous?.scheduledDate ?? null,
+              after: candidate.scheduledDate,
+            },
+            {
+              field: "startMinutes",
+              before: previous?.startMinutes ?? null,
+              after: candidate.startMinutes,
+            },
+            {
+              field: "durationMinutes",
+              before: previous?.durationMinutes ?? null,
+              after: candidate.durationMinutes,
+            },
+          ].filter((change) => change.before !== change.after),
+          metadata: { taskId: candidate.taskId, subtaskId: candidate.subtaskId },
+        });
+      }
 
       return readSnapshot(transaction, workspaceId, {
         responsibleUserId: context.user.id,

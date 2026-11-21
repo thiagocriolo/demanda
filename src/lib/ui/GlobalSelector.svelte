@@ -19,7 +19,7 @@
   export type GlobalSelectorPresentation = "search" | "chooser";
   export type GlobalSelectorSelection = "single" | "multiple" | "action";
   export type GlobalSelectorSelectedPosition = "above" | "below";
-  export type GlobalSelectorDropdownPosition = "above" | "below";
+  export type GlobalSelectorDropdownPosition = "above" | "below" | "auto";
   export type GlobalSelectorIcon = LucideIcon;
 </script>
 
@@ -100,6 +100,8 @@
   let query = $state("");
   let searching = $state(false);
   let activeIndex = $state(0);
+  let resolvedDropdownPosition = $state<"above" | "below">("below");
+  let dropdownMaxHeight = $state(360);
   let wasOpenOnControlPointerDown = false;
   let suppressNextFocus = false;
   let syncedValue = "";
@@ -159,6 +161,19 @@
 
   $effect(() => {
     if (disabled) open = false;
+  });
+
+  $effect(() => {
+    if (!open || dropdownPosition !== "auto") return;
+
+    const updatePlacement = () => updateDropdownPlacement();
+    updatePlacement();
+    window.addEventListener("resize", updatePlacement);
+    window.addEventListener("scroll", updatePlacement, true);
+    return () => {
+      window.removeEventListener("resize", updatePlacement);
+      window.removeEventListener("scroll", updatePlacement, true);
+    };
   });
 
   function normalize(text: string): string {
@@ -223,6 +238,49 @@
           results.findIndex((item) => item.id === value),
           0,
         );
+  }
+
+  function updateDropdownPlacement(): void {
+    if (!root) return;
+
+    const controlBounds = root.getBoundingClientRect();
+    const scrollContainer = closestScrollContainer(root);
+    const containerBounds = scrollContainer
+      ? scrollContainer.getBoundingClientRect()
+      : new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+    const viewportTop = Math.max(containerBounds.top, 8);
+    const viewportBottom = Math.min(
+      containerBounds.bottom,
+      window.innerHeight - 8,
+    );
+    const gap = 7;
+    const availableAbove = Math.max(0, controlBounds.top - viewportTop - gap);
+    const availableBelow = Math.max(
+      0,
+      viewportBottom - controlBounds.bottom - gap,
+    );
+
+    resolvedDropdownPosition =
+      availableAbove > availableBelow ? "above" : "below";
+    dropdownMaxHeight = Math.max(
+      88,
+      Math.min(
+        360,
+        (resolvedDropdownPosition === "above"
+          ? availableAbove
+          : availableBelow) - 2,
+      ),
+    );
+  }
+
+  function closestScrollContainer(element: HTMLElement): HTMLElement | undefined {
+    let parent = element.parentElement;
+    while (parent) {
+      const { overflowY } = getComputedStyle(parent);
+      if (overflowY === "auto" || overflowY === "scroll") return parent;
+      parent = parent.parentElement;
+    }
+    return undefined;
   }
 
   function handleFocus(): void {
@@ -500,8 +558,11 @@
     {#if open}
       <div
         class="dropdown"
-        class:dropdown--above={dropdownPosition === "above"}
+        class:dropdown--above={dropdownPosition === "above" ||
+          (dropdownPosition === "auto" &&
+            resolvedDropdownPosition === "above")}
         class:dropdown--compact-empty={compactEmpty}
+        style={`--dropdown-max-height: ${dropdownPosition === "auto" ? dropdownMaxHeight : 360}px`}
       >
         <ul id={listboxId} role="listbox" aria-label={`${label}: opções`}>
           {#each results as item, index (item.id)}
@@ -780,7 +841,7 @@
   }
 
   .dropdown ul {
-    max-height: 360px;
+    max-height: var(--dropdown-max-height, 360px);
     overflow-y: auto;
     padding: 5px;
     overscroll-behavior: contain;
@@ -957,7 +1018,7 @@
     }
 
     .dropdown ul {
-      max-height: 300px;
+      max-height: min(300px, var(--dropdown-max-height, 300px));
     }
   }
 </style>

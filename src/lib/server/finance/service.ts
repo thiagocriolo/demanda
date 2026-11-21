@@ -10,19 +10,23 @@ import type {
   FinancialStateInput,
   FinancialTotals,
 } from "../../finance/api-types";
+import { addMonthsToFinanceDate as addMonths } from "../../finance/installments";
 import { appendAdministrativeAuditLog } from "../authorization/audit";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
 import {
-  requireActiveWorkspacePermission,
   requireWorkspacePermission,
   requireWorkspacePermissionForUpdate,
+  workspaceIdFromContext,
 } from "../authorization/workspace-context";
 import { affectedRows, type Database } from "../db/database";
 import {
   businesses,
+  contractInstallments,
+  contracts,
   financialEntries,
   projectInstallments,
   projects,
+  workspaceMembers,
   workspaces,
 } from "../db/schema";
 
@@ -61,11 +65,6 @@ export class FinancialInvalidOperationError extends Error {
   }
 }
 
-function workspaceIdFromContext(context: RequestAuthorizationContext): string {
-  return requireActiveWorkspacePermission(context, "workspace:read").workspace
-    .id;
-}
-
 function centsToDecimal(cents: number): string {
   if (!Number.isSafeInteger(cents) || cents <= 0) {
     throw new FinancialInvalidOperationError("O valor monetário é inválido.");
@@ -88,15 +87,6 @@ function decimalToCents(value: string): number {
   return Number(cents);
 }
 
-function addMonths(value: string, offset: number): string {
-  const [year, month, day] = value.split("-").map(Number);
-  const target = new Date(Date.UTC(year!, month! - 1 + offset, 1));
-  const lastDay = new Date(
-    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  return `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, "0")}-${String(Math.min(day!, lastDay)).padStart(2, "0")}`;
-}
-
 async function lockWorkspace(
   database: FinanceDatabase,
   workspaceId: string,
@@ -111,13 +101,127 @@ async function lockWorkspace(
   return rows[0];
 }
 
-function projectStatusSettled(status: string | null): boolean {
+function contractStatusSettled(status: string | null): boolean {
   return ["settled", "paid", "received", "pago", "recebido"].includes(
     status ?? "",
   );
 }
 
-async function synchronizeProjectEntries(
+async function synchronizeContractEntries(
+  database: FinanceDatabase,
+  workspaceId: string,
+): Promise<void> {
+  const sourceRows = await database
+    .select({
+      installment: contractInstallments,
+      contractName: contracts.name,
+      contractNotes: contracts.financeNotes,
+      contractType: contracts.contractType,
+      contractOwnerUserId: contracts.ownerUserId,
+    })
+    .from(contractInstallments)
+    .innerJoin(
+      contracts,
+      and(
+        eq(contracts.workspaceId, contractInstallments.workspaceId),
+        eq(contracts.id, contractInstallments.contractId),
+      ),
+    )
+    .where(eq(contractInstallments.workspaceId, workspaceId))
+    .orderBy(
+      asc(contractInstallments.contractId),
+      asc(contractInstallments.number),
+    );
+  const existingRows = await database
+    .select()
+    .from(financialEntries)
+    .where(
+      and(
+        eq(financialEntries.workspaceId, workspaceId),
+        eq(financialEntries.source, "contract"),
+      ),
+    );
+  const existingByInstallment = new Map(
+    existingRows.flatMap((row) =>
+      row.contractInstallmentId
+        ? [[row.contractInstallmentId, row] as const]
+        : [],
+    ),
+  );
+  const counts = new Map<string, number>();
+  for (const { installment } of sourceRows) {
+    counts.set(
+      installment.contractId,
+      (counts.get(installment.contractId) ?? 0) + 1,
+    );
+  }
+  for (const source of sourceRows) {
+    const { installment } = source;
+    if (installment.amountCents <= 0) continue;
+    const current = existingByInstallment.get(installment.id);
+    const amount = centsToDecimal(installment.amountCents);
+    const settled = contractStatusSettled(installment.statusKey);
+    const values = {
+      ownerUserId: source.contractOwnerUserId,
+      contractId: installment.contractId,
+      source: "contract" as const,
+      type: "revenue" as const,
+      mode: source.contractType,
+      title: source.contractName,
+      category: "Contratos",
+      notes: source.contractNotes ?? "",
+      amount,
+      competenceDate: installment.dueDate,
+      dueDate: installment.dueDate,
+      seriesId: installment.contractId,
+      seriesKind: "installment" as const,
+      seriesNumber: installment.number,
+      seriesCount: counts.get(installment.contractId) ?? 1,
+      updatedByUserId: source.contractOwnerUserId,
+    };
+    if (!current) {
+      await database.insert(financialEntries).values({
+        workspaceId,
+        contractInstallmentId: installment.id,
+        ...values,
+        status: settled ? "settled" : "open",
+        settledAt: settled ? new Date() : null,
+        createdByUserId: source.contractOwnerUserId,
+      });
+      continue;
+    }
+    const changed =
+      current.title !== values.title ||
+      current.category !== values.category ||
+      current.notes !== values.notes ||
+      current.amount !== values.amount ||
+      current.competenceDate !== values.competenceDate ||
+      current.dueDate !== values.dueDate ||
+      current.seriesNumber !== values.seriesNumber ||
+      current.seriesCount !== values.seriesCount ||
+      (settled && current.status !== "settled");
+    if (!changed) continue;
+    await database
+      .update(financialEntries)
+      .set({
+        ...values,
+        status: settled ? "settled" : current.status,
+        settledAt: settled
+          ? (current.settledAt ?? new Date())
+          : current.settledAt,
+        version: sql`${financialEntries.version} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(financialEntries.id, current.id));
+  }
+}
+
+/**
+ * Compatibility bridge for projects created before the contract migration.
+ * New financial records are owned by contracts; this keeps historical project
+ * records readable until their migration has completed.
+ */
+async function synchronizeLegacyProjectEntries(
   database: FinanceDatabase,
   workspaceId: string,
   ownerUserId: string,
@@ -158,26 +262,26 @@ async function synchronizeProjectEntries(
     ),
   );
   const counts = new Map<string, number>();
-  for (const { installment } of sourceRows) {
+  for (const { installment } of sourceRows)
     counts.set(
       installment.projectId,
       (counts.get(installment.projectId) ?? 0) + 1,
     );
-  }
   for (const source of sourceRows) {
     const { installment } = source;
+    if (installment.amountCents <= 0) continue;
     const current = existingByInstallment.get(installment.id);
-    const amount = centsToDecimal(installment.amountCents);
-    const settled = projectStatusSettled(installment.statusKey);
+    const settled = contractStatusSettled(installment.statusKey);
     const values = {
       projectId: installment.projectId,
+      ownerUserId,
       source: "project" as const,
       type: "revenue" as const,
       mode: "one_off" as const,
       title: source.projectName,
       category: "Contratos",
       notes: source.projectNotes ?? "",
-      amount,
+      amount: centsToDecimal(installment.amountCents),
       competenceDate: installment.dueDate,
       dueDate: installment.dueDate,
       seriesId: installment.projectId,
@@ -199,7 +303,6 @@ async function synchronizeProjectEntries(
     }
     const changed =
       current.title !== values.title ||
-      current.category !== values.category ||
       current.notes !== values.notes ||
       current.amount !== values.amount ||
       current.competenceDate !== values.competenceDate ||
@@ -207,19 +310,19 @@ async function synchronizeProjectEntries(
       current.seriesNumber !== values.seriesNumber ||
       current.seriesCount !== values.seriesCount ||
       (settled && current.status !== "settled");
-    if (!changed) continue;
-    await database
-      .update(financialEntries)
-      .set({
-        ...values,
-        status: settled ? "settled" : current.status,
-        settledAt: settled
-          ? (current.settledAt ?? new Date())
-          : current.settledAt,
-        version: sql`${financialEntries.version} + 1`,
-        updatedAt: new Date(),
-      })
-      .where(eq(financialEntries.id, current.id));
+    if (changed)
+      await database
+        .update(financialEntries)
+        .set({
+          ...values,
+          status: settled ? "settled" : current.status,
+          settledAt: settled
+            ? (current.settledAt ?? new Date())
+            : current.settledAt,
+          version: sql`${financialEntries.version} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(financialEntries.id, current.id));
   }
 }
 
@@ -270,7 +373,11 @@ function summarize(rows: StoredEntry[]): FinancialTotals {
 
 async function readSnapshot(
   database: FinanceDatabase,
-  workspaceId: string,
+  scope: {
+    ownerUserId: string;
+    workspaceId?: string;
+    responseWorkspaceId: string;
+  },
   query: FinancialQuery = {},
 ): Promise<FinancialSnapshot> {
   const basisColumn =
@@ -278,9 +385,12 @@ async function readSnapshot(
       ? financialEntries.competenceDate
       : financialEntries.dueDate;
   const predicates = [
-    eq(financialEntries.workspaceId, workspaceId),
+    eq(financialEntries.ownerUserId, scope.ownerUserId),
     isNull(financialEntries.deletedAt),
   ];
+  if (scope.workspaceId) {
+    predicates.push(eq(financialEntries.workspaceId, scope.workspaceId));
+  }
   if (query.from) predicates.push(gte(basisColumn, query.from));
   if (query.to) predicates.push(lte(basisColumn, query.to));
   if (query.type) predicates.push(eq(financialEntries.type, query.type));
@@ -298,7 +408,17 @@ async function readSnapshot(
         eq(projects.id, financialEntries.projectId),
       ),
     )
-    .leftJoin(businesses, eq(businesses.id, projects.businessId))
+    .leftJoin(
+      contracts,
+      and(
+        eq(contracts.workspaceId, financialEntries.workspaceId),
+        eq(contracts.id, financialEntries.contractId),
+      ),
+    )
+    .leftJoin(
+      businesses,
+      sql`${businesses.id} = coalesce(${contracts.businessId}, ${projects.businessId})`,
+    )
     .where(and(...predicates))
     .orderBy(
       asc(financialEntries.dueDate),
@@ -306,7 +426,7 @@ async function readSnapshot(
       asc(financialEntries.id),
     );
   return {
-    workspaceId,
+    workspaceId: scope.responseWorkspaceId,
     entries: rows.map(
       ({ entry, projectName, businessName }): FinancialEntry => ({
         id: entry.id,
@@ -389,6 +509,7 @@ async function insertManualOccurrences(
   const rows = occurrences.map((item) => ({
     id: randomUUID(),
     workspaceId,
+    ownerUserId: actorUserId,
     source: "manual" as const,
     type: input.type,
     mode: input.mode,
@@ -405,15 +526,13 @@ async function insertManualOccurrences(
     createdByUserId: actorUserId,
     updatedByUserId: actorUserId,
   }));
-  await database
-    .insert(financialEntries)
-    .values(rows);
+  await database.insert(financialEntries).values(rows);
   return rows.map(({ id }) => id);
 }
 
 async function activeEntryForUpdate(
   database: FinanceDatabase,
-  workspaceId: string,
+  ownerUserId: string,
   entryId: string,
 ): Promise<StoredEntry> {
   const rows = await database
@@ -421,7 +540,7 @@ async function activeEntryForUpdate(
     .from(financialEntries)
     .where(
       and(
-        eq(financialEntries.workspaceId, workspaceId),
+        eq(financialEntries.ownerUserId, ownerUserId),
         eq(financialEntries.id, entryId),
         isNull(financialEntries.deletedAt),
       ),
@@ -437,17 +556,78 @@ export async function getFinancialSnapshot(
   context: RequestAuthorizationContext,
   query: FinancialQuery = {},
 ): Promise<FinancialSnapshot> {
-  const workspaceId = query.workspaceId ?? workspaceIdFromContext(context);
+  const activeWorkspaceId =
+    query.workspaceId ?? workspaceIdFromContext(context);
   return database.transaction(async (transaction) => {
     await requireWorkspacePermission(
       transaction,
       context.user.id,
-      workspaceId,
+      activeWorkspaceId,
       "workspace:read",
     );
-    const { ownerUserId } = await lockWorkspace(transaction, workspaceId);
-    await synchronizeProjectEntries(transaction, workspaceId, ownerUserId);
-    return readSnapshot(transaction, workspaceId, query);
+    if (query.workspaceId) {
+      await lockWorkspace(transaction, query.workspaceId);
+      await synchronizeContractEntries(transaction, query.workspaceId);
+      await synchronizeLegacyProjectEntries(
+        transaction,
+        query.workspaceId,
+        context.user.id,
+      );
+      return readSnapshot(
+        transaction,
+        {
+          ownerUserId: context.user.id,
+          workspaceId: query.workspaceId,
+          responseWorkspaceId: query.workspaceId,
+        },
+        query,
+      );
+    }
+
+    const syncWorkspaceIds = new Set<string>([activeWorkspaceId]);
+    const ownedWorkspaceIds = new Set<string>([activeWorkspaceId]);
+    const [memberWorkspaces, contractWorkspaces, ownedWorkspaces] =
+      await Promise.all([
+        transaction
+          .select({ workspaceId: workspaceMembers.workspaceId })
+          .from(workspaceMembers)
+          .where(eq(workspaceMembers.userId, context.user.id)),
+        transaction
+          .select({ workspaceId: contracts.workspaceId })
+          .from(contracts)
+          .where(eq(contracts.ownerUserId, context.user.id)),
+        transaction
+          .select({ workspaceId: workspaces.id })
+          .from(workspaces)
+          .where(eq(workspaces.ownerUserId, context.user.id)),
+      ]);
+    for (const row of memberWorkspaces) syncWorkspaceIds.add(row.workspaceId);
+    for (const row of contractWorkspaces) syncWorkspaceIds.add(row.workspaceId);
+    for (const row of ownedWorkspaces) {
+      syncWorkspaceIds.add(row.workspaceId);
+      ownedWorkspaceIds.add(row.workspaceId);
+    }
+
+    for (const workspaceId of [...syncWorkspaceIds].toSorted()) {
+      await lockWorkspace(transaction, workspaceId);
+      await synchronizeContractEntries(transaction, workspaceId);
+      if (ownedWorkspaceIds.has(workspaceId)) {
+        await synchronizeLegacyProjectEntries(
+          transaction,
+          workspaceId,
+          context.user.id,
+        );
+      }
+    }
+
+    return readSnapshot(
+      transaction,
+      {
+        ownerUserId: context.user.id,
+        responseWorkspaceId: activeWorkspaceId,
+      },
+      query,
+    );
   });
 }
 
@@ -481,7 +661,10 @@ export async function createFinancialEntry(
         metadata: { occurrenceCount: ids.length, type: input.type },
       },
     );
-    return readSnapshot(transaction, workspaceId);
+    return readSnapshot(transaction, {
+      ownerUserId: context.user.id,
+      responseWorkspaceId: workspaceId,
+    });
   });
 }
 
@@ -491,8 +674,13 @@ export async function updateFinancialEntry(
   entryId: string,
   input: FinancialEntryUpdateInput,
 ): Promise<FinancialSnapshot> {
-  const workspaceId = workspaceIdFromContext(context);
   return database.transaction(async (transaction) => {
+    const current = await activeEntryForUpdate(
+      transaction,
+      context.user.id,
+      entryId,
+    );
+    const workspaceId = current.workspaceId;
     const access = await requireWorkspacePermissionForUpdate(
       transaction,
       context.user.id,
@@ -500,11 +688,6 @@ export async function updateFinancialEntry(
       "workspace:write",
     );
     await lockWorkspace(transaction, workspaceId);
-    const current = await activeEntryForUpdate(
-      transaction,
-      workspaceId,
-      entryId,
-    );
     if (current.version !== input.version)
       throw new FinancialVersionConflictError();
     if (current.source !== "manual") {
@@ -571,7 +754,10 @@ export async function updateFinancialEntry(
         },
       },
     );
-    return readSnapshot(transaction, workspaceId);
+    return readSnapshot(transaction, {
+      ownerUserId: context.user.id,
+      responseWorkspaceId: workspaceId,
+    });
   });
 }
 
@@ -581,8 +767,13 @@ export async function changeFinancialEntryState(
   entryId: string,
   input: FinancialStateInput,
 ): Promise<FinancialSnapshot> {
-  const workspaceId = workspaceIdFromContext(context);
   return database.transaction(async (transaction) => {
+    const current = await activeEntryForUpdate(
+      transaction,
+      context.user.id,
+      entryId,
+    );
+    const workspaceId = current.workspaceId;
     const access = await requireWorkspacePermissionForUpdate(
       transaction,
       context.user.id,
@@ -590,11 +781,6 @@ export async function changeFinancialEntryState(
       "workspace:write",
     );
     await lockWorkspace(transaction, workspaceId);
-    const current = await activeEntryForUpdate(
-      transaction,
-      workspaceId,
-      entryId,
-    );
     if (current.version !== input.version)
       throw new FinancialVersionConflictError();
     if (input.action === "settle" && current.status === "settled") {
@@ -636,6 +822,12 @@ export async function changeFinancialEntryState(
         ),
       );
     if (affectedRows(updated) !== 1) throw new FinancialVersionConflictError();
+    if (status === "settled" && current.contractInstallmentId) {
+      await transaction
+        .update(contractInstallments)
+        .set({ statusKey: "settled", updatedAt: now })
+        .where(eq(contractInstallments.id, current.contractInstallmentId));
+    }
     if (status === "settled" && current.projectInstallmentId) {
       await transaction
         .update(projectInstallments)
@@ -652,7 +844,10 @@ export async function changeFinancialEntryState(
         metadata: { previousStatus: current.status, status },
       },
     );
-    return readSnapshot(transaction, workspaceId);
+    return readSnapshot(transaction, {
+      ownerUserId: context.user.id,
+      responseWorkspaceId: workspaceId,
+    });
   });
 }
 
@@ -662,8 +857,13 @@ export async function deleteFinancialEntry(
   entryId: string,
   input: FinancialDeleteInput,
 ): Promise<FinancialSnapshot> {
-  const workspaceId = workspaceIdFromContext(context);
   return database.transaction(async (transaction) => {
+    const current = await activeEntryForUpdate(
+      transaction,
+      context.user.id,
+      entryId,
+    );
+    const workspaceId = current.workspaceId;
     const access = await requireWorkspacePermissionForUpdate(
       transaction,
       context.user.id,
@@ -671,11 +871,6 @@ export async function deleteFinancialEntry(
       "workspace:write",
     );
     await lockWorkspace(transaction, workspaceId);
-    const current = await activeEntryForUpdate(
-      transaction,
-      workspaceId,
-      entryId,
-    );
     if (current.version !== input.version)
       throw new FinancialVersionConflictError();
     const now = new Date();
@@ -708,6 +903,9 @@ export async function deleteFinancialEntry(
         },
       },
     );
-    return readSnapshot(transaction, workspaceId);
+    return readSnapshot(transaction, {
+      ownerUserId: context.user.id,
+      responseWorkspaceId: workspaceId,
+    });
   });
 }

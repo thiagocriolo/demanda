@@ -16,6 +16,7 @@
   let navigation = $derived(
     getNavigation(page.url.pathname, selectedMode ?? undefined),
   );
+  let hasWorkspaceContext = $derived(navigation.mode === "workspace");
 </script>
 
 <aside class:collapsed aria-label="Barra lateral">
@@ -24,12 +25,12 @@
   </div>
 
   <div class="sidebar-menus">
-    {#if navigation.mode === "workspace"}
-      <div class="add-action">
-        <AddButton {collapsed} />
-      </div>
+    {#if hasWorkspaceContext}
       <div class="workspace-action">
         <WorkspaceSelector compact={collapsed} />
+      </div>
+      <div class="add-action">
+        <AddButton {collapsed} />
       </div>
     {/if}
     <SidebarSection
@@ -83,7 +84,7 @@
     margin-bottom: 10px;
   }
   .workspace-action {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
   .secondary {
     margin-top: auto;

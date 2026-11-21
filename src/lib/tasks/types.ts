@@ -18,6 +18,7 @@ export type TaskSubtask = {
   id: string;
   name: string;
   durationMinutes: number;
+  executionAt?: string | null;
   status: string;
   sortOrder: number;
   completedAt: string | null;
@@ -36,6 +37,7 @@ export type Task = {
   status: string;
   briefing: string;
   dueDate: string | null;
+  engagementType?: "fee" | "personal";
   durationMinutes: number;
   sortOrder: number;
   boardOrder: TaskBoardOrder;
@@ -53,6 +55,7 @@ export type TaskSubtaskInput = {
   id?: string;
   name: string;
   durationMinutes: number;
+  executionAt?: string | null;
   status: string;
 };
 
@@ -63,6 +66,7 @@ export type TaskContentInput = {
   priority: string;
   briefing: string;
   dueDate: string | null;
+  engagementType?: "fee" | "personal";
   sortOrder: number;
   boardOrder: TaskBoardOrder;
   tagLabels: string[];

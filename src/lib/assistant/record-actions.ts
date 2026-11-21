@@ -9,6 +9,7 @@ import { createTask } from "$lib/tasks/client";
 import { CURRENT_USER } from "$lib/workspaces/workspace-storage";
 import { currentSettings, saveWorkspaceSettings } from "$lib/settings/client";
 import type { RecordCommand } from "./record-commands";
+import type { CompiledQueueCommand } from "./execution-queue";
 
 export type RecordActionResult = {
   message: string;
@@ -52,6 +53,19 @@ export class RecordResolutionRequiredError extends Error {
   }
 }
 
+/** A parent referenced by a reviewed batch is absent before mutations begin. */
+export class RecordDependencyMissingError extends Error {
+  constructor(
+    readonly resource: "negócio" | "projeto",
+    readonly recordName: string,
+  ) {
+    super(
+      `Não encontrei o ${resource} “${recordName}”. Crie-o antes de executar este lote ou inclua sua criação no próprio link.`,
+    );
+    this.name = "RecordDependencyMissingError";
+  }
+}
+
 function nameKey(value: string): string {
   return value
     .normalize("NFD")
@@ -75,6 +89,83 @@ function exactOne<T extends { id: string; name: string }>(
     );
   }
   return matches[0];
+}
+
+function hasParentCommand(
+  queue: CompiledQueueCommand[],
+  command: CompiledQueueCommand,
+  kind: RecordCommand["kind"],
+): boolean {
+  return command.dependsOn.some(
+    (dependency) =>
+      queue.find(({ id }) => id === dependency)?.command.kind === kind,
+  );
+}
+
+export type RecordQueuePreflightIssue = {
+  commandId: string;
+  message: string;
+};
+
+/** Validates external parents without changing any workspace data. */
+export async function preflightRecordCommandQueue(
+  queue: CompiledQueueCommand[],
+): Promise<RecordQueuePreflightIssue[]> {
+  const issues: RecordQueuePreflightIssue[] = [];
+  await Promise.all(
+    queue.map(async (item) => {
+      const { command } = item;
+      try {
+        if (
+          command.kind === "project" &&
+          command.businessName &&
+          !command.businessRef &&
+          !hasParentCommand(queue, item, "business")
+        ) {
+          const businesses = await listBusinesses({
+            query: command.businessName,
+            pageSize: 100,
+          });
+          if (!exactOne(businesses.items, command.businessName, "negócio")) {
+            throw new RecordDependencyMissingError(
+              "negócio",
+              command.businessName,
+            );
+          }
+        }
+        if (
+          command.kind === "task" &&
+          command.projectName &&
+          !command.projectRef &&
+          !hasParentCommand(queue, item, "project")
+        ) {
+          const projects = await listProjects({
+            query: command.projectName,
+            pageSize: 100,
+            includeInactive: true,
+          });
+          if (!exactOne(projects.items, command.projectName, "projeto")) {
+            throw new RecordDependencyMissingError(
+              "projeto",
+              command.projectName,
+            );
+          }
+        }
+      } catch (cause) {
+        if (
+          cause instanceof RecordDependencyMissingError ||
+          cause instanceof RecordResolutionRequiredError
+        ) {
+          issues.push({ commandId: item.id, message: cause.message });
+          return;
+        }
+        throw cause;
+      }
+    }),
+  );
+  return issues.sort((left, right) =>
+    left.commandId.localeCompare(right.commandId),
+  );
 }
 
 function referencedId(
@@ -227,8 +318,9 @@ export async function executeRecordCommand(
         "negócio",
       );
       if (!business) {
-        throw new Error(
-          `Não encontrei o negócio “${command.businessName}”. Crie-o antes de criar o projeto.`,
+        throw new RecordDependencyMissingError(
+          "negócio",
+          command.businessName!,
         );
       }
       businessId = business.id;
@@ -365,9 +457,7 @@ export async function executeRecordCommand(
     });
     const project = exactOne(projects.items, command.projectName!, "projeto");
     if (!project) {
-      throw new Error(
-        `Não encontrei o projeto “${command.projectName}”. Crie-o antes de adicionar a tarefa.`,
-      );
+      throw new RecordDependencyMissingError("projeto", command.projectName!);
     }
     projectId = project.id;
     projectName = project.name;

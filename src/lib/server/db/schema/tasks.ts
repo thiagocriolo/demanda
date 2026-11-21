@@ -53,6 +53,10 @@ export const tasks = applicationSchema.table(
       .default("planejamento")
       .notNull(),
     dueDate: date("due_date", { mode: "string" }),
+    engagementType: varchar("engagement_type", { length: 16 })
+      .$type<"fee" | "personal">()
+      .default("personal")
+      .notNull(),
     sortOrder: integer("sort_order").default(0).notNull(),
     boardOrder: jsonb("board_order")
       .$type<TaskBoardOrder>()
@@ -132,6 +136,10 @@ export const tasks = applicationSchema.table(
     index("tasks_workspace_name_lower_index").on(table.workspaceId, table.name),
     index("tasks_name_search_index").on(table.name),
     check("tasks_name_not_blank", sql`length(btrim(${table.name})) > 0`),
+    check(
+      "tasks_engagement_type_allowed",
+      sql`${table.engagementType} in ('fee', 'personal')`,
+    ),
     check(
       "tasks_category_normalized",
       sql`${table.categoryKey} is null or ${table.categoryKey} = lower(btrim(${table.categoryKey}))`,
@@ -247,6 +255,8 @@ export const taskSubtasks = applicationSchema.table(
     taskId: uuid("task_id").notNull(),
     name: varchar("name", { length: 120 }).notNull(),
     durationMinutes: integer("duration_minutes").default(60).notNull(),
+    /** Date and time at which this executable task is scheduled. */
+    executionAt: timestamp("execution_at", { withTimezone: true, precision: 3 }),
     statusKey: varchar("status_key", { length: 64 })
       .default("pendente")
       .notNull(),

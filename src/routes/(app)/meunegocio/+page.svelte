@@ -11,6 +11,8 @@
   import { mergeSettingsScopes } from "$lib/settings/defaults";
   import type { SettingsState } from "$lib/settings/types";
   import type { TabItem } from "$lib/ui/Tabs.svelte";
+  import PageHeader from "$lib/ui/PageHeader.svelte";
+  import { BriefcaseBusiness } from "@lucide/svelte";
   import { untrack } from "svelte";
   import type { PageData } from "./$types";
 
@@ -20,24 +22,10 @@
   const tabs: TabItem[] = [
     { id: "servicos", label: "Serviços" },
     { id: "entregas", label: "Entregas" },
-    { id: "status", label: "Status" },
-    { id: "rotulos", label: "Rótulos" },
   ];
   const filtersByTab: Record<string, ConfigFilter[]> = {
     servicos: [],
     entregas: [],
-    status: [
-      { value: "contatos", label: "Contatos" },
-      { value: "negocios", label: "Negócios" },
-      { value: "projetos", label: "Projetos" },
-      { value: "tarefas", label: "Tarefas" },
-    ],
-    rotulos: [
-      { value: "negocios", label: "Negócios" },
-      { value: "tarefas", label: "Tarefas" },
-      { value: "financas", label: "Finanças" },
-      { value: "tags", label: "Tags" },
-    ],
   };
 
   const initialSettings = untrack(() =>
@@ -97,13 +85,15 @@
   }
 </script>
 
-<svelte:head><title>Modelos · Demanda</title></svelte:head>
+<svelte:head><title>Serviços · Demanda</title></svelte:head>
 
 <ConfigSaveController dirty={canManage && hasUnsavedChanges} onsave={save} />
 
 {#if settingsMessage}
   <p class="sr-only" aria-live="polite">{settingsMessage}</p>
 {/if}
+
+<PageHeader eyebrow="Meu negócio" title="Serviços" icon={BriefcaseBusiness} />
 
 <ConfigScaffold {tabs} bind:activeTab {filters} bind:activeFilter>
   {#if activeTab === "servicos"}

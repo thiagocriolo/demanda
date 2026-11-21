@@ -2,19 +2,18 @@ import { and, asc, eq } from "drizzle-orm";
 import type {
   Project,
   ProjectFromServiceInput,
-  ProjectInstallmentInput,
 } from "../../projects/types";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
-import { requireWorkspacePermissionForUpdate } from "../authorization/workspace-context";
+import { appendDataChangeAuditLog } from "../authorization/audit";
 import type { Database } from "../db/database";
 import { serviceResponsibles, serviceTags, tags } from "../db/schema";
 import { ProjectRelationsInvalidError } from "./errors";
 import {
   createProjectInTransaction,
+  resolveContractForProjectCreate,
   translateProjectConstraint,
   validateAndLockServices,
 } from "./project-commands";
-import { workspaceIdFromContext } from "./shared";
 import { projectMutationSchema } from "./validation";
 import { createProjectRoutinesFromServices } from "./project-routines";
 
@@ -24,45 +23,19 @@ function addDays(dateValue: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-function addCalendarMonths(dateValue: string, months: number): string {
-  const [year, month, day] = dateValue.split("-").map(Number);
-  const first = new Date(Date.UTC(year!, month! - 1 + months, 1));
-  const lastDay = new Date(
-    Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  first.setUTCDate(Math.min(day!, lastDay));
-  return first.toISOString().slice(0, 10);
-}
-
-function generateInstallments(
-  amountCents: number,
-  count: number,
-  firstDueDate: string,
-): ProjectInstallmentInput[] {
-  if (amountCents <= 0) return [];
-  const base = Math.trunc(amountCents / count);
-  return Array.from({ length: count }, (_, index) => ({
-    number: index + 1,
-    dueDate: addCalendarMonths(firstDueDate, index),
-    amountCents: index === count - 1 ? amountCents - base * (count - 1) : base,
-    status: "pending",
-  }));
-}
-
 export async function createWorkspaceProjectFromService(
   database: Database,
   context: RequestAuthorizationContext,
   input: ProjectFromServiceInput,
 ): Promise<Project> {
-  const workspaceId = workspaceIdFromContext(context);
   try {
     return await database.transaction(async (transaction) => {
-      await requireWorkspacePermissionForUpdate(
+      const contract = await resolveContractForProjectCreate(
         transaction,
         context.user.id,
-        workspaceId,
-        "workspace:write",
+        input.contractId,
       );
+      const workspaceId = contract.workspaceId;
       const serviceIds = [
         input.serviceId,
         ...(input.additionalServiceIds ?? []),
@@ -105,28 +78,10 @@ export async function createWorkspaceProjectFromService(
           ),
         )
         .orderBy(asc(serviceResponsibles.sortOrder));
-      const contractType =
-        input.contractType ??
-        (source.defaultContractType as "one_off" | "recurring");
-      const amountCents = input.amountCents ?? source.defaultAmountCents ?? 0;
-      const firstDueDate =
-        input.firstDueDate === undefined
-          ? contractType === "one_off" && amountCents > 0
-            ? input.startDate
-            : null
-          : input.firstDueDate;
-      const installments =
-        input.installments ??
-        (contractType === "one_off" && amountCents > 0
-          ? generateInstallments(
-              amountCents,
-              source.defaultInstallmentCount,
-              firstDueDate ?? input.startDate,
-            )
-          : []);
       const parsedEffective = projectMutationSchema.safeParse({
         name: input.name,
-        businessId: input.businessId,
+        contractId: contract.id,
+        businessId: contract.businessId,
         serviceIds,
         status: input.status ?? source.defaultStatusKey,
         startDate: input.startDate,
@@ -138,37 +93,47 @@ export async function createWorkspaceProjectFromService(
               : null,
         briefing: input.briefing ?? source.defaultBriefing,
         tagLabels: input.tagLabels ?? sourceTagRows.map(({ label }) => label),
-        responsibleUserIds:
-          input.responsibleUserIds ??
-          sourceResponsibleRows.map(({ userId }) => userId),
-        contractType,
-        amountCents,
-        firstDueDate,
-        paymentMethod: input.paymentMethod ?? source.defaultPaymentMethod ?? "",
-        paymentTerms: input.paymentTerms ?? source.defaultPaymentTerms ?? "",
-        financeNotes: input.financeNotes ?? source.defaultFinanceNotes ?? "",
-        installments,
+        responsibleUserIds: input.responsibleUserIds ?? [],
       });
       if (!parsedEffective.success) throw new ProjectRelationsInvalidError();
       const effective = parsedEffective.data;
       const project = await createProjectInTransaction(
         transaction,
-        workspaceId,
+        contract,
         context.user.id,
         effective,
         source.id,
       );
+      await appendDataChangeAuditLog(transaction, {
+        userId: context.user.id,
+        workspaceId,
+      }, {
+        action: "project.created_from_service",
+        targetType: "project",
+        targetId: project.id,
+        changes: [
+          { field: "name", before: null, after: effective.name },
+          { field: "status", before: null, after: effective.status },
+          { field: "startDate", before: null, after: effective.startDate },
+          { field: "endDate", before: null, after: effective.endDate },
+        ],
+        metadata: { serviceId: source.id },
+      });
+      const fallbackResponsibleUserId =
+        effective.responsibleUserIds?.[0] ??
+        sourceResponsibleRows[0]?.userId ??
+        context.user.id;
       await createProjectRoutinesFromServices(
         transaction,
         workspaceId,
         {
           id: project.id,
-          businessId: effective.businessId,
+          businessId: project.business.id,
           startDate: effective.startDate,
           endDate: effective.endDate,
         },
         serviceIds,
-        effective.responsibleUserIds[0]!,
+        fallbackResponsibleUserId,
       );
       return project;
     });

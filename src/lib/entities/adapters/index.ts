@@ -1,4 +1,5 @@
 import { businessEntityAdapter } from "./business";
+import { contractEntityAdapter } from "./contract";
 import { contactEntityAdapter } from "./contact";
 import { projectEntityAdapter } from "./project";
 import { taskEntityAdapter } from "./task";
@@ -14,6 +15,7 @@ export type {
 const adapters: Record<PersistedEntityKey, EntityPersistenceAdapter> = {
   pessoas: contactEntityAdapter,
   negocios: businessEntityAdapter,
+  contratos: contractEntityAdapter,
   projetos: projectEntityAdapter,
   entregas: taskEntityAdapter,
 };

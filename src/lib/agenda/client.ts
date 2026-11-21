@@ -6,12 +6,15 @@ import type {
   AgendaSnapshot,
 } from "./types";
 import {
+  jsonRequest,
+  requestJson,
+  type FetchLike,
+} from "../http/client";
+import {
   GLOBAL_WORKSPACE_SCOPE_ID,
   isGlobalWorkspaceScope,
   workspaceIdsForRequestScope,
 } from "../workspaces/workspace-scope";
-
-type FetchLike = typeof fetch;
 
 export class AgendaApiError extends Error {
   constructor(
@@ -23,23 +26,15 @@ export class AgendaApiError extends Error {
   }
 }
 
-async function request(
+function request(
   fetcher: FetchLike,
   init?: RequestInit,
   path = "/api/agenda",
 ): Promise<AgendaSnapshot> {
-  const response = await fetcher(path, init);
-  if (!response.ok) {
-    let message = "Nao foi possivel atualizar a Agenda.";
-    try {
-      const payload = (await response.json()) as { message?: unknown };
-      if (typeof payload.message === "string") message = payload.message;
-    } catch {
-      // Respostas sem JSON usam a mensagem segura acima.
-    }
-    throw new AgendaApiError(response.status, message);
-  }
-  return (await response.json()) as AgendaSnapshot;
+  return requestJson<AgendaSnapshot>(fetcher, path, init, {
+    fallbackMessage: "Nao foi possivel atualizar a Agenda.",
+    createError: (status, message) => new AgendaApiError(status, message),
+  });
 }
 
 export async function loadAgendaSnapshot(
@@ -79,11 +74,7 @@ export function saveAgendaOrder(
       version,
     })),
   };
-  return request(fetcher, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
-  }).then((snapshot) => {
+  return request(fetcher, jsonRequest("PUT", input)).then((snapshot) => {
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("demanda:tasks-changed"));
     }

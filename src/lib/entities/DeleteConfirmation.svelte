@@ -6,15 +6,21 @@
     oncancel,
     onarchive,
     onconfirm,
+    onkeepfinancialentries,
     softDeleteOnly = false,
     deleteWarning,
+    contractFinancialEntries = false,
+    allowArchive = true,
   } = $props<{
     entityName: string;
     oncancel: () => void;
     onarchive?: () => void;
     onconfirm: () => void;
+    onkeepfinancialentries?: () => void;
     softDeleteOnly?: boolean;
     deleteWarning?: string;
+    contractFinancialEntries?: boolean;
+    allowArchive?: boolean;
   }>();
 </script>
 
@@ -34,23 +40,34 @@
     </button>
     <span class="icon"><AlertTriangle size={25} /></span>
     <h2 id="delete-title">
-      {softDeleteOnly ? "Arquivar cadastro?" : "Excluir cadastro?"}
+      {softDeleteOnly
+        ? "Arquivar cadastro?"
+        : contractFinancialEntries
+          ? "Excluir contrato?"
+          : "Excluir cadastro?"}
     </h2>
     <p id="delete-description">
       {#if softDeleteOnly}
         <strong>{entityName}</strong> deixará de aparecer nas listagens ativas, mas
         continuará preservado no workspace.
+      {:else if contractFinancialEntries}
+        Tem certeza de que deseja excluir <strong>{entityName}</strong>? Escolha
+        se os lanÃ§amentos financeiros desse contrato devem ser mantidos.
       {:else}
         Tem certeza de que deseja excluir <strong>{entityName}</strong>? Esta
         ação removerá o cadastro permanentemente.
         {#if deleteWarning} {deleteWarning}{/if}
       {/if}
     </p>
-    <div class="actions">
-      <button class="secondary" type="button" onclick={oncancel}
+    <div class:financial-choice={contractFinancialEntries} class="actions">
+      <button
+        class:financial-cancel={contractFinancialEntries}
+        class="secondary"
+        type="button"
+        onclick={oncancel}
         >Cancelar</button
       >
-      {#if !softDeleteOnly}
+      {#if !softDeleteOnly && allowArchive}
         <button
           class="archive"
           type="button"
@@ -60,16 +77,25 @@
           <Archive size={16} />Arquivar
         </button>
       {/if}
-      <button
-        class:archive={softDeleteOnly}
-        class:danger={!softDeleteOnly}
-        type="button"
-        onclick={onconfirm}
-      >
-        {#if softDeleteOnly}<Archive size={16} />Arquivar{:else}<Trash2
-            size={16}
-          />Excluir{/if}
-      </button>
+      {#if contractFinancialEntries}
+        <button class="danger" type="button" onclick={onconfirm}>
+          <Trash2 size={16} />Excluir e remover lanÃ§amentos
+        </button>
+        <button class="keep-financial" type="button" onclick={() => onkeepfinancialentries?.()}>
+          <Trash2 size={16} />Excluir e manter lanÃ§amentos
+        </button>
+      {:else}
+        <button
+          class:archive={softDeleteOnly}
+          class:danger={!softDeleteOnly}
+          type="button"
+          onclick={onconfirm}
+        >
+          {#if softDeleteOnly}<Archive size={16} />Arquivar{:else}<Trash2
+              size={16}
+            />Excluir{/if}
+        </button>
+      {/if}
     </div>
   </div>
 </div>
@@ -142,6 +168,12 @@
   .actions:has(button:nth-child(2):last-child) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .actions.financial-choice {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .financial-cancel {
+    grid-column: 1 / -1;
+  }
   .actions button {
     display: inline-flex;
     min-height: 42px;
@@ -165,6 +197,11 @@
     border: 0;
     color: white;
     background: var(--red-500);
+  }
+  .keep-financial {
+    border: 0;
+    color: white;
+    background: var(--primary);
   }
   .actions button:disabled {
     border: 1px solid var(--border);

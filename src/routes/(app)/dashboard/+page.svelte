@@ -474,7 +474,7 @@
       id: `project-${project.id}`,
       title: project.nome,
       kind: "Projeto",
-      href: "/registros/projetos",
+      href: "/clientes/projetos",
     })),
   ]);
   const todaySignals = $derived<TodaySignal[]>([
@@ -541,7 +541,7 @@
       label: "projetos atrasados",
       tone: "info",
       icon: FolderClock,
-      href: "/registros/projetos",
+      href: "/clientes/projetos",
     },
     {
       value: `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(weeklyHours)}h`,
@@ -611,7 +611,7 @@
       label: "projetos para hoje",
       tone: scheduledIn(projects, "project", today) > 0 ? "warning" : "success",
       icon: CalendarCheck2,
-      href: "/registros/projetos",
+      href: "/clientes/projetos",
     },
     {
       value: String(scheduledIn(projects, "project", weekStart, weekEnd)),
@@ -621,7 +621,7 @@
           ? "info"
           : "success",
       icon: CalendarRange,
-      href: "/registros/projetos",
+      href: "/clientes/projetos",
     },
     {
       value: String(
@@ -643,14 +643,14 @@
           ? "info"
           : "success",
       icon: CalendarDays,
-      href: "/registros/projetos",
+      href: "/clientes/projetos",
     },
     {
       value: String(activeProjects.length),
       label: "projetos em aberto",
       tone: "info",
       icon: FolderKanban,
-      href: "/registros/projetos",
+      href: "/clientes/projetos",
     },
   ]);
 

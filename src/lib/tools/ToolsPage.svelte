@@ -20,6 +20,7 @@
   import type { Task } from "$lib/tasks/types";
   import { listAllTasks, TaskApiError } from "$lib/tasks/client";
   import Tabs from "$lib/ui/Tabs.svelte";
+  import PageHeader from "$lib/ui/PageHeader.svelte";
   import {
     getActiveWorkspace,
     loadWorkspaces,
@@ -344,29 +345,21 @@
 
 <svelte:head><title>Ferramentas · Demanda</title></svelte:head>
 
-<header class="tools-hero">
-  <div class="tools-hero__main">
-    <span class="tools-hero__icon" aria-hidden="true">
-      <SquareStack size={25} />
-    </span>
-    <div>
-      <span class="tools-eyebrow">Área de trabalho</span>
-      <h1>Ferramentas</h1>
-      <p>Crie modelos reutilizáveis e aplique-os em projetos e tarefas.</p>
+<PageHeader eyebrow="Meu negócio" title="Ferramentas" icon={SquareStack}>
+  {#snippet actions()}
+    <div class="tools-header-actions">
+      <button
+        class="tools-secondary-action"
+        type="button"
+        onclick={() => openTemplate()}
+        ><LayoutTemplate size={16} /> Novo modelo</button
+      >
+      <button class="tools-primary-action" type="button" onclick={openNewUse}
+        ><Plus size={17} /> Novo uso</button
+      >
     </div>
-  </div>
-  <div class="tools-header-actions">
-    <button
-      class="tools-secondary-action"
-      type="button"
-      onclick={() => openTemplate()}
-      ><LayoutTemplate size={16} /> Novo modelo</button
-    >
-    <button class="tools-primary-action" type="button" onclick={openNewUse}
-      ><Plus size={17} /> Novo uso</button
-    >
-  </div>
-</header>
+  {/snippet}
+</PageHeader>
 
 <section class="tools-workspace" aria-label="Gerenciamento de Ferramentas">
   <div class="tools-navigation">
@@ -1096,62 +1089,9 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
-  /* Experience refresh: compact hierarchy and task-first controls. */
-  .tools-hero {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-    margin-bottom: 14px;
-    padding: 18px 20px;
-    overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--brand-500) 15%, var(--border));
-    border-radius: var(--radius-xl);
-    background:
-      radial-gradient(circle at 88% 0%, var(--brand-50), transparent 36%),
-      rgba(255, 255, 255, 0.9);
-    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.045);
-  }
-  .tools-hero__main {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 14px;
-  }
-  .tools-hero__icon {
-    display: grid;
-    width: 48px;
-    height: 48px;
-    flex: 0 0 auto;
-    place-items: center;
-    border-radius: 14px;
-    color: white;
-    background: linear-gradient(145deg, #5f7aff, var(--brand-600));
-    box-shadow: 0 8px 18px rgba(46, 86, 255, 0.2);
-  }
-  .tools-eyebrow {
-    display: block;
-    margin-bottom: 3px;
-    color: var(--brand-600);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  .tools-hero h1 {
-    color: var(--ink-950);
-    font-size: clamp(22px, 2.3vw, 27px);
-    line-height: 1.05;
-    letter-spacing: -0.035em;
-  }
-  .tools-hero p {
-    margin-top: 5px;
-    color: var(--ink-500);
-    font-size: var(--text-sm);
-  }
   .tools-header-actions {
-    flex: 0 0 auto;
+    display: flex;
+    gap: 10px;
   }
   .tools-primary-action,
   .tools-secondary-action {
@@ -1517,12 +1457,6 @@
     }
   }
   @media (max-width: 760px) {
-    .tools-hero {
-      align-items: stretch;
-      flex-direction: column;
-      gap: 16px;
-      padding: 17px;
-    }
     .tools-header-actions {
       width: 100%;
     }

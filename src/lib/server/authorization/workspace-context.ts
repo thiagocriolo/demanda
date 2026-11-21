@@ -284,3 +284,10 @@ export function requireActiveWorkspacePermission(
   );
   return context.activeWorkspace;
 }
+
+export function workspaceIdFromContext(
+  context: RequestAuthorizationContext,
+): string {
+  return requireActiveWorkspacePermission(context, "workspace:read").workspace
+    .id;
+}

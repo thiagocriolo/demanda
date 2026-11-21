@@ -11,8 +11,13 @@ import {
 } from "../../src/lib/server/db/database";
 import { createDatabasePool } from "../../src/lib/server/db/pool";
 import {
+  businesses,
+  contacts,
+  contracts,
   deliveryTemplateSubtasks,
   deliveryTemplates,
+  financialEntries,
+  projects,
   serviceTaskTemplates,
   services,
   userPreferences,
@@ -22,6 +27,8 @@ import {
   workspaces,
   type WorkspaceRole,
 } from "../../src/lib/server/db/schema";
+import { resetAccountData } from "../../src/lib/server/settings/account-data-service";
+import { getSettingsSnapshot } from "../../src/lib/server/settings/snapshot-service";
 import {
   getUserSettings,
   getWorkspaceSettings,
@@ -369,6 +376,125 @@ describe("BE-09: configuracoes persistentes", () => {
       expect(
         (await getUserSettings(transaction, data.ownerContext)).version,
       ).toBe(0);
+    }));
+
+  it("reseta todos os dados da conta e recria um workspace pessoal vazio", () =>
+    withRollback(async (transaction) => {
+      const owner = await insertUser(transaction, "ResetOwner");
+      const personalId = randomUUID();
+      await transaction.insert(workspaces).values({
+        id: personalId,
+        name: "Pessoal",
+        kind: "personal",
+        ownerUserId: owner.id,
+      });
+      await transaction.insert(workspaceMembers).values({
+        workspaceId: personalId,
+        userId: owner.id,
+        role: "owner",
+      });
+      const shared = await insertWorkspace(
+        transaction,
+        owner.id,
+        "Workspace extra",
+      );
+      const [personal] = await transaction
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.id, personalId));
+      if (!personal) throw new Error("Workspace pessoal nao criado.");
+
+      const contactId = randomUUID();
+      await transaction.insert(contacts).values({
+        id: contactId,
+        workspaceId: personal.id,
+        ownerUserId: owner.id,
+        name: "Contato Reset",
+      });
+      const businessId = randomUUID();
+      await transaction.insert(businesses).values({
+        id: businessId,
+        workspaceId: shared.id,
+        ownerUserId: owner.id,
+        name: "Negocio Reset",
+        categoryKey: "geral",
+        stageKey: "ativo",
+      });
+      const contractId = randomUUID();
+      await transaction.insert(contracts).values({
+        id: contractId,
+        workspaceId: shared.id,
+        ownerUserId: owner.id,
+        businessId,
+        name: "Contrato Reset",
+        contractType: "one_off",
+        amountCents: 10000,
+      });
+      await transaction.insert(projects).values({
+        id: randomUUID(),
+        workspaceId: shared.id,
+        businessId,
+        contractId,
+        name: "Projeto Reset",
+        statusKey: "planejamento",
+      });
+      await transaction.insert(financialEntries).values({
+        id: randomUUID(),
+        workspaceId: shared.id,
+        ownerUserId: owner.id,
+        source: "manual",
+        type: "revenue",
+        mode: "one_off",
+        title: "Lancamento Reset",
+        amount: "100.00",
+        competenceDate: "2026-11-20",
+        dueDate: "2026-11-20",
+        createdByUserId: owner.id,
+        updatedByUserId: owner.id,
+      });
+
+      const ownerContext = context(owner, personal, "owner");
+      await resetAccountData(transaction, ownerContext);
+      const snapshot = await getSettingsSnapshot(transaction, ownerContext);
+
+      expect(ownerContext.activeWorkspace?.workspace.kind).toBe("personal");
+      expect(ownerContext.activeWorkspace?.workspace.id).not.toBe(personal.id);
+      expect(snapshot.workspace.workspaceId).toBe(
+        ownerContext.activeWorkspace?.workspace.id,
+      );
+
+      const remainingWorkspaces = await transaction
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.ownerUserId, owner.id));
+      const [remainingContacts] = await transaction
+        .select({ total: count() })
+        .from(contacts)
+        .where(eq(contacts.ownerUserId, owner.id));
+      const [remainingBusinesses] = await transaction
+        .select({ total: count() })
+        .from(businesses)
+        .where(eq(businesses.ownerUserId, owner.id));
+      const [remainingContracts] = await transaction
+        .select({ total: count() })
+        .from(contracts)
+        .where(eq(contracts.ownerUserId, owner.id));
+      const [remainingProjects] = await transaction
+        .select({ total: count() })
+        .from(projects)
+        .where(eq(projects.workspaceId, shared.id));
+      const [remainingFinance] = await transaction
+        .select({ total: count() })
+        .from(financialEntries)
+        .where(eq(financialEntries.ownerUserId, owner.id));
+
+      expect(remainingWorkspaces).toHaveLength(1);
+      expect(remainingWorkspaces[0]?.kind).toBe("personal");
+      expect(remainingContacts?.total).toBe(0);
+      expect(remainingBusinesses?.total).toBe(0);
+      expect(remainingContracts?.total).toBe(0);
+      expect(remainingProjects?.total).toBe(0);
+      expect(remainingFinance?.total).toBe(0);
     }));
 });
 

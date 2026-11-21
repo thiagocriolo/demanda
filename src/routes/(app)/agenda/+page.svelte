@@ -1047,7 +1047,7 @@
             onclick={() => moveItem(selectedItem!.id, null)}
             >Remover data de entrega</button
           >{/if}
-        <a href="/registros">Abrir em Registros</a>
+        <a href="/clientes">Abrir em Clientes</a>
       </footer>
     </div>
   </div>

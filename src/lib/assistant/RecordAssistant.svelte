@@ -250,7 +250,7 @@
     <section
       class:below={panelPlacement === "below"}
       class="assistant-panel"
-      aria-label="Assistente de registros"
+      aria-label="Assistente de clientes"
     >
       <header>
         <div class="assistant-title">
@@ -259,7 +259,7 @@
           </span>
           <div>
             <strong>Assistente</strong>
-            <span>Registros</span>
+            <span>Clientes</span>
           </div>
         </div>
         <button

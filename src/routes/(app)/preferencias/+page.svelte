@@ -12,19 +12,13 @@
   import { freshSettings } from "$lib/settings/defaults";
   import type { SettingsState } from "$lib/settings/types";
   import { cardScale, normalizeCardScale } from "$lib/ui/card-scale";
-  import type { TabItem } from "$lib/ui/Tabs.svelte";
+  import { preferenceTabItems, type PreferenceTab } from "$lib/settings/routes";
   import { ExternalLink } from "@lucide/svelte";
   import { onMount } from "svelte";
 
-  const tabs: TabItem[] = [
-    { id: "dashboard", label: "Dashboard" },
-    { id: "workspace", label: "Workspace" },
-    { id: "registro", label: "Registro" },
-    { id: "pauta", label: "Pauta" },
-    { id: "cronograma", label: "Cronograma" },
-    { id: "agenda", label: "Agenda" },
-    { id: "financeiro", label: "Financeiro" },
-  ];
+  let { initialTab = "dashboard" }: { initialTab?: PreferenceTab } = $props();
+
+  const tabs = preferenceTabItems;
 
   const durationOptions = [
     { value: "0.5", label: "30 minutos" },
@@ -36,12 +30,16 @@
   ];
 
   let settings = $state<SettingsState>(freshSettings());
-  let activeTab = $state("dashboard");
+  let activeTab = $state<PreferenceTab>("dashboard");
   let savedSettings = $state("");
   let saveMessage = $state("");
   let hasUnsavedChanges = $derived(
     savedSettings !== "" && JSON.stringify(settings) !== savedSettings,
   );
+
+  $effect(() => {
+    activeTab = initialTab;
+  });
 
   onMount(() => {
     void loadSettingsFromServer()
@@ -164,7 +162,7 @@
   {:else if activeTab === "registro"}
     <SettingsCard
       title="Abertura e listagem"
-      description="Defina como os registros são apresentados ao entrar na página."
+      description="Defina como os clientes são apresentados ao entrar na página."
     >
       <ChoiceRow
         label="Aba inicial"
@@ -178,7 +176,7 @@
         bind:value={settings.recordsDefaultTab}
       />
       <ChoiceRow
-        label="Ordenar registros por"
+        label="Ordenar clientes por"
         description="Ordem inicial aplicada aos cards antes de uma busca ou filtro."
         options={[
           { value: "updated", label: "Atualização recente" },
@@ -188,7 +186,7 @@
         bind:value={settings.recordsOrderBy}
       />
       <ToggleRow
-        label="Exibir registros arquivados"
+        label="Exibir clientes arquivados"
         description="Inclui itens arquivados nas listagens e nos resultados de busca."
         bind:checked={settings.recordsShowArchived}
       />

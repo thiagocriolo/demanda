@@ -2,10 +2,13 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Project, ProjectMutationInput } from "../../projects/types";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
-import { requireWorkspacePermissionForUpdate } from "../authorization/workspace-context";
+import {
+  requireWorkspacePermissionForUpdate,
+  WorkspaceNotFoundError,
+} from "../authorization/workspace-context";
 import { affectedRows, type Database } from "../db/database";
 import {
-  businesses,
+  contracts,
   projectInstallments,
   projectResponsibles,
   projects,
@@ -20,20 +23,27 @@ import {
   ProjectNotFoundError,
   ProjectRelationsInvalidError,
 } from "./errors";
-import { findScopedProjectRow, hydrateProjects } from "./project-read-model";
+import { findProjectRowById, hydrateProjects } from "./project-read-model";
+import { appendDataChangeAuditLog } from "../authorization/audit";
 import {
   databaseConstraint,
   existingTagIds,
   resolveAndLockTags,
   validateAndLockMembers,
-  workspaceIdFromContext,
   type ProjectDatabase,
 } from "./shared";
+
+export type ResolvedProjectContract = {
+  id: string;
+  workspaceId: string;
+  businessId: string;
+};
 
 export function translateProjectConstraint(error: unknown): never {
   const constraint = databaseConstraint(error);
   if (
     constraint?.includes("workspace_business_foreign_key") ||
+    constraint?.includes("workspace_contract_business_foreign_key") ||
     constraint?.includes("workspace_service_foreign_key") ||
     constraint?.includes("workspace_tag_foreign_key") ||
     constraint?.includes("workspace_member_foreign_key") ||
@@ -44,30 +54,67 @@ export function translateProjectConstraint(error: unknown): never {
   throw error;
 }
 
-async function validateAndLockBusiness(
-  database: ProjectDatabase,
-  businessId: string,
+export async function resolveContractForProjectCreate(
+  transaction: ProjectDatabase,
   actorUserId: string,
-  previouslyLinkedId?: string,
-): Promise<void> {
-  const [row] = await database
+  contractId: string | undefined,
+): Promise<ResolvedProjectContract> {
+  if (!contractId) throw new ProjectRelationsInvalidError();
+  const [contract] = await transaction
     .select({
-      id: businesses.id,
-      ownerUserId: businesses.ownerUserId,
-      archivedAt: businesses.archivedAt,
+      id: contracts.id,
+      workspaceId: contracts.workspaceId,
+      businessId: contracts.businessId,
+      archivedAt: contracts.archivedAt,
     })
-    .from(businesses)
-    .where(eq(businesses.id, businessId))
+    .from(contracts)
+    .where(eq(contracts.id, contractId))
     .limit(1)
     .for("update");
-  const retainingExistingLink = row?.id === previouslyLinkedId;
-  if (
-    !row ||
-    (!retainingExistingLink &&
-      (row.ownerUserId !== actorUserId || row.archivedAt !== null))
-  ) {
+  if (!contract || contract.archivedAt !== null) {
     throw new ProjectRelationsInvalidError();
   }
+  try {
+    await requireWorkspacePermissionForUpdate(
+      transaction,
+      actorUserId,
+      contract.workspaceId,
+      "workspace:write",
+    );
+  } catch (cause) {
+    if (cause instanceof WorkspaceNotFoundError) {
+      throw new ProjectRelationsInvalidError();
+    }
+    throw cause;
+  }
+  return {
+    id: contract.id,
+    workspaceId: contract.workspaceId,
+    businessId: contract.businessId,
+  };
+}
+
+async function findAuthorizedProjectForWrite(
+  transaction: ProjectDatabase,
+  actorUserId: string,
+  projectId: string,
+): Promise<typeof projects.$inferSelect> {
+  const existing = await findProjectRowById(transaction, projectId, true);
+  if (!existing) throw new ProjectNotFoundError();
+  try {
+    await requireWorkspacePermissionForUpdate(
+      transaction,
+      actorUserId,
+      existing.workspaceId,
+      "workspace:write",
+    );
+  } catch (cause) {
+    if (cause instanceof WorkspaceNotFoundError) {
+      throw new ProjectNotFoundError();
+    }
+    throw cause;
+  }
+  return existing;
 }
 
 export async function validateAndLockServices(
@@ -130,42 +177,36 @@ async function insertProjectDetails(
       })),
     );
   }
-  await database.insert(projectResponsibles).values(
-    input.responsibleUserIds.map((userId, sortOrder) => ({
-      workspaceId,
-      projectId,
-      userId,
-      sortOrder,
-    })),
-  );
-  if (input.installments.length) {
-    await database.insert(projectInstallments).values(
-      input.installments.map((installment) => ({
+  const responsibleUserIds = input.responsibleUserIds ?? [];
+  if (responsibleUserIds.length) {
+    await database.insert(projectResponsibles).values(
+      responsibleUserIds.map((userId, sortOrder) => ({
         workspaceId,
         projectId,
-        number: installment.number,
-        dueDate: installment.dueDate,
-        amountCents: installment.amountCents,
-        statusKey: installment.status,
+        userId,
+        sortOrder,
       })),
     );
   }
+  // Financial schedules belong to contracts. Projects never materialize their
+  // own installments, preventing duplicate revenue in the owner's finance.
 }
 
 export async function createProjectInTransaction(
   transaction: ProjectDatabase,
-  workspaceId: string,
+  contract: ResolvedProjectContract,
   actorUserId: string,
   input: ProjectMutationInput,
   sourceServiceId: string | null,
 ): Promise<Project> {
-  await validateAndLockBusiness(transaction, input.businessId, actorUserId);
+  const workspaceId = contract.workspaceId;
   await validateAndLockServices(transaction, workspaceId, input.serviceIds);
   await validateAndLockMembers(
     transaction,
     workspaceId,
-    input.responsibleUserIds,
+    input.responsibleUserIds ?? [],
     () => new ProjectRelationsInvalidError(),
+    { min: 0 },
   );
   const tagRows = await resolveAndLockTags(
     transaction,
@@ -178,19 +219,21 @@ export async function createProjectInTransaction(
   await transaction.insert(projects).values({
     id,
     workspaceId,
-    businessId: input.businessId,
+    businessId: contract.businessId,
+    contractId: contract.id,
     sourceServiceId,
     name: input.name,
     statusKey: input.status,
     briefing: input.briefing,
     startDate: input.startDate,
     endDate: input.endDate,
-    contractType: input.contractType,
-    amountCents: input.amountCents,
-    firstDueDate: input.firstDueDate,
-    paymentMethod: input.paymentMethod || null,
-    paymentTerms: input.paymentTerms || null,
-    financeNotes: input.financeNotes || null,
+    engagementType: input.engagementType ?? "personal",
+    contractType: "one_off",
+    amountCents: 0,
+    firstDueDate: null,
+    paymentMethod: null,
+    paymentTerms: null,
+    financeNotes: null,
   });
   const [created] = await transaction
     .select()
@@ -215,22 +258,35 @@ export async function createWorkspaceProject(
   context: RequestAuthorizationContext,
   input: ProjectMutationInput,
 ): Promise<Project> {
-  const workspaceId = workspaceIdFromContext(context);
   try {
     return await database.transaction(async (transaction) => {
-      await requireWorkspacePermissionForUpdate(
+      const contract = await resolveContractForProjectCreate(
         transaction,
         context.user.id,
-        workspaceId,
-        "workspace:write",
+        input.contractId,
       );
-      return createProjectInTransaction(
+      const project = await createProjectInTransaction(
         transaction,
-        workspaceId,
+        contract,
         context.user.id,
         input,
         null,
       );
+      await appendDataChangeAuditLog(transaction, {
+        userId: context.user.id,
+        workspaceId: contract.workspaceId,
+      }, {
+        action: "project.created",
+        targetType: "project",
+        targetId: project.id,
+        changes: [
+          { field: "name", before: null, after: input.name },
+          { field: "status", before: null, after: input.status },
+          { field: "startDate", before: null, after: input.startDate },
+          { field: "endDate", before: null, after: input.endDate },
+        ],
+      });
+      return project;
     });
   } catch (error) {
     if (error instanceof ProjectRelationsInvalidError) throw error;
@@ -244,31 +300,17 @@ export async function updateWorkspaceProject(
   projectId: string,
   input: ProjectMutationInput,
 ): Promise<Project> {
-  const workspaceId = workspaceIdFromContext(context);
   try {
     return await database.transaction(async (transaction) => {
-      await requireWorkspacePermissionForUpdate(
+      const existing = await findAuthorizedProjectForWrite(
         transaction,
         context.user.id,
-        workspaceId,
-        "workspace:write",
-      );
-      const existing = await findScopedProjectRow(
-        transaction,
-        workspaceId,
         projectId,
-        true,
       );
-      if (!existing) throw new ProjectNotFoundError();
+      const workspaceId = existing.workspaceId;
       if (existing.isInstitutional) {
         throw new InstitutionalProjectProtectedError();
       }
-      await validateAndLockBusiness(
-        transaction,
-        input.businessId,
-        context.user.id,
-        existing.businessId,
-      );
       const previousServices = new Set(
         (
           await transaction
@@ -291,8 +333,9 @@ export async function updateWorkspaceProject(
       await validateAndLockMembers(
         transaction,
         workspaceId,
-        input.responsibleUserIds,
+        input.responsibleUserIds ?? [],
         () => new ProjectRelationsInvalidError(),
+        { min: 0 },
       );
       const previousTags = await existingTagIds(
         transaction,
@@ -307,23 +350,26 @@ export async function updateWorkspaceProject(
         previousTags,
         () => new ProjectRelationsInvalidError(),
       );
-      const businessChanged = existing.businessId !== input.businessId;
+      // Contract, workspace and business are immutable once a project exists.
+      const nextBusinessId = existing.businessId;
+      const businessChanged = existing.businessId !== nextBusinessId;
       const now = new Date();
       const updatedRows = await transaction
         .update(projects)
         .set({
-          businessId: input.businessId,
+          businessId: nextBusinessId,
           name: input.name,
           statusKey: input.status,
           briefing: input.briefing,
           startDate: input.startDate,
           endDate: input.endDate,
-          contractType: input.contractType,
-          amountCents: input.amountCents,
-          firstDueDate: input.firstDueDate,
-          paymentMethod: input.paymentMethod || null,
-          paymentTerms: input.paymentTerms || null,
-          financeNotes: input.financeNotes || null,
+          engagementType: input.engagementType ?? "personal",
+          contractType: "one_off",
+          amountCents: 0,
+          firstDueDate: null,
+          paymentMethod: null,
+          paymentTerms: null,
+          financeNotes: null,
           updatedAt: now,
         })
         .where(
@@ -333,20 +379,36 @@ export async function updateWorkspaceProject(
           ),
         );
       if (affectedRows(updatedRows) !== 1) throw new ProjectNotFoundError();
+      await appendDataChangeAuditLog(transaction, {
+        userId: context.user.id,
+        workspaceId,
+      }, {
+        action: "project.updated",
+        targetType: "project",
+        targetId: projectId,
+        changes: [
+          { field: "name", before: existing.name, after: input.name },
+          { field: "status", before: existing.statusKey, after: input.status },
+          { field: "briefing", before: existing.briefing, after: input.briefing },
+          { field: "startDate", before: existing.startDate, after: input.startDate },
+          { field: "endDate", before: existing.endDate, after: input.endDate },
+        ].filter((change) => change.before !== change.after),
+      });
       const updated = {
         ...existing,
-        businessId: input.businessId,
+        businessId: nextBusinessId,
         name: input.name,
         statusKey: input.status,
         briefing: input.briefing,
         startDate: input.startDate,
         endDate: input.endDate,
-        contractType: input.contractType,
-        amountCents: input.amountCents,
-        firstDueDate: input.firstDueDate,
-        paymentMethod: input.paymentMethod || null,
-        paymentTerms: input.paymentTerms || null,
-        financeNotes: input.financeNotes || null,
+        engagementType: input.engagementType ?? "personal",
+        contractType: "one_off",
+        amountCents: 0,
+        firstDueDate: null,
+        paymentMethod: null,
+        paymentTerms: null,
+        financeNotes: null,
         updatedAt: now,
       };
       if (businessChanged) {
@@ -429,21 +491,13 @@ export async function setWorkspaceProjectActive(
   projectId: string,
   isActive: boolean,
 ): Promise<Project> {
-  const workspaceId = workspaceIdFromContext(context);
   return database.transaction(async (transaction) => {
-    await requireWorkspacePermissionForUpdate(
+    const existing = await findAuthorizedProjectForWrite(
       transaction,
       context.user.id,
-      workspaceId,
-      "workspace:write",
-    );
-    const existing = await findScopedProjectRow(
-      transaction,
-      workspaceId,
       projectId,
-      true,
     );
-    if (!existing) throw new ProjectNotFoundError();
+    const workspaceId = existing.workspaceId;
     if (existing.isInstitutional) {
       throw new InstitutionalProjectProtectedError();
     }
@@ -455,6 +509,17 @@ export async function setWorkspaceProjectActive(
         and(eq(projects.workspaceId, workspaceId), eq(projects.id, projectId)),
       );
     if (affectedRows(result) !== 1) throw new ProjectNotFoundError();
+    if (existing.isActive !== isActive) {
+      await appendDataChangeAuditLog(transaction, {
+        userId: context.user.id,
+        workspaceId,
+      }, {
+        action: "project.activity_changed",
+        targetType: "project",
+        targetId: projectId,
+        changes: [{ field: "isActive", before: existing.isActive, after: isActive }],
+      });
+    }
     const [updated] = await transaction
       .select()
       .from(projects)
@@ -476,21 +541,13 @@ export async function archiveWorkspaceProject(
   context: RequestAuthorizationContext,
   projectId: string,
 ): Promise<void> {
-  const workspaceId = workspaceIdFromContext(context);
   await database.transaction(async (transaction) => {
-    await requireWorkspacePermissionForUpdate(
+    const existing = await findAuthorizedProjectForWrite(
       transaction,
       context.user.id,
-      workspaceId,
-      "workspace:write",
-    );
-    const existing = await findScopedProjectRow(
-      transaction,
-      workspaceId,
       projectId,
-      true,
     );
-    if (!existing) throw new ProjectNotFoundError();
+    const workspaceId = existing.workspaceId;
     if (existing.isInstitutional) {
       throw new InstitutionalProjectProtectedError();
     }
@@ -502,6 +559,15 @@ export async function archiveWorkspaceProject(
         and(eq(projects.workspaceId, workspaceId), eq(projects.id, projectId)),
       );
     if (affectedRows(updated) !== 1) throw new ProjectNotFoundError();
+    await appendDataChangeAuditLog(transaction, {
+      userId: context.user.id,
+      workspaceId,
+    }, {
+      action: "project.archived",
+      targetType: "project",
+      targetId: projectId,
+      changes: [{ field: "archivedAt", before: null, after: new Date().toISOString() }],
+    });
   });
 }
 
@@ -510,21 +576,13 @@ export async function deleteWorkspaceProject(
   context: RequestAuthorizationContext,
   projectId: string,
 ): Promise<void> {
-  const workspaceId = workspaceIdFromContext(context);
   await database.transaction(async (transaction) => {
-    await requireWorkspacePermissionForUpdate(
+    const existing = await findAuthorizedProjectForWrite(
       transaction,
       context.user.id,
-      workspaceId,
-      "workspace:write",
-    );
-    const existing = await findScopedProjectRow(
-      transaction,
-      workspaceId,
       projectId,
-      true,
     );
-    if (!existing) throw new ProjectNotFoundError();
+    const workspaceId = existing.workspaceId;
     if (existing.isInstitutional) {
       throw new InstitutionalProjectProtectedError();
     }
@@ -534,5 +592,14 @@ export async function deleteWorkspaceProject(
         and(eq(projects.workspaceId, workspaceId), eq(projects.id, projectId)),
       );
     if (affectedRows(deleted) !== 1) throw new ProjectNotFoundError();
+    await appendDataChangeAuditLog(transaction, {
+      userId: context.user.id,
+      workspaceId,
+    }, {
+      action: "project.deleted",
+      targetType: "project",
+      targetId: projectId,
+      changes: [{ field: "deleted", before: false, after: true }],
+    });
   });
 }

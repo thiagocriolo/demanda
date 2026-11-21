@@ -6,9 +6,9 @@ import type {
 import { defaultWorkspaceSettings } from "../../settings/defaults";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
 import {
-  requireActiveWorkspacePermission,
   requireWorkspacePermission,
   requireWorkspacePermissionForUpdate,
+  workspaceIdFromContext,
 } from "../authorization/workspace-context";
 import { affectedRows, type Database } from "../db/database";
 import { workspaceConfigurations } from "../db/schema";
@@ -30,12 +30,7 @@ import {
   synchronizeWorkspaceTemplates,
 } from "./workspace-templates";
 
-export function workspaceIdFromContext(
-  context: RequestAuthorizationContext,
-): string {
-  return requireActiveWorkspacePermission(context, "workspace:read").workspace
-    .id;
-}
+export { workspaceIdFromContext };
 
 async function hydrateWorkspaceSettings(
   database: SettingsDatabase,

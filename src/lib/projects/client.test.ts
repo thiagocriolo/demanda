@@ -279,13 +279,19 @@ describe("cliente de projetos", () => {
     );
   });
 
-  it("preserva relações, centavos, datas e parcelas no round-trip visual", () => {
-    const record = projectToEntityRecord(project);
+  it("preserva relações e contrato sem enviar dados financeiros ou responsáveis no round-trip visual", () => {
+    const contractId = "f7a8e09e-2d1d-4d6e-9cb8-c1204c510a20";
+    const record = projectToEntityRecord({
+      ...project,
+      contract: { id: contractId, name: "Contrato anual Aurora" },
+    });
     const input = entityValuesToProjectInput(record, record);
 
-    expect(record.valor).toBe("12.500,50");
+    expect(record.contractId).toBe(contractId);
+    expect(record.contractName).toBe("Contrato anual Aurora");
     expect(input).toEqual({
       name: project.name,
+      contractId,
       businessId,
       serviceIds: [sourceServiceId, additionalServiceId],
       status: project.status,
@@ -293,21 +299,6 @@ describe("cliente de projetos", () => {
       endDate: project.endDate,
       briefing: project.briefing,
       tagLabels: project.tags.map(({ name }) => name),
-      responsibleUserIds: [member.userId],
-      contractType: project.contractType,
-      amountCents: project.amountCents,
-      firstDueDate: project.firstDueDate,
-      paymentMethod: project.paymentMethod,
-      paymentTerms: project.paymentTerms,
-      financeNotes: project.financeNotes,
-      installments: project.installments.map(
-        ({ number, dueDate, amountCents, status }) => ({
-          number,
-          dueDate,
-          amountCents,
-          status,
-        }),
-      ),
     });
     expect(projectRelationsFromRecord(record)).toEqual({
       business: project.business,
@@ -318,6 +309,8 @@ describe("cliente de projetos", () => {
       sourceServiceId,
     });
     expect(input).not.toHaveProperty("workspaceId");
+    expect(input).not.toHaveProperty("responsibleUserIds");
+    expect(input).not.toHaveProperty("amountCents");
   });
 
   it("mantém o status real ao editar projeto arquivado", () => {
@@ -329,25 +322,29 @@ describe("cliente de projetos", () => {
     expect(entityValuesToProjectInput(record, record).status).toBe("execucao");
   });
 
-  it("permite limpar tags e parcelas explicitamente", () => {
+  it("permite limpar tags explicitamente", () => {
     const record = projectToEntityRecord(project);
     const input = entityValuesToProjectInput(
-      { ...record, tagLabels: "[]", installments: "[]" },
+      { ...record, tagLabels: "[]" },
       record,
     );
 
     expect(input.tagLabels).toEqual([]);
-    expect(input.installments).toEqual([]);
   });
 
   it("monta criação por modelo com source separado dos serviços extras", async () => {
-    const record = projectToEntityRecord(project);
+    const contractId = "f7a8e09e-2d1d-4d6e-9cb8-c1204c510a20";
+    const record = projectToEntityRecord({
+      ...project,
+      contract: { id: contractId, name: "Contrato anual Aurora" },
+    });
     const input = entityValuesToProjectFromServiceInput(record, record);
     const fetcher = vi.fn(async () => Response.json(project)) as FetchLike;
 
     await createProjectFromService(input, fetcher);
 
     expect(input.serviceId).toBe(sourceServiceId);
+    expect(input.contractId).toBe(contractId);
     expect(input.additionalServiceIds).toEqual([additionalServiceId]);
     expect(fetcher).toHaveBeenCalledWith(
       "/api/projects/from-service",
@@ -379,17 +376,17 @@ describe("cliente de projetos", () => {
     const input = entityValuesToProjectFromServiceInput(
       {
         ...record,
-        sourceOverrideFields: JSON.stringify(["briefing", "amountCents"]),
+        sourceOverrideFields: JSON.stringify(["briefing"]),
       },
       record,
     );
 
     expect(input).toMatchObject({
       briefing: project.briefing,
-      amountCents: project.amountCents,
     });
     expect(input).not.toHaveProperty("status");
     expect(input).not.toHaveProperty("responsibleUserIds");
+    expect(input).not.toHaveProperty("amountCents");
     expect(input).not.toHaveProperty("installments");
   });
 
