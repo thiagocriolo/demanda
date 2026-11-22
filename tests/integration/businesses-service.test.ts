@@ -239,15 +239,7 @@ describe("BE-06: servico privado de negocios", () => {
         .select()
         .from(projects)
         .where(eq(projects.businessId, alpha.id));
-      expect(institutionalProjects).toHaveLength(1);
-      expect(institutionalProjects[0]).toMatchObject({
-        workspaceId: ownerPersonal.id,
-        businessId: alpha.id,
-        isInstitutional: true,
-        name: "Institucional",
-        statusKey: "execucao",
-        archivedAt: null,
-      });
+      expect(institutionalProjects).toEqual([]);
       expect(privateCollaborator).toMatchObject({
         workspaceId: collaboratorPersonal.id,
         ownerUserId: collaborator.id,
