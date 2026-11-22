@@ -16,10 +16,6 @@
     resetPersonalSettings,
     savePersonalSettings,
   } from "$lib/settings/client";
-  import {
-    importLegacyDeliveries,
-    legacyDeliveriesFromBrowser,
-  } from "$lib/legacy-imports/client";
   import type { SystemTab } from "$lib/settings/routes";
   import type { SettingsState } from "$lib/settings/types";
   import type { TabItem } from "$lib/ui/Tabs.svelte";
@@ -92,7 +88,6 @@
   let dataMessage = $state("");
   let restoreFile = $state<File>();
   let resetConfirmation = $state("");
-  let legacyImporting = $state(false);
   let filters = $derived(filtersByTab[activeTab] ?? []);
   let hasUnsavedChanges = $derived(
     savedSettings !== "" && JSON.stringify(settings) !== savedSettings,
@@ -198,32 +193,6 @@
     }
   }
 
-  async function importLegacyDeliveryStorage(): Promise<void> {
-    if (legacyImporting) return;
-    try {
-      const payload = legacyDeliveriesFromBrowser();
-      if (!payload) {
-        dataMessage = "Nenhuma entrega legada foi encontrada neste navegador.";
-        return;
-      }
-      if (
-        !window.confirm(
-          `Importar ${payload.records.length} entrega(s) legada(s) para o workspace ativo? Os dados locais não serão apagados.`,
-        )
-      )
-        return;
-      legacyImporting = true;
-      const report = await importLegacyDeliveries(payload);
-      dataMessage = `Migração concluída: ${report.imported} importada(s), ${report.ignored} já existente(s), ${report.invalid} inválida(s).`;
-    } catch (error) {
-      dataMessage =
-        error instanceof Error
-          ? error.message
-          : "Não foi possível importar as entregas legadas.";
-    } finally {
-      legacyImporting = false;
-    }
-  }
 </script>
 
 <svelte:head><title>Configurações · Demanda</title></svelte:head>
@@ -558,21 +527,6 @@
         class="settings-button primary"
         type="button"
         onclick={downloadBackup}><Download size={16} />Gerar backup</button
-      >
-      {#if dataMessage}<p class="settings-notice">{dataMessage}</p>{/if}
-    </SettingsCard>
-    <SettingsCard
-      title="Migrar entregas deste navegador"
-      description="Importa somente a cópia legada demanda:crud:entregas, após validar os projetos vinculados. A cópia local não é alterada e a importação pode ser repetida sem duplicar tarefas."
-    >
-      <button
-        class="settings-button"
-        type="button"
-        disabled={legacyImporting}
-        onclick={importLegacyDeliveryStorage}
-        ><Upload size={16} />{legacyImporting
-          ? "Validando e importando…"
-          : "Importar entregas legadas"}</button
       >
       {#if dataMessage}<p class="settings-notice">{dataMessage}</p>{/if}
     </SettingsCard>

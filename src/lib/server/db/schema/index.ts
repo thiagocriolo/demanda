@@ -12,7 +12,6 @@ export * from "./finance";
 export * from "./tasks";
 export * from "./tools";
 export * from "./schedule";
-export * from "./legacy-imports";
 
 export * from "./relations/identity";
 export * from "./relations/workspace";

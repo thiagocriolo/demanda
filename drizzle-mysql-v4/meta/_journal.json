@@ -127,6 +127,13 @@
       "when": 1794400000011,
       "tag": "0017_institutional_projects_per_contract",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1794400000012,
+      "tag": "0018_remove_legacy_import_records",
+      "breakpoints": true
     }
   ]
 }

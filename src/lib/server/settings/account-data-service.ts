@@ -29,7 +29,6 @@ import {
   deliveryTemplateTags,
   deliveryTemplates,
   financialEntries,
-  legacyImportRecords,
   personalTasks,
   projectInstallments,
   projectResponsibles,
@@ -478,8 +477,6 @@ async function deleteOwnedDomainData(
   if (projectIds.length > 0)
     financeConditions.push(inArray(financialEntries.projectId, projectIds));
   await database.delete(financialEntries).where(or(...financeConditions));
-
-  await byOwnedWorkspaces(legacyImportRecords);
 
   if (projectIds.length > 0) {
     await database
