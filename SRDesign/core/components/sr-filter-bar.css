@@ -1,0 +1,155 @@
+/* ==========================================================================
+   SRDesign — FilterBar (Barra de Filtros com Pílulas, Contadores e Busca)
+   ========================================================================== */
+
+.sr-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--sr-border);
+  border-radius: var(--sr-radius-lg);
+  background: var(--sr-surface);
+}
+
+.sr-filter-bar__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-left: 4px;
+  color: var(--sr-ink-700);
+  font-size: var(--sr-text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sr-filter-bar__options {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sr-filter-bar__options::-webkit-scrollbar {
+  display: none;
+}
+
+.sr-filter-bar__option {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--sr-ink-500);
+  background: transparent;
+  font-size: var(--sr-text-sm);
+  white-space: nowrap;
+  transition: background var(--sr-motion-fast), color var(--sr-motion-fast);
+}
+
+.sr-filter-bar__option:hover {
+  background: var(--sr-surface-soft);
+}
+
+.sr-filter-bar__option.is-active,
+.sr-filter-bar__option[aria-pressed="true"] {
+  color: var(--sr-brand-600);
+  background: var(--sr-brand-50);
+  font-weight: 600;
+}
+
+.sr-filter-bar__count {
+  min-width: 18px;
+  padding: 2px 5px;
+  border-radius: var(--sr-radius-pill);
+  background: var(--sr-surface-hover);
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.sr-filter-bar__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.sr-filter-bar__search {
+  display: flex;
+  width: min(240px, 100%);
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--sr-border);
+  border-radius: 9px;
+  color: var(--sr-ink-400);
+  background: var(--sr-canvas);
+  transition: border-color var(--sr-motion-fast);
+}
+
+.sr-filter-bar__search:focus-within {
+  border-color: var(--sr-brand-600);
+}
+
+.sr-filter-bar__search input {
+  width: 100%;
+  min-width: 70px;
+  border: 0;
+  outline: 0;
+  color: var(--sr-ink-800);
+  background: transparent;
+  font-size: var(--sr-text-sm);
+}
+
+.sr-filter-bar__search input:focus-visible {
+  box-shadow: none;
+}
+
+.sr-filter-bar__search input::placeholder {
+  color: var(--sr-ink-400);
+}
+
+.sr-filter-bar__clear {
+  display: grid;
+  padding: 2px;
+  border: 0;
+  border-radius: 50%;
+  color: var(--sr-ink-500);
+  background: transparent;
+  place-items: center;
+}
+
+.sr-filter-bar__clear[hidden] {
+  display: none;
+}
+
+.sr-filter-bar__clear:hover {
+  color: var(--sr-ink-800);
+  background: var(--sr-surface-hover);
+}
+
+@media (max-width: 760px) {
+  .sr-filter-bar {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+  .sr-filter-bar__title {
+    width: 100%;
+  }
+  .sr-filter-bar__options {
+    flex: 1 1 100%;
+  }
+  .sr-filter-bar__controls {
+    width: 100%;
+    flex-wrap: wrap;
+    margin-left: 0;
+  }
+  .sr-filter-bar__search {
+    width: 100%;
+  }
+}

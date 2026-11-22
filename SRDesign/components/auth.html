@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AuthShell (Login) — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+</head>
+<body>
+  <div class="sr-auth-page">
+    <a class="sr-auth-brand" href="../index.html" aria-label="Voltar ao SRDesign">
+      <strong>SR</strong><span>•Design</span>
+    </a>
+
+    <main class="sr-auth-card">
+      <header class="sr-auth-card__header">
+        <span class="sr-auth-card__icon">
+          <span data-sr-icon="shield" data-size="22"></span>
+        </span>
+        <h1>Entrar na conta</h1>
+        <p>Acesse o seu workspace com e-mail e senha.</p>
+      </header>
+
+      <form class="sr-auth-form" onsubmit="event.preventDefault(); document.getElementById('auth-msg').hidden = false;">
+        <div class="sr-auth-control">
+          <span class="sr-auth-control__icon"><span data-sr-icon="mail" data-size="18"></span></span>
+          <input class="sr-auth-input" type="email" placeholder="seu@email.com" value="sara@srdesign.dev" required />
+        </div>
+
+        <div class="sr-auth-control sr-auth-control--password">
+          <span class="sr-auth-control__icon"><span data-sr-icon="lock" data-size="18"></span></span>
+          <input class="sr-auth-input" type="password" placeholder="Sua senha" value="••••••••••" required />
+          <button type="button" class="sr-auth-password-toggle" data-sr-password-toggle aria-label="Mostrar senha" aria-pressed="false">
+            <span data-sr-icon="eye" data-size="18"></span>
+          </button>
+        </div>
+
+        <div class="sr-auth-options">
+          <label class="sr-row" style="gap:9px;cursor:pointer;font-size:12px;color:var(--sr-ink-700);font-weight:500;">
+            <span class="sr-switch">
+              <input type="checkbox" checked />
+              <span class="sr-switch__track"></span>
+            </span>
+            <span>Manter conectado</span>
+          </label>
+          <a class="sr-auth-link" href="#esqueci">Esqueci minha senha</a>
+        </div>
+
+        <button type="submit" class="sr-btn sr-btn--primary sr-btn--lg sr-btn--block">
+          <span>Entrar</span>
+          <span data-sr-icon="arrow-right" data-size="17"></span>
+        </button>
+
+        <div class="sr-auth-divider">ou</div>
+
+        <a class="sr-btn sr-btn--lg sr-btn--block" href="../index.html">
+          <span data-sr-icon="arrow-left" data-size="16"></span>
+          <span>Voltar ao Showcase SRDesign</span>
+        </a>
+      </form>
+
+      <div class="sr-notice sr-notice--success" id="auth-msg" style="margin-top:14px;" hidden>
+        <span data-sr-icon="check" data-size="17"></span>
+        <span>Formulário validado! Template pronto para plugar na sua autenticação.</span>
+      </div>
+
+      <p class="sr-auth-footer">
+        Ainda não tem conta? <a class="sr-auth-link" href="#cadastro">Criar acesso</a>
+      </p>
+    </main>
+  </div>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+</body>
+</html>

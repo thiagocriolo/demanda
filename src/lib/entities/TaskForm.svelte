@@ -9,6 +9,11 @@
     listAllActiveBusinesses,
   } from "$lib/businesses/client";
   import {
+    ContractApiError,
+    listAllActiveContracts,
+    type Contract,
+  } from "$lib/contracts/client";
+  import {
     getProjectOptions,
     listAllActiveProjects,
     ProjectApiError,
@@ -53,6 +58,7 @@
 
   type TaskFormState = {
     nome: string;
+    contractId: string;
     negocioId: string;
     negocioNome: string;
     projetoId: string;
@@ -120,6 +126,10 @@
   let businessLoading = $state(false);
   let businessCatalogLoaded = $state(false);
   let businessError = $state("");
+  let contracts = $state<Contract[]>([]);
+  let contractsLoading = $state(false);
+  let contractsError = $state("");
+  let contractRequest: AbortController | undefined;
   let projects = $state<EntityRecord[]>([]);
   let projectLoading = $state(false);
   let projectCatalogLoaded = $state(false);
@@ -196,11 +206,22 @@
       : "Criar entrega",
   );
   let availableProjects = $derived(
-    form.negocioId
+    form.contractId
       ? projects.filter((project) =>
-          projectBelongsToBusiness(project, form.negocioId),
+          text(project.contractId) === form.contractId,
         )
       : [],
+  );
+  let selectedContract = $derived(
+    contracts.find(({ id }) => id === form.contractId),
+  );
+  let contractItems = $derived(
+    contracts.map((contract) => ({
+      id: contract.id,
+      label: contract.name,
+      description: contract.business.name,
+      updatedAt: contract.updatedAt,
+    })),
   );
   let businessItems = $derived(
     businesses.map((business) => ({
@@ -213,14 +234,19 @@
     })),
   );
   let projectItems = $derived(
-    availableProjects.map((project) => ({
+    [
+      ...availableProjects.map((project) => ({
       id: project.id,
       label: project.nome,
       description: project.archivedAt
         ? "Projeto arquivado"
         : project.servicos || project.status || undefined,
       updatedAt: project.updatedAt,
-    })),
+      })),
+      ...(form.contractId && !availableProjects.some((project) => project.isInstitutional === "true")
+        ? [{ id: `institutional:${form.contractId}`, label: "Institucional", description: "Projeto institucional" }]
+        : []),
+    ],
   );
   let memberItems = $derived(
     uniqueSelectorItems([
@@ -242,6 +268,7 @@
   function formFromRecord(source?: EntityRecord): TaskFormState {
     return {
       nome: source?.nome ?? "",
+      contractId: "",
       negocioId: text(
         source?.negocioId,
         source?.negocio_id,
@@ -623,6 +650,8 @@
     const selectedProject = projects.find(({ id }) => id === form.projetoId);
     const project = selectedProject;
     if (project) {
+      const projectContractId = text(project.contractId);
+      if (projectContractId) form.contractId = projectContractId;
       if (!form.negocioId) {
         let relatedBusiness = businesses.find(
           (business) =>
@@ -708,6 +737,27 @@
       if (projectRequest === request) {
         projectLoading = false;
         projectRequest = undefined;
+      }
+    }
+  }
+
+  async function loadContractCatalog(): Promise<void> {
+    contractRequest?.abort();
+    const request = new AbortController();
+    contractRequest = request;
+    contractsLoading = true;
+    contractsError = "";
+    try {
+      contracts = await listAllActiveContracts({ signal: request.signal });
+    } catch (error) {
+      if (request.signal.aborted) return;
+      contractsError = error instanceof ContractApiError
+        ? error.message
+        : "Não foi possível carregar os contratos. Tente novamente.";
+    } finally {
+      if (contractRequest === request) {
+        contractsLoading = false;
+        contractRequest = undefined;
       }
     }
   }
@@ -808,6 +858,7 @@
     const workspace = getActiveWorkspace();
     currentWorkspaceId = workspace.id;
     void loadBusinessCatalog();
+    void loadContractCatalog();
     void loadProjectCatalog();
 
     if (resolvedMode !== "view" && subtasks.length === 0) {
@@ -832,29 +883,29 @@
     });
     return () => {
       businessRequest?.abort();
+      contractRequest?.abort();
       projectRequest?.abort();
       document.body.style.overflow = previousOverflow;
     };
   });
 
-  function selectBusiness(id: string): void {
-    const business = businesses.find(({ id: businessId }) => businessId === id);
-    form.negocioId = business?.id ?? "";
-    form.negocioNome = businessReferenceName(business);
-    const currentProject = projects.find(
-      ({ id: projectId }) => projectId === form.projetoId,
-    );
-    if (
-      !currentProject ||
-      !projectBelongsToBusiness(currentProject, form.negocioId)
-    ) {
-      form.projetoId = "";
-      form.projetoNome = "";
-      syncProjectMembers();
-    }
+  function selectContract(id: string): void {
+    const contract = contracts.find(({ id: contractId }) => contractId === id);
+    form.contractId = contract?.id ?? "";
+    form.negocioId = contract?.business.id ?? "";
+    form.negocioNome = contract?.business.name ?? "";
+    form.projetoId = "";
+    form.projetoNome = "";
+    syncProjectMembers();
   }
 
   function selectProject(id: string): void {
+    if (id === `institutional:${form.contractId}`) {
+      form.projetoId = id;
+      form.projetoNome = "Institucional";
+      syncProjectMembers();
+      return;
+    }
     const project = availableProjects.find(
       ({ id: projectId }) => projectId === id,
     );
@@ -942,15 +993,13 @@
       }
       return;
     }
-    const hasSelectedBusiness = businesses.some(
-      ({ id }) => id === form.negocioId,
-    );
-    const hasSelectedProject = projects.some(({ id }) => id === form.projetoId);
+    const hasSelectedBusiness = Boolean(selectedContract);
+    const hasSelectedProject = projectItems.some(({ id }) => id === form.projetoId);
     if (
       (!hasSelectedBusiness || !hasSelectedProject) &&
-      (businessLoading ||
+      (contractsLoading ||
         projectLoading ||
-        Boolean(businessError) ||
+        Boolean(contractsError) ||
         Boolean(projectError))
     ) {
       return;
@@ -976,24 +1025,22 @@
     const responsibleNames = selectedResponsibles.map(({ label }) => label);
     const responsibleUserIds = selectedResponsibles.map(({ id }) => id);
     const tagLabels = selectedTags.map(({ label }) => label);
-    const business = businesses.find(({ id }) => id === form.negocioId);
     const project = projects.find(({ id }) => id === form.projetoId);
     if (
-      !business ||
-      !project ||
-      !projectBelongsToBusiness(project, form.negocioId)
+      !selectedContract ||
+      (!project && form.projetoId !== `institutional:${form.contractId}`)
     ) {
       return;
     }
     const workspaceId = record?.workspaceId || currentWorkspaceId;
-    const projectWorkspaceId = project.workspaceId;
-    const negocioId = businessReferenceId(business);
-    const projetoId = project.id;
-    const negocio = businessReferenceName(business);
+    const projectWorkspaceId = project?.workspaceId ?? selectedContract?.workspaceId ?? "";
+    const negocioId = selectedContract.business.id;
+    const projetoId = project?.id ?? "";
+    const negocio = selectedContract.business.name;
     const selectedBusinessWorkspaceId =
-      businessWorkspaceId(business) ||
+      selectedContract.workspaceId ||
       text(record?.businessWorkspaceId, record?.business_workspace_id);
-    const projeto = project.nome;
+    const projeto = project?.nome ?? "Institucional";
     const duracao = savedSubtasks.length
       ? String(Math.round(totalDuration * 100) / 100)
       : record?.duracao || record?.duration || "";
@@ -1012,6 +1059,7 @@
       projetoId,
       projeto_id: projetoId,
       project_id: projetoId,
+      institutionalContractId: form.projetoId === `institutional:${form.contractId}` ? form.contractId : "",
       projectWorkspaceId,
       project_workspace_id: projectWorkspaceId,
       categoria: form.categoria,
@@ -1099,31 +1147,31 @@
             <div class="two-column-grid full">
               <div class="selector-field">
                 <GlobalSelector
-                  items={businessItems}
-                  bind:value={form.negocioId}
+                  items={contractItems}
+                  bind:value={form.contractId}
                   presentation="search"
                   selection="single"
-                  label="Negócio"
-                  placeholder="Digite para buscar negócio"
-                  emptyMessage="Nenhum negócio encontrado."
+                  label="Contrato"
+                  placeholder="Digite para buscar contrato"
+                  emptyMessage="Nenhum contrato encontrado."
                   icon={BriefcaseBusiness}
                   controlIcon={BriefcaseBusiness}
                   required
                   disabled={viewOnly ||
-                    businessLoading ||
-                    Boolean(businessError)}
-                  onchange={selectBusiness}
+                    contractsLoading ||
+                    Boolean(contractsError)}
+                  onchange={selectContract}
                 />
-                {#if businessLoading}
+                {#if contractsLoading}
                   <p class="catalog-state" role="status">
-                    Carregando negócios…
+                    Carregando contratos…
                   </p>
-                {:else if businessError}
+                {:else if contractsError}
                   <div class="catalog-state catalog-state--error" role="alert">
-                    <span>{businessError}</span>
+                    <span>{contractsError}</span>
                     <button
                       type="button"
-                      onclick={() => void loadBusinessCatalog()}
+                      onclick={() => void loadContractCatalog()}
                     >
                       Tentar novamente
                     </button>
@@ -1138,18 +1186,18 @@
                   presentation="search"
                   selection="single"
                   label="Projeto"
-                  placeholder={form.negocioId
+                  placeholder={form.contractId
                     ? "Digite para buscar projeto"
-                    : "Selecione um negócio primeiro"}
-                  emptyMessage="Nenhum projeto encontrado para este negócio."
+                    : "Selecione um contrato primeiro"}
+                  emptyMessage="Nenhum projeto encontrado para este contrato."
                   icon={FolderKanban}
                   controlIcon={FolderKanban}
                   required
                   disabled={viewOnly ||
-                    !form.negocioId ||
-                    businessLoading ||
+                    !form.contractId ||
+                    contractsLoading ||
                     projectLoading ||
-                    Boolean(businessError) ||
+                    Boolean(contractsError) ||
                     Boolean(projectError)}
                   onchange={selectProject}
                 />

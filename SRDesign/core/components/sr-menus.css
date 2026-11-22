@@ -1,0 +1,329 @@
+/* ==========================================================================
+   SRDesign — FloatingMenu & Context Popover (EntityCardMenu)
+   ========================================================================== */
+
+.sr-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.sr-menu--fill {
+  display: block;
+  width: 100%;
+}
+
+.sr-menu__trigger {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  color: #ffffff;
+  background: var(--sr-brand-600);
+  font-size: var(--sr-text-sm);
+  font-weight: 600;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--sr-primary) 18%, transparent);
+  transition: background var(--sr-motion-fast), filter var(--sr-motion-fast);
+}
+
+.sr-menu__trigger:hover {
+  background: var(--sr-brand-700);
+}
+
+.sr-menu__trigger--accent {
+  background: var(--sr-accent);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--sr-accent) 22%, transparent);
+}
+
+.sr-menu__trigger--accent:hover {
+  background: var(--sr-accent);
+  filter: brightness(1.06);
+}
+
+.sr-menu__trigger--neutral {
+  border: 1px solid var(--sr-border);
+  color: var(--sr-ink-700);
+  background: var(--sr-surface);
+  box-shadow: none;
+}
+
+.sr-menu__trigger--neutral:hover {
+  border-color: var(--sr-border-strong);
+  background: var(--sr-surface-soft);
+}
+
+.sr-menu--fill .sr-menu__trigger {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 40px;
+  width: 100%;
+  min-height: 48px;
+  gap: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.sr-menu--fill .sr-menu__icon,
+.sr-menu--fill .sr-menu__chevron {
+  display: grid;
+  place-items: center;
+}
+
+.sr-menu--fill .sr-menu__label {
+  font-size: var(--sr-text-md);
+  font-weight: 600;
+}
+
+.sr-menu__chevron svg {
+  transition: transform var(--sr-motion-fast) ease;
+}
+
+.sr-menu.is-open .sr-menu__chevron svg {
+  transform: rotate(180deg);
+}
+
+.sr-menu__bubble {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 12px);
+  left: 0;
+  width: 260px;
+  padding: 7px;
+  border: 1px solid var(--sr-border);
+  border-radius: var(--sr-radius-md);
+  background: var(--sr-surface);
+  box-shadow: var(--sr-shadow-lg);
+  animation: sr-menu-in var(--sr-motion-fast) ease-out;
+}
+
+.sr-menu__bubble[hidden] {
+  display: none;
+}
+
+.sr-menu--end .sr-menu__bubble {
+  right: 0;
+  left: auto;
+}
+
+.sr-menu--fill .sr-menu__bubble {
+  width: 100%;
+}
+
+.sr-menu--compact .sr-menu__trigger,
+.sr-shell.is-collapsed .sr-menu--sidebar .sr-menu__trigger {
+  grid-template-columns: 48px;
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+  justify-content: center;
+}
+
+.sr-menu--compact .sr-menu__label,
+.sr-menu--compact .sr-menu__chevron,
+.sr-shell.is-collapsed .sr-menu--sidebar .sr-menu__label,
+.sr-shell.is-collapsed .sr-menu--sidebar .sr-menu__chevron {
+  display: none;
+}
+
+.sr-menu--side .sr-menu__bubble {
+  top: 0;
+  left: calc(100% + 12px);
+  right: auto;
+  width: 260px;
+}
+
+.sr-menu__bubble::before,
+.sr-menu__bubble::after {
+  position: absolute;
+  left: 22px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  content: "";
+}
+
+.sr-menu__bubble::before {
+  top: -9px;
+  border-width: 0 9px 9px;
+  border-color: transparent transparent var(--sr-border);
+}
+
+.sr-menu__bubble::after {
+  top: -8px;
+  margin-left: 1px;
+  border-width: 0 8px 8px;
+  border-color: transparent transparent var(--sr-surface);
+}
+
+.sr-menu--end .sr-menu__bubble::before,
+.sr-menu--end .sr-menu__bubble::after {
+  right: 22px;
+  left: auto;
+}
+
+.sr-menu--end .sr-menu__bubble::after {
+  margin-right: 1px;
+  margin-left: 0;
+}
+
+.sr-menu--side .sr-menu__bubble::before,
+.sr-menu--side .sr-menu__bubble::after {
+  top: 16px;
+  right: auto;
+  margin: 0;
+}
+
+.sr-menu--side .sr-menu__bubble::before {
+  left: -9px;
+  border-width: 9px 9px 9px 0;
+  border-color: transparent var(--sr-border) transparent transparent;
+}
+
+.sr-menu--side .sr-menu__bubble::after {
+  top: 17px;
+  left: -8px;
+  border-width: 8px 8px 8px 0;
+  border-color: transparent var(--sr-surface) transparent transparent;
+}
+
+.sr-menu__item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--sr-ink-700);
+  background: transparent;
+  text-align: left;
+  transition: background var(--sr-motion-fast), color var(--sr-motion-fast);
+}
+
+.sr-menu__item:hover {
+  color: var(--sr-brand-600);
+  background: var(--sr-brand-50);
+}
+
+.sr-menu__item-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--sr-surface-hover);
+}
+
+.sr-menu__item-copy strong,
+.sr-menu__item-copy small {
+  display: block;
+}
+
+.sr-menu__item-copy strong {
+  font-size: var(--sr-text-sm);
+  font-weight: 600;
+}
+
+.sr-menu__item-copy small {
+  margin-top: 2px;
+  color: var(--sr-ink-400);
+  font-size: var(--sr-text-xs);
+}
+
+/* Context Popover (usado em EntityCardMenu e ações de linha) */
+.sr-popover {
+  position: relative;
+  display: inline-block;
+}
+
+.sr-popover__trigger {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--sr-radius-sm);
+  color: var(--sr-card-icon);
+  background: transparent;
+  place-items: center;
+  transition: background var(--sr-motion-fast), color var(--sr-motion-fast);
+}
+
+.sr-popover__trigger:hover {
+  color: var(--sr-ink-800);
+  background: var(--sr-surface-hover);
+}
+
+.sr-popover__menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  width: 164px;
+  overflow: hidden;
+  padding: 5px;
+  border: 1px solid var(--sr-border);
+  border-radius: var(--sr-radius-md);
+  background: var(--sr-surface);
+  box-shadow: var(--sr-shadow-lg);
+  animation: sr-menu-in var(--sr-motion-fast) ease-out;
+}
+
+.sr-popover__menu[hidden] {
+  display: none;
+}
+
+.sr-popover__item {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--sr-radius-sm);
+  color: var(--sr-ink-700);
+  background: transparent;
+  font-size: var(--sr-text-sm);
+  text-align: left;
+}
+
+.sr-popover__item:hover {
+  color: var(--sr-brand-600);
+  background: var(--sr-brand-50);
+}
+
+.sr-popover__item--danger {
+  color: var(--sr-danger);
+}
+
+.sr-popover__item--danger:hover {
+  color: var(--sr-danger);
+  background: rgba(220, 38, 38, 0.08);
+}
+
+@keyframes sr-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.98);
+  }
+}
+
+@media (max-width: 560px) {
+  .sr-menu--compact-mobile .sr-menu__trigger {
+    width: 38px;
+    min-height: 38px;
+    justify-content: center;
+    padding: 0;
+  }
+  .sr-menu--compact-mobile .sr-menu__label,
+  .sr-menu--compact-mobile .sr-menu__chevron {
+    display: none;
+  }
+  .sr-menu--compact-mobile .sr-menu__bubble {
+    width: min(280px, calc(100vw - 20px));
+  }
+}

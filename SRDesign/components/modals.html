@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Modais &amp; Confirmações — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+  <link rel="stylesheet" href="_preview.css" />
+</head>
+<body>
+  <header class="sr-preview-bar">
+    <div class="sr-preview-bar__left">
+      <a class="sr-btn sr-btn--sm" href="../index.html"><span data-sr-icon="arrow-left" data-size="14"></span><span>Voltar</span></a>
+      <span class="sr-preview-bar__title">Modais &amp; AlertDialog</span>
+    </div>
+    <span class="sr-badge sr-badge--primary">core/components/sr-modals.css</span>
+  </header>
+
+  <main class="sr-preview-wrap">
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>Disparadores Declarativos (<code>data-sr-modal-open</code>)</h2>
+        <p>Backdrop com blur, fechamento via <code>Esc</code>, clique fora ou botão com <code>data-sr-modal-close</code>.</p>
+      </div>
+      <div class="sr-row">
+        <button type="button" class="sr-btn sr-btn--primary" data-sr-modal-open="modal-form-demo">
+          <span data-sr-icon="plus" data-size="16"></span>
+          <span>Abrir Modal de Formulário</span>
+        </button>
+        <button type="button" class="sr-btn sr-btn--danger" data-sr-modal-open="modal-delete-demo">
+          <span data-sr-icon="trash" data-size="16"></span>
+          <span>Abrir AlertDialog de Exclusão</span>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal de Formulário -->
+  <div class="sr-modal-backdrop" id="modal-form-demo" role="presentation" hidden>
+    <div class="sr-modal" role="dialog" aria-modal="true" aria-labelledby="modal-form-title">
+      <header class="sr-modal__header">
+        <h2 id="modal-form-title">Novo Modelo de Entrega</h2>
+        <button type="button" class="sr-modal__close" data-sr-modal-close aria-label="Fechar">
+          <span data-sr-icon="x" data-size="19"></span>
+        </button>
+      </header>
+
+      <div class="sr-modal__body">
+        <section class="sr-modal__section">
+          <div class="sr-modal__section-head">
+            <span class="sr-modal__section-title">
+              <span data-sr-icon="file-text" data-size="18"></span>
+              <span>Dados principais</span>
+            </span>
+            <span class="sr-badge sr-badge--primary">Obrigatório</span>
+          </div>
+
+          <div class="sr-field-grid">
+            <label class="sr-modal__control">
+              <span class="sr-modal__control-icon"><span data-sr-icon="folder" data-size="17"></span></span>
+              <input type="text" placeholder="Nome do modelo" value="Identidade Visual Completa" />
+            </label>
+            <label class="sr-modal__control">
+              <span class="sr-modal__control-icon"><span data-sr-icon="tag" data-size="17"></span></span>
+              <select>
+                <option>Design &amp; Branding</option>
+                <option>Desenvolvimento Web</option>
+                <option>Consultoria</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="sr-modal__control sr-modal__control--textarea">
+            <span class="sr-modal__control-icon"><span data-sr-icon="pencil" data-size="17"></span></span>
+            <textarea placeholder="Observações e escopo padrão..."></textarea>
+          </label>
+        </section>
+
+        <div class="sr-modal__actions">
+          <button type="button" class="sr-btn sr-btn--danger" data-sr-modal-close>
+            <span data-sr-icon="trash" data-size="15"></span>
+            <span>Excluir</span>
+          </button>
+          <div class="sr-modal__action-group">
+            <button type="button" class="sr-btn" data-sr-modal-close>Cancelar</button>
+            <button type="button" class="sr-btn sr-btn--success" data-sr-modal-close>
+              <span data-sr-icon="check" data-size="16"></span>
+              <span>Salvar modelo</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AlertDialog de Confirmação -->
+  <div class="sr-modal-backdrop" id="modal-delete-demo" role="presentation" hidden>
+    <div class="sr-alert-dialog" role="alertdialog" aria-modal="true" aria-labelledby="del-title" aria-describedby="del-desc">
+      <button type="button" class="sr-alert-dialog__close" data-sr-modal-close aria-label="Fechar">
+        <span data-sr-icon="x" data-size="18"></span>
+      </button>
+      <span class="sr-alert-dialog__icon">
+        <span data-sr-icon="alert-triangle" data-size="25"></span>
+      </span>
+      <h2 id="del-title">Excluir cadastro?</h2>
+      <p id="del-desc">
+        Tem certeza de que deseja excluir <strong>Estúdio Aurora</strong>? Você pode arquivar para preservar o histórico ou remover permanentemente.
+      </p>
+      <div class="sr-alert-dialog__actions">
+        <button type="button" class="sr-btn" data-sr-modal-close>Cancelar</button>
+        <button type="button" class="sr-btn sr-btn--warning" data-sr-modal-close>
+          <span data-sr-icon="archive" data-size="15"></span>
+          <span>Arquivar</span>
+        </button>
+        <button type="button" class="sr-btn sr-btn--danger" data-sr-modal-close>
+          <span data-sr-icon="trash" data-size="15"></span>
+          <span>Excluir</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+</body>
+</html>

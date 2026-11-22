@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GlobalSelector — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+  <link rel="stylesheet" href="_preview.css" />
+</head>
+<body>
+  <header class="sr-preview-bar">
+    <div class="sr-preview-bar__left">
+      <a class="sr-btn sr-btn--sm" href="../index.html"><span data-sr-icon="arrow-left" data-size="14"></span><span>Voltar</span></a>
+      <span class="sr-preview-bar__title">GlobalSelector (Combobox Avançado)</span>
+    </div>
+    <span class="sr-badge sr-badge--primary">core/components/sr-selector.css</span>
+  </header>
+
+  <main class="sr-preview-wrap">
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>Seleção Única com Busca</h2>
+        <p>Digite para filtrar, navegue com setas ↑ ↓ e confirme com Enter.</p>
+      </div>
+
+      <div
+        class="sr-selector"
+        data-sr-selector
+        data-mode="single"
+        data-value="p2"
+        data-items='[{"id":"p1","label":"Marina Costa","description":"marina@aurora.com • Cliente","color":"#2e56ff"},{"id":"p2","label":"Lucas Andrade","description":"lucas@estudio.io • Designer","color":"#5dac83"},{"id":"p3","label":"Carla Menezes","description":"carla@norte.co • Gestora","color":"#7c5ce5"},{"id":"p4","label":"Rafael Duarte","description":"rafael@delta.com • Parceiro","color":"#eab308"}]'
+      >
+        <div class="sr-selector__heading">
+          <label for="sel-single">Responsável principal</label>
+        </div>
+        <div class="sr-selector__picker">
+          <div class="sr-selector__control">
+            <span class="sr-selector__control-icon"><span data-sr-icon="search" data-size="18"></span></span>
+            <input id="sel-single" class="sr-selector__input" type="text" role="combobox" aria-expanded="false" autocomplete="off" placeholder="Busque pelo nome..." />
+            <button type="button" class="sr-selector__clear" aria-label="Limpar" hidden><span data-sr-icon="x" data-size="16"></span></button>
+          </div>
+          <div class="sr-selector__dropdown" hidden>
+            <ul class="sr-selector__list" role="listbox"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>Seleção Múltipla com Lista de Selecionados</h2>
+        <p>Itens escolhidos aparecem em cartões removíveis com contador automático.</p>
+      </div>
+
+      <div
+        class="sr-selector"
+        data-sr-selector
+        data-mode="multiple"
+        data-selected="e1,e2"
+        data-items='[{"id":"e1","label":"Identidade Visual","description":"Marca, tipografia e manual","color":"#2e56ff"},{"id":"e2","label":"Interface Web","description":"Design System e protótipos","color":"#5dac83"},{"id":"e3","label":"Campanha Social","description":"Criativos e calendário editorial","color":"#7c5ce5"},{"id":"e4","label":"Consultoria UX","description":"Auditoria e melhorias de fluxo","color":"#f59e0b"}]'
+      >
+        <div class="sr-selector__heading">
+          <label for="sel-multi">Serviços incluídos</label>
+          <span class="sr-selector__counter"></span>
+        </div>
+        <ul class="sr-selector__selected-list" aria-label="Itens selecionados"></ul>
+        <div class="sr-selector__picker">
+          <div class="sr-selector__control">
+            <span class="sr-selector__control-icon"><span data-sr-icon="search" data-size="18"></span></span>
+            <input id="sel-multi" class="sr-selector__input" type="text" role="combobox" aria-expanded="false" autocomplete="off" placeholder="Adicionar serviço..." />
+            <button type="button" class="sr-selector__clear" aria-label="Limpar" hidden><span data-sr-icon="x" data-size="16"></span></button>
+          </div>
+          <div class="sr-selector__dropdown" hidden>
+            <ul class="sr-selector__list" role="listbox"></ul>
+          </div>
+        </div>
+        <p class="sr-selector__helper">Você pode selecionar mais de um item.</p>
+      </div>
+    </section>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>Modo Chooser (Select Estilizado sem Digitação)</h2>
+      </div>
+      <div
+        class="sr-selector"
+        data-sr-selector
+        data-mode="chooser"
+        data-value="st2"
+        data-items='[{"id":"st1","label":"Em planejamento","description":"Aguardando início","color":"#64748b"},{"id":"st2","label":"Em execução","description":"Equipe trabalhando ativamente","color":"#5dac83"},{"id":"st3","label":"Em revisão","description":"Validação com o cliente","color":"#eab308"},{"id":"st4","label":"Concluído","description":"Entregue e finalizado","color":"#2e56ff"}]'
+      >
+        <div class="sr-selector__heading"><label for="sel-chooser">Status do projeto</label></div>
+        <div class="sr-selector__picker">
+          <div class="sr-selector__control">
+            <span class="sr-selector__control-icon"><span data-sr-icon="tag" data-size="18"></span></span>
+            <input id="sel-chooser" class="sr-selector__input" type="text" role="combobox" aria-expanded="false" readonly placeholder="Escolha um status..." />
+            <span class="sr-selector__chevron"><span data-sr-icon="chevron-down" data-size="17"></span></span>
+          </div>
+          <div class="sr-selector__dropdown" hidden>
+            <ul class="sr-selector__list" role="listbox"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+</body>
+</html>

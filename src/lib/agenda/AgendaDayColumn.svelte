@@ -253,10 +253,12 @@
     font-size: var(--text-xs);
   }
   .weekly {
-    width: 280px;
-    min-width: 280px;
+    width: auto;
+    min-width: 0;
     height: 100%;
     min-height: 0;
+    flex: 1 1 0;
+    border-radius: 0;
     scroll-snap-align: start;
     scroll-snap-stop: always;
   }

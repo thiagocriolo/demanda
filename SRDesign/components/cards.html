@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cards &amp; Escala Adaptativa — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+  <link rel="stylesheet" href="_preview.css" />
+</head>
+<body>
+  <header class="sr-preview-bar">
+    <div class="sr-preview-bar__left">
+      <a class="sr-btn sr-btn--sm" href="../index.html"><span data-sr-icon="arrow-left" data-size="14"></span><span>Voltar</span></a>
+      <span class="sr-preview-bar__title">EntityCards &amp; CardScaleControl</span>
+    </div>
+    <span class="sr-badge sr-badge--primary">core/components/sr-cards.css</span>
+  </header>
+
+  <main class="sr-preview-wrap">
+    <section class="sr-preview-block sr-preview-block--canvas">
+      <div class="sr-preview-block__head">
+        <div>
+          <h2>Cards Adaptativos (Níveis 1 a 10)</h2>
+          <p>Arraste o controle deslizante para ver os cards se adaptarem automaticamente de ultra-compacto (1) até detalhado (10).</p>
+        </div>
+        <div class="sr-row">
+          <label class="sr-card-scale" title="Escala dos cards">
+            <span class="sr-badge sr-badge--primary">Nível <span id="scale-val">8</span></span>
+            <input
+              type="range"
+              min="1"
+              max="10"
+              step="1"
+              value="8"
+              data-sr-card-scale="#cards-demo"
+              data-sr-scale-output="#scale-val"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div class="sr-card-collection" id="cards-demo" data-sr-card-level="8">
+        <div class="sr-card-grid">
+          <!-- Card de criação -->
+          <button type="button" class="sr-card-create" onclick="alert('Ação de criar novo item')">
+            <span class="sr-card-create__icon"><span data-sr-icon="plus" data-size="22"></span></span>
+          </button>
+
+          <!-- Card 1: Contato / Pessoa -->
+          <article class="sr-card">
+            <div class="sr-card__menu sr-popover" data-sr-dropdown>
+              <button type="button" class="sr-popover__trigger" data-sr-dropdown-trigger aria-label="Mais opções">
+                <span data-sr-icon="ellipsis-vertical" data-size="17"></span>
+              </button>
+              <div class="sr-popover__menu" data-sr-dropdown-menu role="menu" hidden>
+                <button type="button" class="sr-popover__item" role="menuitem"><span data-sr-icon="eye" data-size="15"></span><span>Ver</span></button>
+                <button type="button" class="sr-popover__item" role="menuitem"><span data-sr-icon="pencil" data-size="15"></span><span>Editar</span></button>
+                <button type="button" class="sr-popover__item sr-popover__item--danger" role="menuitem"><span data-sr-icon="trash" data-size="15"></span><span>Excluir</span></button>
+              </div>
+            </div>
+
+            <div class="sr-card__head">
+              <h3 class="sr-card__title">Marina Costa</h3>
+              <span class="sr-card__status" style="--sr-status-color:#f59e0b;">
+                <span data-sr-icon="user" data-size="11"></span>
+                <span class="sr-card__status-label">Cliente</span>
+              </span>
+            </div>
+
+            <div class="sr-card__body">
+              <div class="sr-card__meta sr-card__info sr-card__info--primary">
+                <span class="sr-card__meta-icon"><span data-sr-icon="phone" data-size="14"></span></span>
+                <span class="sr-card__meta-text">(85) 99982-4106</span>
+              </div>
+              <div class="sr-card__meta sr-card__info sr-card__info--secondary">
+                <span class="sr-card__meta-icon"><span data-sr-icon="mail" data-size="14"></span></span>
+                <span class="sr-card__meta-text">marina@aurora.com</span>
+              </div>
+              <div class="sr-card__meta sr-card__info sr-card__info--relation">
+                <span class="sr-card__meta-icon"><span data-sr-icon="building" data-size="14"></span></span>
+                <span class="sr-card__meta-text">Estúdio Aurora</span>
+              </div>
+            </div>
+
+            <footer class="sr-card__footer">
+              <span class="sr-card__counter"><span data-sr-icon="building" data-size="13"></span><span class="sr-card__counter-label">Neg.</span><strong>2</strong></span>
+              <span class="sr-card__counter"><span data-sr-icon="folder" data-size="13"></span><span class="sr-card__counter-label">Proj.</span><strong>4</strong></span>
+              <span class="sr-card__counter"><span data-sr-icon="list-todo" data-size="13"></span><span class="sr-card__counter-label">Tar.</span><strong>12</strong></span>
+            </footer>
+          </article>
+
+          <!-- Card 2: Projeto com progresso -->
+          <article class="sr-card">
+            <div class="sr-card__menu sr-popover" data-sr-dropdown>
+              <button type="button" class="sr-popover__trigger" data-sr-dropdown-trigger aria-label="Mais opções">
+                <span data-sr-icon="ellipsis-vertical" data-size="17"></span>
+              </button>
+              <div class="sr-popover__menu" data-sr-dropdown-menu role="menu" hidden>
+                <button type="button" class="sr-popover__item" role="menuitem"><span data-sr-icon="eye" data-size="15"></span><span>Ver</span></button>
+                <button type="button" class="sr-popover__item" role="menuitem"><span data-sr-icon="pencil" data-size="15"></span><span>Editar</span></button>
+              </div>
+            </div>
+
+            <div class="sr-card__head">
+              <h3 class="sr-card__title">Nova Identidade Aurora</h3>
+              <span class="sr-card__status" style="--sr-status-color:#5dac83;">
+                <span data-sr-icon="folder" data-size="11"></span>
+                <span class="sr-card__status-label">Execução</span>
+              </span>
+            </div>
+
+            <div class="sr-card__body">
+              <div class="sr-card__progress sr-card__info sr-card__info--primary">
+                <div class="sr-card__progress-track"><span class="sr-card__progress-fill" style="width:68%;"></span></div>
+                <span class="sr-card__progress-value">68%</span>
+              </div>
+              <div class="sr-card__meta sr-card__info sr-card__info--secondary">
+                <span class="sr-card__meta-icon"><span data-sr-icon="building" data-size="14"></span></span>
+                <span class="sr-card__meta-text">Estúdio Aurora</span>
+              </div>
+              <div class="sr-card__meta sr-card__info sr-card__info--relation">
+                <span class="sr-card__meta-icon"><span data-sr-icon="tag" data-size="14"></span></span>
+                <span class="sr-card__meta-text">Identidade visual</span>
+              </div>
+            </div>
+
+            <footer class="sr-card__footer sr-card__footer--two">
+              <span class="sr-card__counter"><span data-sr-icon="list-todo" data-size="13"></span><strong>8/12</strong></span>
+              <span class="sr-card__counter"><span data-sr-icon="calendar" data-size="13"></span><strong>18.07</strong></span>
+            </footer>
+          </article>
+
+          <!-- Card 3: Tarefa -->
+          <article class="sr-card">
+            <div class="sr-card__menu sr-popover" data-sr-dropdown>
+              <button type="button" class="sr-popover__trigger" data-sr-dropdown-trigger aria-label="Mais opções">
+                <span data-sr-icon="ellipsis-vertical" data-size="17"></span>
+              </button>
+              <div class="sr-popover__menu" data-sr-dropdown-menu role="menu" hidden>
+                <button type="button" class="sr-popover__item" role="menuitem"><span data-sr-icon="eye" data-size="15"></span><span>Ver</span></button>
+                <button type="button" class="sr-popover__item" role="menuitem"><span data-sr-icon="pencil" data-size="15"></span><span>Editar</span></button>
+              </div>
+            </div>
+
+            <div class="sr-card__head">
+              <h3 class="sr-card__title">Manual de Marca v2</h3>
+              <span class="sr-card__status" style="--sr-status-color:#2e56ff;">
+                <span data-sr-icon="list-todo" data-size="11"></span>
+                <span class="sr-card__status-label">Fazendo</span>
+              </span>
+            </div>
+
+            <div class="sr-card__body">
+              <div class="sr-card__meta sr-card__info sr-card__info--primary">
+                <span class="sr-card__meta-icon"><span data-sr-icon="building" data-size="14"></span></span>
+                <span class="sr-card__meta-text">Estúdio Aurora</span>
+              </div>
+              <div class="sr-card__meta sr-card__info sr-card__info--secondary">
+                <span class="sr-card__meta-icon"><span data-sr-icon="folder" data-size="14"></span></span>
+                <span class="sr-card__meta-text">Nova Identidade Aurora</span>
+              </div>
+              <div class="sr-card__meta sr-card__info sr-card__info--relation">
+                <span class="sr-card__meta-icon"><span data-sr-icon="tag" data-size="14"></span></span>
+                <span class="sr-card__meta-text">Design gráfico</span>
+              </div>
+            </div>
+
+            <footer class="sr-card__footer sr-card__footer--task">
+              <div class="sr-row" style="gap:6px;">
+                <span class="sr-avatar sr-avatar--sm" style="--sr-avatar-bg:#5dac83;">MC</span>
+                <span style="font-size:12px;font-weight:600;color:var(--sr-card-pill-text);">Marina</span>
+              </div>
+              <span class="sr-card__counter"><span data-sr-icon="list-todo" data-size="13"></span><strong>3/5</strong></span>
+            </footer>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>Stat Cards &amp; NextStepCard</h2>
+      </div>
+      <div class="sr-grid-3">
+        <div class="sr-stat-card">
+          <div class="sr-stat-card__top"><span>Projetos Ativos</span><span class="sr-stat-card__icon"><span data-sr-icon="folder" data-size="17"></span></span></div>
+          <div class="sr-stat-card__value">18</div>
+          <div class="sr-stat-card__meta">+4 neste mês</div>
+        </div>
+        <div class="sr-stat-card">
+          <div class="sr-stat-card__top"><span>Taxa de Entrega</span><span class="sr-stat-card__icon"><span data-sr-icon="check" data-size="17"></span></span></div>
+          <div class="sr-stat-card__value">94%</div>
+          <div class="sr-stat-card__meta">Dentro do prazo acordado</div>
+        </div>
+        <div class="sr-stat-card">
+          <div class="sr-stat-card__top"><span>Membros</span><span class="sr-stat-card__icon"><span data-sr-icon="users" data-size="17"></span></span></div>
+          <div class="sr-stat-card__value">12</div>
+          <div class="sr-stat-card__meta">3 workspaces ativos</div>
+        </div>
+      </div>
+
+      <a class="sr-next-step" href="card-drawer.html">
+        <div class="sr-next-step__copy">
+          <strong>Próximo componente: CardDrawer</strong>
+          <small>Veja a gaveta inferior expansível com scroll horizontal de cards.</small>
+        </div>
+        <span data-sr-icon="arrow-right" data-size="19"></span>
+      </a>
+    </section>
+  </main>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+</body>
+</html>

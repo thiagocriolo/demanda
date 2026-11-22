@@ -1,0 +1,140 @@
+/* ==========================================================================
+   SRDesign — Design Tokens
+   Extraído e padronizado a partir da arquitetura visual do projeto Demanda.
+   Altere --sr-primary para adaptar a cor de marca de qualquer projeto.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Cores de sistema */
+  --sr-system-green: #5dac83;
+  --sr-system-blue: #2e56ff;
+  --sr-system-yellow: #eab308;
+  --sr-system-red: #dc2626;
+  --sr-system-violet: #7c5ce5;
+
+  /* Marca / Primária (dinâmicas via color-mix quando --sr-primary muda) */
+  --sr-primary: var(--sr-system-blue);
+  --sr-primary-hover: color-mix(in srgb, var(--sr-primary) 86%, #000000);
+  --sr-primary-light: color-mix(in srgb, var(--sr-primary) 82%, #ffffff);
+  --sr-primary-10: color-mix(in srgb, var(--sr-primary) 10%, transparent);
+  --sr-primary-09: color-mix(in srgb, var(--sr-primary) 9%, transparent);
+  --sr-brand-50: color-mix(in srgb, var(--sr-primary) 8%, transparent);
+  --sr-brand-100: color-mix(in srgb, var(--sr-primary) 15%, transparent);
+  --sr-brand-500: #4263eb;
+  --sr-brand-600: var(--sr-primary);
+  --sr-brand-700: var(--sr-primary-hover);
+
+  /* Semântica */
+  --sr-accent: var(--sr-system-green);
+  --sr-warning: var(--sr-system-yellow);
+  --sr-danger: var(--sr-system-red);
+  --sr-violet: var(--sr-system-violet);
+
+  /* Superfícies */
+  --sr-canvas: #f7f7f7;
+  --sr-panel: #ffffff;
+  --sr-surface: #ffffff;
+  --sr-surface-soft: rgba(15, 23, 42, 0.03);
+  --sr-surface-hover: rgba(15, 23, 42, 0.06);
+  --sr-main-background: var(--sr-primary-09);
+
+  /* Tipografia / Tinta (Inks) */
+  --sr-text: #0f172a;
+  --sr-text-soft: #334155;
+  --sr-muted: #6d737c;
+  --sr-ink-950: #0f172a;
+  --sr-ink-800: #1e293b;
+  --sr-ink-700: #334155;
+  --sr-ink-500: #64748b;
+  --sr-ink-400: #94a3b8;
+
+  /* Bordas, Foco e Sombras */
+  --sr-border: rgba(15, 23, 42, 0.12);
+  --sr-border-strong: rgba(15, 23, 42, 0.18);
+  --sr-focus-ring: 0 0 0 3px color-mix(in srgb, var(--sr-primary) 22%, transparent);
+  --sr-shadow-sm: none;
+  --sr-shadow-md: 0 12px 30px rgba(15, 23, 42, 0.12);
+  --sr-shadow-lg: 0 18px 42px rgba(15, 23, 42, 0.18);
+  --sr-shadow-xl: 0 28px 70px rgba(15, 23, 42, 0.24);
+
+  /* Raios de borda */
+  --sr-radius-sm: 8px;
+  --sr-radius-md: 12px;
+  --sr-radius-lg: 14px;
+  --sr-radius-xl: 16px;
+  --sr-radius-2xl: 20px;
+  --sr-radius-pill: 999px;
+
+  /* Dimensões do Layout / Casca */
+  --sr-sidebar-width: 280px;
+  --sr-sidebar-collapsed-width: 70px;
+  --sr-topbar-height: 70px;
+  --sr-main-padding: 22px;
+  --sr-card-padding: 20px;
+  --sr-content-width: none;
+
+  /* Tipografia */
+  --sr-font-sans:
+    "Pogonia", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sr-font-mono:
+    ui-monospace, "Cascadia Code", "Fira Code", Consolas, monospace;
+  --sr-text-xs: 11px;
+  --sr-text-sm: 12px;
+  --sr-text-md: 14px;
+  --sr-text-lg: 16px;
+  --sr-text-xl: 18px;
+  --sr-text-2xl: 24px;
+
+  /* Movimento */
+  --sr-motion-fast: 160ms;
+  --sr-motion-base: 220ms;
+
+  /* Variáveis de Cards de Entidade */
+  --sr-card-bg: linear-gradient(180deg, #fdfefffa 0%, #f1f8fffa 100%);
+  --sr-card-bg-hover: linear-gradient(180deg, #fafdffff 0%, #ebf5ffff 100%);
+  --sr-card-border: #bfd4ea;
+  --sr-card-border-hover: #a8c7e5;
+  --sr-card-section-border: #c7d9ea;
+  --sr-card-section-bg: #ffffff7a;
+  --sr-card-text: #1f344a;
+  --sr-card-title: #1b3047;
+  --sr-card-muted: #456077;
+  --sr-card-icon: #607c96;
+  --sr-card-pill-border: #b8cfe7;
+  --sr-card-pill-text: #31516d;
+  --sr-state-neutral-bg: #eef2f6;
+  --sr-state-neutral-text: #64748b;
+
+  /* Variáveis de Abas */
+  --sr-tab-overlap: 14px;
+  --sr-tab-panel-min-height: 320px;
+  --sr-tab-panel-mobile-min-height: 240px;
+
+  /* Aliases semânticos de conveniência */
+  --primary: var(--sr-primary);
+  --accent: var(--sr-accent);
+  --danger: var(--sr-danger);
+  --canvas: var(--sr-canvas);
+  --panel: var(--sr-panel);
+  --surface: var(--sr-surface);
+  --text: var(--sr-text);
+  --muted: var(--sr-muted);
+  --border: var(--sr-border);
+}
+
+@media (max-width: 920px) {
+  :root {
+    --sr-topbar-height: 58px;
+    --sr-main-padding: 12px;
+    --sr-card-padding: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --sr-motion-fast: 0ms;
+    --sr-motion-base: 0ms;
+  }
+}

@@ -1,0 +1,19 @@
+/* ==========================================================================
+   SRDesign — Ponto de Entrada Único de CSS
+   Importe apenas este arquivo no seu projeto para carregar todo o SRDesign.
+   ========================================================================== */
+
+@import "./sr-tokens.css";
+@import "./sr-base.css";
+@import "./components/sr-shell.css";
+@import "./components/sr-page-header.css";
+@import "./components/sr-buttons.css";
+@import "./components/sr-tabs.css";
+@import "./components/sr-filter-bar.css";
+@import "./components/sr-menus.css";
+@import "./components/sr-selector.css";
+@import "./components/sr-cards.css";
+@import "./components/sr-drawer.css";
+@import "./components/sr-forms.css";
+@import "./components/sr-modals.css";
+@import "./components/sr-auth.css";

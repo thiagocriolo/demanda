@@ -202,6 +202,15 @@ transacional.
   lidos, apagados nem sobrescritos e ficam disponíveis para uma importação
   futura, explícita e validada na BE-15.
 
+### Migração explícita de entregas legadas
+
+Em **Configurações → Dados → Gerar backup**, o botão **Importar entregas
+legadas** lê exclusivamente `demanda:crud:entregas` deste navegador após a
+confirmação do usuário. O navegador não altera nem remove a cópia original. O
+servidor valida o lote completo e os projetos de destino antes de iniciar a
+transação; cada identificador de origem fica registrado, portanto repetir a
+mesma importação não duplica tarefas.
+
 ## Tarefas e subtarefas
 
 - O agregado é persistido em `tasks`, `task_subtasks`, `task_responsibles` e

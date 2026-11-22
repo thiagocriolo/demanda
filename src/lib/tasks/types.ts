@@ -61,7 +61,9 @@ export type TaskSubtaskInput = {
 
 export type TaskContentInput = {
   name: string;
-  projectId: string;
+  projectId?: string;
+  /** Used only while creating a delivery for a contract's phantom project. */
+  institutionalContractId?: string;
   category: string;
   priority: string;
   briefing: string;

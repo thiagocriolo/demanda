@@ -3,15 +3,18 @@
   import { ProjectApiError, setProjectActive } from "$lib/projects/client";
   import {
     ArrowRight,
+    CheckCircle2,
     BriefcaseBusiness,
     CalendarClock,
     CircleUserRound,
+    CircleDollarSign,
     FileText,
     FolderKanban,
     LayoutGrid,
     ListTodo,
     Send,
     Table2,
+    TriangleAlert,
   } from "@lucide/svelte";
   import type { PageData } from "./$types";
 
@@ -432,6 +435,202 @@
       </section>
     {/if}
 
+    {#if data.contractDashboard}
+      <section
+        class="operations-dashboard operations-dashboard--contract"
+        aria-label="Painel do contrato"
+      >
+        <header class="operations-dashboard__header">
+          <div>
+            <span>Saúde do acordo</span>
+            <h2>Contrato, execução e próximos compromissos</h2>
+          </div>
+          <a
+            class="operations-dashboard__business-link"
+            href={`/clientes/negócios/${data.contractDashboard.business.id}`}
+            >Ver {data.contractDashboard.business.name}</a
+          >
+        </header>
+        <div class="operations-dashboard__metrics">
+          <div>
+            <strong>{data.contractDashboard.metrics.projects}</strong><span
+              >Projetos vinculados</span
+            >
+          </div>
+          <div>
+            <strong>{data.contractDashboard.metrics.activeProjects}</strong
+            ><span>Projetos ativos</span>
+          </div>
+          <div>
+            <strong>{data.contractDashboard.metrics.openTasks}</strong><span
+              >Entregas abertas</span
+            >
+          </div>
+          <div
+            class:attention={data.contractDashboard.metrics.overdueTasks > 0}
+          >
+            <strong>{data.contractDashboard.metrics.overdueTasks}</strong><span
+              >Em atraso</span
+            >
+          </div>
+        </div>
+        {#if data.contractDashboard.firstPaymentOverdue}
+          <div class="decision-card decision-card--urgent">
+            <CircleDollarSign size={20} aria-hidden="true" />
+            <span>
+              <small>Financeiro pede atenção</small>
+              <strong>O primeiro vencimento já passou</strong>
+              <em
+                >Confirme o recebimento ou atualize o combinado financeiro com o
+                cliente.</em
+              >
+            </span>
+          </div>
+        {:else if data.contractDashboard.metrics.overdueTasks > 0}
+          <div class="decision-card decision-card--urgent">
+            <TriangleAlert size={20} aria-hidden="true" />
+            <span>
+              <small>Execução pede atenção</small>
+              <strong>Há entregas em atraso neste contrato</strong>
+              <em
+                >Replaneje o escopo antes que o cronograma afete o acordo
+                comercial.</em
+              >
+            </span>
+          </div>
+        {:else if data.contractDashboard.metrics.projects === 0}
+          <div class="decision-card">
+            <FolderKanban size={20} aria-hidden="true" />
+            <span>
+              <small>Próximo passo</small>
+              <strong>Vincule este acordo a um projeto</strong>
+              <em
+                >Assim será possível acompanhar escopo, prazo e execução a
+                partir deste contrato.</em
+              >
+            </span>
+          </div>
+        {:else}
+          <div class="decision-card">
+            <CheckCircle2 size={20} aria-hidden="true" />
+            <span>
+              <small>Leitura do contrato</small>
+              <strong>O acordo está conectado à operação</strong>
+              <em
+                >Acompanhe os projetos vinculados para antecipar riscos e
+                próximas decisões.</em
+              >
+            </span>
+          </div>
+        {/if}
+        <div class="operations-dashboard__cards">
+          <section class="operations-dashboard__panel">
+            <header>
+              <h3>Projetos vinculados</h3>
+              <a href="/clientes/projetos">Ver projetos</a>
+            </header>
+            {#if data.contractDashboard.projects.length}
+              <div class="project-operation-cards">
+                {#each data.contractDashboard.projects as project (project.id)}
+                  <a href={`/clientes/projetos/${project.id}`}>
+                    <span>{project.status}</span><strong>{project.name}</strong>
+                    <small
+                      >{project.openTasks} abertas · {project.completedTasks}
+                      concluídas</small
+                    >
+                    <em
+                      >{project.endDate
+                        ? `Prazo: ${project.endDate}`
+                        : "Sem prazo definido"}</em
+                    >
+                  </a>
+                {/each}
+              </div>
+            {:else}<p>Nenhum projeto vinculado a este contrato.</p>{/if}
+          </section>
+          <section class="operations-dashboard__panel">
+            <header>
+              <h3>Próximas entregas</h3>
+              <a href="/clientes/tarefas">Ver entregas</a>
+            </header>
+            {#if data.contractDashboard.tasks.length}
+              <div class="task-operation-list">
+                {#each data.contractDashboard.tasks
+                  .filter((task) => !task.completed)
+                  .slice(0, 6) as task (task.id)}
+                  <a href={`/clientes/tarefas/${task.id}`}>
+                    <span>{task.name}</span><small
+                      >{task.projectName} · {task.dueDate
+                        ? `Prazo: ${task.dueDate}`
+                        : task.priority}</small
+                    >
+                  </a>
+                {/each}
+              </div>
+            {:else}<p>Nenhuma entrega pendente neste contrato.</p>{/if}
+          </section>
+        </div>
+      </section>
+    {/if}
+
+    {#if data.taskDashboard}
+      <section
+        class="operations-dashboard operations-dashboard--task"
+        aria-label="Painel da entrega"
+      >
+        <header class="operations-dashboard__header">
+          <div>
+            <span>Condução da entrega</span>
+            <h2>Ritmo, etapas e próximo avanço</h2>
+          </div>
+          <a
+            class="operations-dashboard__business-link"
+            href={`/clientes/projetos/${data.taskDashboard.project.id}`}
+            >Ver {data.taskDashboard.project.name}</a
+          >
+        </header>
+        <div
+          class="operations-dashboard__metrics operations-dashboard__metrics--three"
+        >
+          <div>
+            <strong>{data.taskDashboard.metrics.subtasks}</strong><span
+              >Etapas</span
+            >
+          </div>
+          <div>
+            <strong>{data.taskDashboard.metrics.completedSubtasks}</strong><span
+              >Concluídas</span
+            >
+          </div>
+          <div>
+            <strong>{data.taskDashboard.metrics.remainingSubtasks}</strong><span
+              >Pendentes</span
+            >
+          </div>
+        </div>
+        <div
+          class:decision-card--urgent={data.taskDashboard.nextAction.tone ===
+            "urgent"}
+          class:decision-card--attention={data.taskDashboard.nextAction.tone ===
+            "attention"}
+          class="decision-card"
+        >
+          {#if data.taskDashboard.nextAction.tone === "urgent"}
+            <TriangleAlert size={20} aria-hidden="true" />
+          {:else if data.taskDashboard.nextAction.tone === "complete"}
+            <CheckCircle2 size={20} aria-hidden="true" />
+          {:else}
+            <CalendarClock size={20} aria-hidden="true" />
+          {/if}
+          <span>
+            <small>Próximo passo recomendado</small>
+            <strong>{data.taskDashboard.nextAction.title}</strong>
+            <em>{data.taskDashboard.nextAction.description}</em>
+          </span>
+        </div>
+      </section>
+    {/if}
+
     {#if data.taskComments}
       <section class="task-comments" aria-label="Comentários da tarefa">
         <header>
@@ -529,20 +728,21 @@
 <style>
   .record-page {
     display: grid;
-    width: min(100%, var(--social-content-width));
-    gap: 14px;
-    margin-inline: auto;
-    padding-bottom: 30px;
+    width: 100%;
+    gap: 20px;
+    padding-bottom: 42px;
   }
   .record-detail {
     display: grid;
-    gap: 14px;
+    gap: 18px;
   }
   .record-detail__toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    min-height: 34px;
+    padding: 0 4px;
   }
   .record-detail__toolbar a {
     color: var(--brand-600);
@@ -590,7 +790,8 @@
   .record-detail__section {
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
-    background: var(--panel);
+    background: linear-gradient(135deg, var(--panel), var(--canvas));
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.035);
   }
   .contact-dashboard {
     display: grid;
@@ -762,11 +963,61 @@
   }
   .operations-dashboard {
     display: grid;
-    gap: 14px;
-    padding: 18px;
+    gap: 16px;
+    padding: clamp(18px, 2vw, 26px);
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
-    background: var(--panel);
+    background:
+      radial-gradient(
+        circle at 98% 0%,
+        rgba(46, 86, 255, 0.08),
+        transparent 28%
+      ),
+      var(--panel);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.045);
+  }
+  .decision-card {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    gap: 11px;
+    padding: 14px 15px;
+    border: 1px solid color-mix(in srgb, var(--brand-500) 24%, var(--border));
+    border-radius: var(--radius-lg);
+    color: var(--brand-700, var(--brand-600));
+    background: color-mix(in srgb, var(--brand-50) 68%, var(--canvas));
+  }
+  .decision-card > span {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+  }
+  .decision-card small {
+    color: inherit;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.035em;
+    text-transform: uppercase;
+  }
+  .decision-card strong {
+    color: var(--text);
+    font-size: var(--text-sm);
+  }
+  .decision-card em {
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+    font-style: normal;
+    line-height: 1.45;
+  }
+  .decision-card--urgent {
+    border-color: color-mix(in srgb, var(--red-500) 38%, var(--border));
+    color: var(--red-600);
+    background: color-mix(in srgb, #fff1f2 78%, var(--canvas));
+  }
+  .decision-card--attention {
+    border-color: color-mix(in srgb, #d97706 38%, var(--border));
+    color: #a85c00;
+    background: #fff9eb;
   }
   .operations-dashboard__header,
   .operations-dashboard__header > div,

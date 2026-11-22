@@ -83,7 +83,8 @@ export type TaskSubtaskMutationInput = {
 
 export type TaskContentInput = {
   name: string;
-  projectId: string;
+  projectId?: string;
+  institutionalContractId?: string;
   category: string;
   priority: string;
   briefing: string;

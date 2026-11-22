@@ -112,7 +112,7 @@
       </span>
     </div>
 
-    <div class="col-period">
+    <div class="col-period col-period--start">
       {#if hasContractPeriod}
         <span class="period-marker">
           <CalendarDays size={12.5} strokeWidth={1.9} />
@@ -122,20 +122,24 @@
             ></span
           >
         </span>
-        <span class="period-marker period-marker--end">
-          <span class="period-marker-line" aria-hidden="true"></span>
-          <span class="period-copy"
-            ><span class="period-label">Término</span><strong
-              >{periodEnd || "Em aberto"}</strong
-            ></span
-          >
-        </span>
       {:else}
         <span class="period-open"
           ><CalendarDays size={13} strokeWidth={1.85} /><span
             >Período em aberto</span
           ></span
         >
+      {/if}
+    </div>
+
+    <div class="col-period col-period--end">
+      {#if hasContractPeriod}
+        <span class="period-marker">
+          <span class="period-copy"
+            ><span class="period-label">Término</span><strong
+              >{periodEnd || "Em aberto"}</strong
+            ></span
+          >
+        </span>
       {/if}
     </div>
 
@@ -282,14 +286,15 @@
       minmax(210px, 1.9fr)
       minmax(115px, 0.85fr)
       minmax(114px, 0.8fr)
-      minmax(164px, 1.15fr)
+      minmax(92px, 0.66fr)
+      minmax(92px, 0.66fr)
       minmax(84px, 0.58fr)
       minmax(98px, 0.72fr)
       minmax(168px, 1.1fr)
       128px;
     align-items: center;
     gap: 16px;
-    padding: 16px 20px;
+    padding: 10px 20px;
   }
 
   .col-agreement {
@@ -301,8 +306,8 @@
 
   .agreement-emblem {
     display: inline-flex;
-    width: 38px;
-    height: 38px;
+    width: 34px;
+    height: 34px;
     flex: 0 0 auto;
     align-items: center;
     justify-content: center;
@@ -448,9 +453,9 @@
   }
 
   .col-period {
-    display: grid;
+    display: flex;
     min-width: 0;
-    gap: 6px;
+    align-items: center;
   }
 
   .period-marker {
@@ -468,18 +473,6 @@
     margin-top: 2px;
   }
 
-  .period-marker--end {
-    padding-left: 20px;
-    color: var(--ink-400);
-  }
-  .period-marker-line {
-    position: absolute;
-    top: -7px;
-    bottom: calc(100% - 3px);
-    left: 6px;
-    width: 1px;
-    background: rgba(46, 86, 255, 0.24);
-  }
   .period-copy {
     display: grid;
     gap: 1px;
@@ -515,7 +508,7 @@
     display: inline-grid;
     gap: 2px;
     min-width: 68px;
-    padding: 7px 9px;
+    padding: 5px 8px;
     border: 1px solid rgba(46, 86, 255, 0.12);
     border-radius: 9px;
     background: linear-gradient(
@@ -642,8 +635,8 @@
 
   .row-action {
     display: inline-flex;
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     align-items: center;
     justify-content: center;
     padding: 0;
@@ -756,8 +749,8 @@
       grid-template-columns:
         minmax(200px, 1.8fr)
         minmax(106px, 0.78fr)
-        minmax(158px, 1.1fr)
-        minmax(78px, 0.55fr)
+        minmax(92px, 0.7fr)
+        minmax(92px, 0.7fr)
         minmax(156px, 1fr)
         124px;
     }
@@ -788,8 +781,12 @@
       justify-self: end;
     }
 
-    .col-period {
+    .col-period--start {
       grid-column: 1 / 2;
+    }
+
+    .col-period--end {
+      grid-column: 2 / 3;
     }
 
     .col-actions {

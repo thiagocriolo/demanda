@@ -1,18 +1,23 @@
 import { error } from "@sveltejs/kit";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { PageServerLoad } from "./$types";
 import { requireAuthenticatedRequest } from "$lib/server/authorization/http";
 import { getDatabase } from "$lib/server/db";
+import { businesses, contracts } from "$lib/server/db/schema";
 import {
   contactDetail,
   businessDetail,
   projectDetail,
   taskDetail,
+  contractDetail,
 } from "$lib/records/record-detail";
 import { recordTabFromRoute } from "$lib/records/record-page";
 import {
   getBusinessOperations,
+  getContractOperations,
   getProjectOperations,
+  getTaskOperations,
 } from "$lib/server/records/operations";
 import {
   getContactOperationalDashboard,
@@ -84,9 +89,41 @@ export const load: PageServerLoad = async ({ locals, params }) => {
         backHref: "/clientes/projetos",
       };
     }
+    if (tab === "contratos") {
+      const [contract] = await database
+        .select({ contract: contracts, businessName: businesses.name })
+        .from(contracts)
+        .innerJoin(
+          businesses,
+          eq(businesses.id, contracts.businessId),
+        )
+        .where(
+          and(
+            eq(contracts.ownerUserId, context.user.id),
+            eq(contracts.id, parsedId.data),
+          ),
+        )
+        .limit(1);
+      if (!contract) error(404, "Registro não encontrado.");
+      return {
+        detail: contractDetail({
+          ...contract.contract,
+          businessName: contract.businessName,
+        }),
+        contractDashboard: await getContractOperations(database, {
+          id: contract.contract.id,
+          workspaceId: contract.contract.workspaceId,
+          businessId: contract.contract.businessId,
+          businessName: contract.businessName,
+          firstDueDate: contract.contract.firstDueDate,
+        }),
+        backHref: "/clientes/contratos",
+      };
+    }
     const task = await getWorkspaceTask(database, context, parsedId.data);
     return {
       detail: taskDetail(task),
+      taskDashboard: getTaskOperations(task),
       taskComments: await listWorkspaceTaskComments(database, context, task.id),
       backHref: "/clientes/tarefas",
     };

@@ -324,9 +324,9 @@
         <span class="col-agreement-head">Contrato</span>
         <span class="col-workspace-head">Workspace</span>
         <span>Modalidade</span>
-        <span>Vigência</span>
-        <span>Duração</span>
-        <span>Vigência</span>
+        <span>Início</span>
+        <span>Término</span>
+        <span class="col-duration-head">Duração</span>
         <span class="col-projects-head">Projetos</span>
         <span class="align-right">Valor</span>
         <span class="col-actions-head">Ações</span>
@@ -401,25 +401,46 @@
 
   .header-metrics {
     display: grid;
-    width: min(100%, 660px);
+    width: min(100%, 640px);
     grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: center;
-    padding: 4px 0;
-    border: 1px solid rgba(46, 86, 255, 0.12);
-    border-radius: var(--radius-lg);
-    background: rgba(255, 255, 255, 0.78);
-    backdrop-filter: blur(6px);
+    padding: 3px 0;
   }
 
   .header-metric {
+    position: relative;
     display: grid;
-    gap: 3px;
-    padding: 8px 16px;
-    border-right: 1px solid rgba(15, 23, 42, 0.08);
+    gap: 2px;
+    padding: 5px 18px 5px 20px;
+    border-left: 1px solid rgba(46, 86, 255, 0.14);
   }
 
-  .header-metric:last-child {
-    border-right: 0;
+  .header-metric::before {
+    position: absolute;
+    top: 50%;
+    left: -1px;
+    width: 2px;
+    height: 26px;
+    border-radius: var(--radius-pill);
+    background: var(--ink-400);
+    content: "";
+    transform: translateY(-50%);
+  }
+
+  .header-metric:first-child {
+    border-left: 0;
+  }
+
+  .header-metric:first-child::before {
+    display: none;
+  }
+
+  .header-metric:nth-child(2)::before {
+    background: var(--brand-500);
+  }
+
+  .header-metric:nth-child(3)::before {
+    background: var(--system-green);
   }
 
   .metric-head {
@@ -430,7 +451,7 @@
 
   .metric-label {
     color: var(--ink-500);
-    font-size: 10.5px;
+    font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -439,14 +460,14 @@
 
   .metric-icon {
     display: inline-flex;
-    width: 22px;
-    height: 22px;
+    width: 19px;
+    height: 19px;
     flex: 0 0 auto;
     align-items: center;
     justify-content: center;
-    border-radius: 7px;
+    border-radius: 6px;
     color: var(--ink-500);
-    background: var(--surface-soft);
+    background: rgba(100, 116, 139, 0.08);
   }
 
   .metric-icon--blue {
@@ -461,7 +482,7 @@
 
   .metric-value {
     color: var(--ink-950);
-    font-size: clamp(16px, 1.35vw, 19px);
+    font-size: clamp(16px, 1.25vw, 18px);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.025em;
@@ -478,7 +499,7 @@
 
   .metric-helper {
     color: var(--muted);
-    font-size: 11.5px;
+    font-size: 11px;
     white-space: nowrap;
   }
 
@@ -518,7 +539,8 @@
       minmax(210px, 1.9fr)
       minmax(115px, 0.85fr)
       minmax(114px, 0.8fr)
-      minmax(164px, 1.15fr)
+      minmax(92px, 0.66fr)
+      minmax(92px, 0.66fr)
       minmax(84px, 0.58fr)
       minmax(98px, 0.72fr)
       minmax(168px, 1.1fr)
@@ -526,8 +548,12 @@
     align-items: center;
     gap: 16px;
     padding: 11px 20px;
-    border-bottom: 1px solid var(--border);
-    background: var(--canvas);
+    border-bottom: 1px solid rgba(46, 86, 255, 0.1);
+    background: linear-gradient(
+      90deg,
+      rgba(46, 86, 255, 0.045),
+      rgba(124, 92, 229, 0.025)
+    );
     color: var(--ink-500);
     font-size: var(--text-xs);
     font-weight: 600;
@@ -548,10 +574,6 @@
     text-align: right;
   }
 
-  .ledger-columns > :nth-child(6) {
-    display: none;
-  }
-
   .ledger-rows {
     display: grid;
   }
@@ -563,8 +585,12 @@
     justify-content: space-between;
     gap: 12px;
     padding: 13px 18px;
-    border-top: 1px solid var(--border);
-    background: var(--canvas);
+    border-top: 1px solid rgba(46, 86, 255, 0.1);
+    background: linear-gradient(
+      90deg,
+      rgba(46, 86, 255, 0.028),
+      rgba(124, 92, 229, 0.016)
+    );
     color: var(--ink-500);
     font-size: 13px;
     font-variant-numeric: tabular-nums;
@@ -632,14 +658,15 @@
       grid-template-columns:
         minmax(200px, 1.8fr)
         minmax(106px, 0.78fr)
-        minmax(158px, 1.1fr)
-        minmax(78px, 0.55fr)
+        minmax(92px, 0.7fr)
+        minmax(92px, 0.7fr)
         minmax(156px, 1fr)
         124px;
     }
 
     .col-workspace-head,
-    .col-projects-head {
+    .col-projects-head,
+    .col-duration-head {
       display: none;
     }
   }
@@ -668,12 +695,16 @@
 
     .header-metric {
       padding: 12px 14px;
-      border-right: 0;
-      border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+      border-left: 0;
+      border-bottom: 1px solid rgba(46, 86, 255, 0.12);
     }
 
     .header-metric:last-child {
       border-bottom: 0;
+    }
+
+    .header-metric::before {
+      display: none;
     }
   }
 </style>

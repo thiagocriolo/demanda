@@ -766,6 +766,9 @@
   }
 
   function startViewportPan(event: PointerEvent): void {
+    const startedOnDayHeader =
+      event.currentTarget instanceof HTMLElement &&
+      event.currentTarget.classList.contains("grid-head-day");
     if (
       event.button !== 0 ||
       drag ||
@@ -773,7 +776,10 @@
       viewportPanSnapping ||
       scheduleSaving ||
       autoScheduling ||
-      event.target !== event.currentTarget ||
+      // The day headers contain the weekday and date elements. They are both
+      // valid handles for panning, whereas cards inside a day remain reserved
+      // for their own drag interaction.
+      (!startedOnDayHeader && event.target !== event.currentTarget) ||
       !viewport
     ) {
       return;
@@ -1089,7 +1095,9 @@
           <div
             class:today={day.isToday}
             class="grid-head grid-head-day"
+            role="presentation"
             style={`grid-column: ${day.index + 2}`}
+            onpointerdown={startViewportPan}
           >
             <strong>
               <span class="day-label full">{day.fullLabel}</span>
@@ -1290,7 +1298,10 @@
     height: 100%;
     min-width: 0;
     min-height: 0;
-    overflow: auto;
+    /* A navegação entre dias é feita pelo gesto de arrastar; não exibimos a
+       barra horizontal no rodapé. O deslocamento programático continua ativo. */
+    overflow-x: hidden;
+    overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-color: rgba(100, 116, 139, 0.55) transparent;
     scrollbar-width: thin;
@@ -1337,6 +1348,8 @@
     gap: 8px;
     border-left: 1px solid var(--border);
     text-align: left;
+    cursor: grab;
+    touch-action: none;
   }
   .grid-head-day strong {
     min-width: 0;

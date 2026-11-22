@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Avatares, Badges &amp; Estados — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+  <link rel="stylesheet" href="_preview.css" />
+</head>
+<body>
+  <header class="sr-preview-bar">
+    <div class="sr-preview-bar__left">
+      <a class="sr-btn sr-btn--sm" href="../index.html"><span data-sr-icon="arrow-left" data-size="14"></span><span>Voltar</span></a>
+      <span class="sr-preview-bar__title">Avatares, Badges, Avisos &amp; Estados Vazios</span>
+    </div>
+    <span class="sr-badge sr-badge--primary">core/components/sr-forms.css</span>
+  </header>
+
+  <main class="sr-preview-wrap">
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head"><h2>Avatares &amp; Pilha de Equipe</h2></div>
+      <div class="sr-row" style="gap:24px;">
+        <div class="sr-row">
+          <span class="sr-avatar sr-avatar--sm" style="--sr-avatar-bg:#2e56ff;">MC</span>
+          <span class="sr-avatar" style="--sr-avatar-bg:#5dac83;">LA</span>
+          <span class="sr-avatar sr-avatar--lg" style="--sr-avatar-bg:#7c5ce5;">CM</span>
+          <span class="sr-avatar sr-avatar--square" style="--sr-avatar-bg:#eab308;">SR</span>
+        </div>
+        <div class="sr-avatar-stack">
+          <span class="sr-avatar" style="--sr-avatar-bg:#2e56ff;">MC</span>
+          <span class="sr-avatar" style="--sr-avatar-bg:#5dac83;">LA</span>
+          <span class="sr-avatar" style="--sr-avatar-bg:#7c5ce5;">CM</span>
+          <span class="sr-avatar" style="--sr-avatar-bg:#0f172a;">+4</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head"><h2>Badges Semânticos</h2></div>
+      <div class="sr-row">
+        <span class="sr-badge">Neutro</span>
+        <span class="sr-badge sr-badge--primary">Primário</span>
+        <span class="sr-badge sr-badge--success"><span data-sr-icon="check" data-size="12"></span><span>Ativo</span></span>
+        <span class="sr-badge sr-badge--warning">Em revisão</span>
+        <span class="sr-badge sr-badge--danger">Atrasado</span>
+        <span class="sr-badge sr-badge--violet">Beta</span>
+      </div>
+    </section>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head"><h2>Avisos (Notices)</h2></div>
+      <div class="sr-stack sr-stack--sm">
+        <div class="sr-notice"><span data-sr-icon="info" data-size="18"></span><span>Aviso informativo padrão usando o tom de marca.</span></div>
+        <div class="sr-notice sr-notice--success"><span data-sr-icon="check" data-size="18"></span><span>Operação concluída com sucesso.</span></div>
+        <div class="sr-notice sr-notice--warning"><span data-sr-icon="alert-triangle" data-size="18"></span><span>Atenção: revise os prazos antes de publicar.</span></div>
+        <div class="sr-notice sr-notice--danger"><span data-sr-icon="alert-triangle" data-size="18"></span><span>Não foi possível concluir a ação solicitada.</span></div>
+      </div>
+    </section>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head"><h2>Estado Vazio (EmptyState / ComingSoon)</h2></div>
+      <div class="sr-empty-state">
+        <span data-sr-icon="inbox" data-size="28"></span>
+        <div>
+          <strong>Nenhum registro por aqui ainda</strong>
+          <p>Comece criando o primeiro item para popular esta visão com cards e métricas.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+</body>
+</html>

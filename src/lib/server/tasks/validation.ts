@@ -135,7 +135,7 @@ const updateSubtask = subtaskBase
 
 const contentShape = {
   name: collapsedText(140),
-  projectId: z.string().uuid(),
+  projectId: z.string().uuid().optional(),
   category: optionalNormalizedKey,
   priority: normalizedKey,
   briefing: z.string().trim().max(10_000),
@@ -174,11 +174,15 @@ function validateSubtasks(
 export const taskCreateSchema = z
   .object({
     ...contentShape,
+    institutionalContractId: z.string().uuid().optional(),
     status: lifecycleStatus,
     subtasks: z.array(createSubtask).min(1).max(10),
   })
   .strict()
   .superRefine((value, context) => {
+    if (Boolean(value.projectId) === Boolean(value.institutionalContractId)) {
+      context.addIssue({ code: "custom", path: ["projectId"], message: "Selecione um projeto." });
+    }
     if (value.boardOrder && Object.keys(value.boardOrder).length > 0) {
       context.addIssue({
         code: "custom",
@@ -197,7 +201,12 @@ export const taskUpdateSchema = z
     subtasks: z.array(updateSubtask).min(1).max(10),
   })
   .strict()
-  .superRefine((value, context) => validateSubtasks(value.subtasks, context))
+  .superRefine((value, context) => {
+    validateSubtasks(value.subtasks, context);
+    if (!value.projectId) {
+      context.addIssue({ code: "custom", path: ["projectId"], message: "Selecione um projeto." });
+    }
+  })
   .transform((value): TaskUpdateInput => value);
 
 const boardUpdateShape = {

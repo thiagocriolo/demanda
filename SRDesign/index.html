@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SRDesign — Showcase &amp; Aplicação Oca</title>
+  <link rel="stylesheet" href="core/sr-design.css" />
+  <style>
+    .sr-showcase-view[hidden] { display: none; }
+    .sr-theme-dots { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--sr-border); border-radius: var(--sr-radius-pill); background: var(--sr-surface-soft); }
+    .sr-theme-dot { width: 18px; height: 18px; padding: 0; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px var(--sr-border-strong); transition: transform 140ms ease; }
+    .sr-theme-dot:hover { transform: scale(1.16); }
+    .sr-catalog-card { display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 1px solid var(--sr-border); border-radius: var(--sr-radius-lg); background: var(--sr-surface); transition: border-color var(--sr-motion-fast), box-shadow var(--sr-motion-fast), transform var(--sr-motion-fast); }
+    .sr-catalog-card:hover { border-color: var(--sr-brand-600); box-shadow: var(--sr-shadow-md); transform: translateY(-1px); }
+    .sr-catalog-card__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .sr-catalog-card__icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 10px; color: var(--sr-brand-600); background: var(--sr-brand-50); }
+    .sr-catalog-card h3 { font-size: var(--sr-text-md); font-weight: 600; color: var(--sr-ink-950); }
+    .sr-catalog-card p { font-size: var(--sr-text-xs); color: var(--sr-ink-500); line-height: 1.45; }
+    .sr-catalog-card__foot { margin-top: auto; padding-top: 6px; display: flex; align-items: center; justify-content: space-between; font-size: var(--sr-text-xs); color: var(--sr-brand-600); font-weight: 600; }
+    @media (max-width: 760px) { .sr-theme-dots { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="sr-shell" data-sr-shell>
+    <!-- SIDEBAR -->
+    <aside class="sr-sidebar" aria-label="Navegação SRDesign">
+      <div class="sr-sidebar__top">
+        <button type="button" class="sr-sidebar__toggle" data-sr-sidebar-toggle aria-expanded="true" aria-label="Recolher menu">
+          <span class="sr-sidebar__toggle-icon"><span data-sr-icon="menu" data-size="21"></span></span>
+          <span class="sr-sidebar__toggle-label">Menu</span>
+        </button>
+      </div>
+
+      <div class="sr-sidebar__menus">
+        <!-- Botão de ação rápida (FloatingMenu integrado) -->
+        <div class="sr-sidebar__slot">
+          <div class="sr-menu sr-menu--fill sr-menu--sidebar" data-sr-dropdown>
+            <button type="button" class="sr-menu__trigger sr-menu__trigger--accent" data-sr-dropdown-trigger aria-haspopup="menu" aria-expanded="false">
+              <span class="sr-menu__icon"><span data-sr-icon="plus" data-size="18"></span></span>
+              <span class="sr-menu__label">Abrir Demo</span>
+              <span class="sr-menu__chevron"><span data-sr-icon="chevron-down" data-size="15"></span></span>
+            </button>
+            <div class="sr-menu__bubble" data-sr-dropdown-menu role="menu" hidden>
+              <button type="button" class="sr-menu__item" role="menuitem" onclick="SRDesign.openModal('showcase-modal-form')">
+                <span class="sr-menu__item-icon"><span data-sr-icon="file-text" data-size="16"></span></span>
+                <span class="sr-menu__item-copy"><strong>Modal de Formulário</strong><small>Testar overlay completo</small></span>
+              </button>
+              <button type="button" class="sr-menu__item" role="menuitem" onclick="SRDesign.openModal('showcase-modal-delete')">
+                <span class="sr-menu__item-icon"><span data-sr-icon="alert-triangle" data-size="16"></span></span>
+                <span class="sr-menu__item-copy"><strong>AlertDialog</strong><small>Confirmação de exclusão</small></span>
+              </button>
+              <a class="sr-menu__item" role="menuitem" href="components/auth.html">
+                <span class="sr-menu__item-icon"><span data-sr-icon="shield" data-size="16"></span></span>
+                <span class="sr-menu__item-copy"><strong>Tela de Login</strong><small>Abrir AuthShell isolado</small></span>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Navegação Principal da Aplicação Oca -->
+        <nav class="sr-sidebar__section" aria-label="Telas do Showcase">
+          <button type="button" class="sr-nav-item is-active" data-view-target="overview" data-view-title="Visão Geral">
+            <span class="sr-nav-item__icon"><span data-sr-icon="layout-dashboard" data-size="20"></span></span>
+            <span class="sr-nav-item__label">Visão Geral</span>
+          </button>
+          <button type="button" class="sr-nav-item" data-view-target="cards" data-view-title="Cards, Filtros & Gaveta">
+            <span class="sr-nav-item__icon"><span data-sr-icon="grid" data-size="20"></span></span>
+            <span class="sr-nav-item__label">Cards &amp; Filtros</span>
+          </button>
+          <button type="button" class="sr-nav-item" data-view-target="controls" data-view-title="Botões, Menus & Seletores">
+            <span class="sr-nav-item__icon"><span data-sr-icon="sliders" data-size="20"></span></span>
+            <span class="sr-nav-item__label">Controles &amp; Menus</span>
+          </button>
+          <button type="button" class="sr-nav-item" data-view-target="forms" data-view-title="Formulários & Configurações">
+            <span class="sr-nav-item__icon"><span data-sr-icon="settings" data-size="20"></span></span>
+            <span class="sr-nav-item__label">Formulários &amp; Config</span>
+          </button>
+          <button type="button" class="sr-nav-item" data-view-target="modals" data-view-title="Modais, Avisos & Auth">
+            <span class="sr-nav-item__icon"><span data-sr-icon="layers" data-size="20"></span></span>
+            <span class="sr-nav-item__label">Modais &amp; Templates</span>
+          </button>
+        </nav>
+
+        <!-- Área Secundária -->
+        <div class="sr-sidebar__secondary">
+          <nav class="sr-sidebar__section" aria-label="Páginas isoladas">
+            <a class="sr-nav-item sr-nav-item--secondary" href="components/tokens.html">
+              <span class="sr-nav-item__icon"><span data-sr-icon="palette" data-size="20"></span></span>
+              <span class="sr-nav-item__label">Tokens &amp; Fontes</span>
+            </a>
+            <a class="sr-nav-item sr-nav-item--secondary" href="components/shell.html">
+              <span class="sr-nav-item__icon"><span data-sr-icon="compass" data-size="20"></span></span>
+              <span class="sr-nav-item__label">Shell Isolado</span>
+            </a>
+            <a class="sr-nav-item sr-nav-item--secondary" href="components/auth.html">
+              <span class="sr-nav-item__icon"><span data-sr-icon="shield" data-size="20"></span></span>
+              <span class="sr-nav-item__label">Login (AuthShell)</span>
+            </a>
+          </nav>
+        </div>
+      </div>
+    </aside>
+
+    <!-- WORKSPACE -->
+    <div class="sr-workspace">
+      <header class="sr-topbar">
+        <div class="sr-topbar__left">
+          <strong class="sr-topbar__title" id="topbar-title">Visão Geral</strong>
+        </div>
+
+        <a class="sr-wordmark" href="#top" onclick="switchView('overview', 'Visão Geral'); return false;">
+          <span class="sr-wordmark__strong">SR</span><span class="sr-wordmark__dot">•</span><span class="sr-wordmark__light">Design</span>
+        </a>
+
+        <div class="sr-topbar__right">
+          <!-- Seletor rápido de cor primária para testar rebranding -->
+          <div class="sr-theme-dots" title="Testar cor primária do SRDesign">
+            <button type="button" class="sr-theme-dot" style="background:#2e56ff" aria-label="Azul padrão" onclick="SRDesign.setPrimaryColor('#2e56ff')"></button>
+            <button type="button" class="sr-theme-dot" style="background:#5dac83" aria-label="Verde" onclick="SRDesign.setPrimaryColor('#5dac83')"></button>
+            <button type="button" class="sr-theme-dot" style="background:#7c5ce5" aria-label="Violeta" onclick="SRDesign.setPrimaryColor('#7c5ce5')"></button>
+            <button type="button" class="sr-theme-dot" style="background:#e11d48" aria-label="Coral" onclick="SRDesign.setPrimaryColor('#e11d48')"></button>
+            <button type="button" class="sr-theme-dot" style="background:#1e293b" aria-label="Grafite" onclick="SRDesign.setPrimaryColor('#1e293b')"></button>
+          </div>
+
+          <div class="sr-notification" data-sr-dropdown>
+            <button type="button" class="sr-notification__trigger" data-sr-dropdown-trigger aria-expanded="false" aria-label="Notificações">
+              <span data-sr-icon="bell" data-size="19"></span>
+              <span class="sr-notification__badge">2</span>
+            </button>
+            <section class="sr-notification__panel" data-sr-dropdown-menu hidden>
+              <div class="sr-notification__header">
+                <div><strong>SRDesign v1.0</strong><small>Sistema pronto para reutilização</small></div>
+                <button type="button" class="sr-notification__close" data-sr-dropdown-close aria-label="Fechar"><span data-sr-icon="x" data-size="15"></span></button>
+              </div>
+              <div class="sr-notification__items">
+                <article class="sr-notification__item">
+                  <span class="sr-notification__item-icon"><span data-sr-icon="sparkles" data-size="17"></span></span>
+                  <div class="sr-notification__item-copy">
+                    <strong>100% Portável</strong>
+                    <p>Copie a pasta SRDesign para qualquer projeto e peça para a IA ler AI_GUIDE.md.</p>
+                  </div>
+                </article>
+                <article class="sr-notification__item">
+                  <span class="sr-notification__item-icon"><span data-sr-icon="palette" data-size="17"></span></span>
+                  <div class="sr-notification__item-copy">
+                    <strong>Teste de Rebranding</strong>
+                    <p>Clique nos círculos coloridos da barra superior para testar outra cor de marca.</p>
+                  </div>
+                </article>
+              </div>
+            </section>
+          </div>
+
+          <span class="sr-topbar__divider" aria-hidden="true"></span>
+
+          <div class="sr-account" data-sr-dropdown>
+            <button type="button" class="sr-account__trigger" data-sr-dropdown-trigger aria-expanded="false">
+              <span class="sr-account__identity">
+                <span class="sr-account__identity-inner">
+                  <strong>Sara Design</strong>
+                  <small>@srdesign</small>
+                </span>
+              </span>
+              <span class="sr-account__avatar">SR</span>
+            </button>
+            <div class="sr-account__menu" data-sr-dropdown-menu role="menu" hidden>
+              <a href="components/tokens.html" role="menuitem"><span data-sr-icon="palette" data-size="16"></span><span>Ver Tokens</span></a>
+              <a href="components/auth.html" role="menuitem"><span data-sr-icon="shield" data-size="16"></span><span>Tela de Login</span></a>
+              <button type="button" class="is-danger" role="menuitem" onclick="SRDesign.openModal('showcase-modal-delete')"><span data-sr-icon="log-out" data-size="16"></span><span>Testar Alerta</span></button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- CONTEÚDO PRINCIPAL -->
+      <main class="sr-main">
+        <div class="sr-page-width">
+
+          <!-- ==================== VIEW 1: VISÃO GERAL / CATÁLOGO ==================== -->
+          <section class="sr-showcase-view sr-stack" data-view="overview">
+            <header class="sr-page-header" style="margin-bottom:0;">
+              <div class="sr-page-header__main">
+                <span class="sr-page-header__icon"><span data-sr-icon="sparkles" data-size="28"></span></span>
+                <div class="sr-page-header__copy">
+                  <span class="sr-page-header__eyebrow">Design System &amp; UI Kit</span>
+                  <h1 class="sr-page-header__title">SRDesign — Aplicação Oca</h1>
+                  <p class="sr-page-header__subtitle">
+                    Explore todos os componentes funcionando juntos neste showcase ou abra cada página isolada abaixo. Zero servidor, zero banco, 100% HTML + CSS + JS.
+                  </p>
+                </div>
+              </div>
+              <div class="sr-page-header__actions">
+                <button type="button" class="sr-btn" onclick="switchView('cards', 'Cards, Filtros & Gaveta')">Explorar Componentes</button>
+                <button type="button" class="sr-btn sr-btn--primary" data-sr-modal-open="showcase-modal-form">
+                  <span data-sr-icon="plus" data-size="16"></span><span>Testar Modal</span>
+                </button>
+              </div>
+            </header>
+
+            <div class="sr-grid-4">
+              <div class="sr-stat-card">
+                <div class="sr-stat-card__top"><span>Páginas Isoladas</span><span class="sr-stat-card__icon"><span data-sr-icon="layers" data-size="17"></span></span></div>
+                <div class="sr-stat-card__value">14</div>
+                <div class="sr-stat-card__meta">Um HTML por família de componente</div>
+              </div>
+              <div class="sr-stat-card">
+                <div class="sr-stat-card__top"><span>Módulos CSS</span><span class="sr-stat-card__icon"><span data-sr-icon="palette" data-size="17"></span></span></div>
+                <div class="sr-stat-card__value">12</div>
+                <div class="sr-stat-card__meta">Importe só <code>core/sr-design.css</code></div>
+              </div>
+              <div class="sr-stat-card">
+                <div class="sr-stat-card__top"><span>Dependências</span><span class="sr-stat-card__icon"><span data-sr-icon="check" data-size="17"></span></span></div>
+                <div class="sr-stat-card__value">0</div>
+                <div class="sr-stat-card__meta">Fonte Pogonia + ícones SVG offline</div>
+              </div>
+              <div class="sr-stat-card">
+                <div class="sr-stat-card__top"><span>Pronto para IA</span><span class="sr-stat-card__icon"><span data-sr-icon="code" data-size="17"></span></span></div>
+                <div class="sr-stat-card__value">AI_GUIDE</div>
+                <div class="sr-stat-card__meta">Manual + contrato + <code>catalog.json</code></div>
+              </div>
+            </div>
+
+            <div class="sr-surface sr-stack">
+              <div class="sr-row sr-row--between">
+                <div>
+                  <h2 style="font-size:18px;font-weight:600;">Catálogo de Páginas Individuais</h2>
+                  <p class="sr-muted" style="font-size:13px;margin-top:2px;">Cada card abaixo abre o arquivo HTML dedicado daquele componente em <code>components/</code>.</p>
+                </div>
+                <span class="sr-badge sr-badge--primary">14 arquivos em components/</span>
+              </div>
+
+              <div class="sr-grid-3">
+                <a class="sr-catalog-card" href="components/tokens.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="palette" data-size="18"></span></span><span class="sr-badge">Fundações</span></div>
+                  <h3>Tokens &amp; Tipografia</h3>
+                  <p>Cores de sistema, superfícies, fonte Pogonia, raios, sombras e teste de cor primária.</p>
+                  <div class="sr-catalog-card__foot"><span>components/tokens.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/shell.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="layout-dashboard" data-size="18"></span></span><span class="sr-badge">Navegação</span></div>
+                  <h3>AppShell Completo</h3>
+                  <p>Sidebar recolhível, Topbar em 3 colunas, notificações, conta e MobileDock responsivo.</p>
+                  <div class="sr-catalog-card__foot"><span>components/shell.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/page-header.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="sparkles" data-size="18"></span></span><span class="sr-badge">Estrutura</span></div>
+                  <h3>PageHeader</h3>
+                  <p>Cabeçalho hero com ícone em gradiente, eyebrow, subtítulo, área central e ações.</p>
+                  <div class="sr-catalog-card__foot"><span>components/page-header.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/buttons.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="plus" data-size="18"></span></span><span class="sr-badge">Controles</span></div>
+                  <h3>Botões &amp; TopbarSave</h3>
+                  <p>Variantes semânticas, tamanhos, botões de ícone e botão salvar com ciclo de estados.</p>
+                  <div class="sr-catalog-card__foot"><span>components/buttons.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/tabs.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="folder" data-size="18"></span></span><span class="sr-badge">Navegação</span></div>
+                  <h3>TabSystem (Abas)</h3>
+                  <p>Abas estilo pasta física, modo sobreposto, badges e navegação por teclado.</p>
+                  <div class="sr-catalog-card__foot"><span>components/tabs.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/filter-bar.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="sliders" data-size="18"></span></span><span class="sr-badge">Filtros</span></div>
+                  <h3>FilterBar</h3>
+                  <p>Barra com pílulas de categoria, contadores, busca com limpar e filtragem automática.</p>
+                  <div class="sr-catalog-card__foot"><span>components/filter-bar.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/floating-menu.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="menu" data-size="18"></span></span><span class="sr-badge">Menus</span></div>
+                  <h3>FloatingMenu &amp; Popover</h3>
+                  <p>Menus flutuantes com seta direcional (start, end, side) e menu contextual de cards.</p>
+                  <div class="sr-catalog-card__foot"><span>components/floating-menu.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/global-selector.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="search" data-size="18"></span></span><span class="sr-badge">Seleção</span></div>
+                  <h3>GlobalSelector</h3>
+                  <p>Combobox com busca, seleção única/múltipla, chips removíveis, chooser e teclado.</p>
+                  <div class="sr-catalog-card__foot"><span>components/global-selector.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/cards.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="grid" data-size="18"></span></span><span class="sr-badge">Cards</span></div>
+                  <h3>EntityCards &amp; Escala 1–10</h3>
+                  <p>Cards adaptativos controlados pelo slider de densidade, KPI cards e NextStepCard.</p>
+                  <div class="sr-catalog-card__foot"><span>components/cards.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/card-drawer.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="panel-bottom" data-size="18"></span></span><span class="sr-badge">Overlay</span></div>
+                  <h3>CardDrawer (Gaveta)</h3>
+                  <p>Gaveta inferior retrátil com switch verde, contador e scroll horizontal com mouse.</p>
+                  <div class="sr-catalog-card__foot"><span>components/card-drawer.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/forms-settings.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="settings" data-size="18"></span></span><span class="sr-badge">Formulários</span></div>
+                  <h3>Forms &amp; SettingsCard</h3>
+                  <p>Painéis de configuração, grids de campos, switches, choice rows, ranges e zona de perigo.</p>
+                  <div class="sr-catalog-card__foot"><span>components/forms-settings.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/modals.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="layers" data-size="18"></span></span><span class="sr-badge">Modais</span></div>
+                  <h3>Modais &amp; AlertDialog</h3>
+                  <p>Modal estruturado em seções com inputs com ícone e diálogo de confirmação de exclusão.</p>
+                  <div class="sr-catalog-card__foot"><span>components/modals.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/avatars-badges.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="users" data-size="18"></span></span><span class="sr-badge">Feedback</span></div>
+                  <h3>Avatares, Badges &amp; Avisos</h3>
+                  <p>Avatares individuais/pilha, badges semânticos, notices e estados vazios.</p>
+                  <div class="sr-catalog-card__foot"><span>components/avatars-badges.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+
+                <a class="sr-catalog-card" href="components/auth.html">
+                  <div class="sr-catalog-card__head"><span class="sr-catalog-card__icon"><span data-sr-icon="shield" data-size="18"></span></span><span class="sr-badge">Template</span></div>
+                  <h3>AuthShell (Login)</h3>
+                  <p>Tela completa de autenticação com fundo azul radial, card elevado e toggle de senha.</p>
+                  <div class="sr-catalog-card__foot"><span>components/auth.html</span><span data-sr-icon="arrow-right" data-size="14"></span></div>
+                </a>
+              </div>
+            </div>
+          </section>
+
+          <!-- ==================== VIEW 2: CARDS, FILTROS & GAVETA ==================== -->
+          <section class="sr-showcase-view sr-stack" data-view="cards" hidden>
+            <header class="sr-page-header" style="margin-bottom:0;">
+              <div class="sr-page-header__main">
+                <span class="sr-page-header__icon"><span data-sr-icon="grid" data-size="28"></span></span>
+                <div class="sr-page-header__copy">
+                  <span class="sr-page-header__eyebrow">Composição de Tela</span>
+                  <h1 class="sr-page-header__title">Registros, Filtros &amp; Escala</h1>
+                  <p class="sr-page-header__subtitle">Demonstração combinando TabSystem + FilterBar + CardScaleControl + EntityCards + CardDrawer.</p>
+                </div>
+              </div>
+              <div class="sr-page-header__actions">
+                <label class="sr-card-scale" title="Escala dos cards">
+                  <span class="sr-badge sr-badge--primary">Escala <span id="home-scale-out">8</span></span>
+                  <input type="range" min="1" max="10" value="8" data-sr-card-scale="#home-cards" data-sr-scale-output="#home-scale-out" />
+                </label>
+              </div>
+            </header>
+
+            <div class="sr-tabs" data-sr-tabs>
+              <div class="sr-tab-list" role="tablist">
+                <button type="button" class="sr-tab is-active" role="tab" aria-selected="true" data-sr-tab="todos">
+                  <span data-sr-icon="layers" data-size="16"></span><span>Todos</span><span class="sr-tab__badge">3</span>
+                </button>
+                <button type="button" class="sr-tab" role="tab" aria-selected="false" data-sr-tab="gaveta">
+                  <span data-sr-icon="panel-bottom" data-size="16"></span><span>Gaveta (CardDrawer)</span>
+                </button>
+              </div>
+
+              <div class="sr-tab-panel sr-stack" role="tabpanel" data-sr-tab-panel="todos">
+                <div class="sr-filter-bar" data-sr-filter-bar data-sr-filter-target="#home-cards .sr-card" data-sr-filter-empty="#home-cards-empty">
+                  <div class="sr-filter-bar__title"><span data-sr-icon="sliders" data-size="16"></span><span>Filtrar</span></div>
+                  <div class="sr-filter-bar__options">
+                    <button type="button" class="sr-filter-bar__option is-active" aria-pressed="true" data-sr-filter-option="all">Todos <span class="sr-filter-bar__count">3</span></button>
+                    <button type="button" class="sr-filter-bar__option" aria-pressed="false" data-sr-filter-option="cliente">Clientes <span class="sr-filter-bar__count">1</span></button>
+                    <button type="button" class="sr-filter-bar__option" aria-pressed="false" data-sr-filter-option="projeto">Projetos <span class="sr-filter-bar__count">1</span></button>
+                    <button type="button" class="sr-filter-bar__option" aria-pressed="false" data-sr-filter-option="tarefa">Tarefas <span class="sr-filter-bar__count">1</span></button>
+                  </div>
+                  <div class="sr-filter-bar__controls">
+                    <label class="sr-filter-bar__search">
+                      <span data-sr-icon="search" data-size="16"></span>
+                      <input type="text" placeholder="Buscar card..." data-sr-filter-input />
+                      <button type="button" class="sr-filter-bar__clear" data-sr-filter-clear hidden aria-label="Limpar"><span data-sr-icon="x" data-size="14"></span></button>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="sr-card-collection" id="home-cards" data-sr-card-level="8">
+                  <div class="sr-card-grid">
+                    <button type="button" class="sr-card-create" data-sr-modal-open="showcase-modal-form" aria-label="Criar novo registro">
+                      <span class="sr-card-create__icon"><span data-sr-icon="plus" data-size="22"></span></span>
+                    </button>
+
+                    <article class="sr-card" data-sr-category="cliente">
+                      <div class="sr-card__head">
+                        <h3 class="sr-card__title">Marina Costa</h3>
+                        <span class="sr-card__status" style="--sr-status-color:#f59e0b;"><span class="sr-card__status-label">Cliente</span></span>
+                      </div>
+                      <div class="sr-card__body">
+                        <div class="sr-card__meta sr-card__info sr-card__info--primary"><span class="sr-card__meta-icon"><span data-sr-icon="phone" data-size="14"></span></span><span class="sr-card__meta-text">(85) 99982-4106</span></div>
+                        <div class="sr-card__meta sr-card__info sr-card__info--secondary"><span class="sr-card__meta-icon"><span data-sr-icon="mail" data-size="14"></span></span><span class="sr-card__meta-text">marina@aurora.com</span></div>
+                        <div class="sr-card__meta sr-card__info sr-card__info--relation"><span class="sr-card__meta-icon"><span data-sr-icon="building" data-size="14"></span></span><span class="sr-card__meta-text">Estúdio Aurora</span></div>
+                      </div>
+                      <footer class="sr-card__footer">
+                        <span class="sr-card__counter"><span data-sr-icon="building" data-size="13"></span><strong>2</strong></span>
+                        <span class="sr-card__counter"><span data-sr-icon="folder" data-size="13"></span><strong>4</strong></span>
+                        <span class="sr-card__counter"><span data-sr-icon="list-todo" data-size="13"></span><strong>12</strong></span>
+                      </footer>
+                    </article>
+
+                    <article class="sr-card" data-sr-category="projeto">
+                      <div class="sr-card__head">
+                        <h3 class="sr-card__title">Nova Identidade Aurora</h3>
+                        <span class="sr-card__status" style="--sr-status-color:#5dac83;"><span class="sr-card__status-label">Execução</span></span>
+                      </div>
+                      <div class="sr-card__body">
+                        <div class="sr-card__progress sr-card__info sr-card__info--primary"><div class="sr-card__progress-track"><span class="sr-card__progress-fill" style="width:72%;"></span></div><span class="sr-card__progress-value">72%</span></div>
+                        <div class="sr-card__meta sr-card__info sr-card__info--secondary"><span class="sr-card__meta-icon"><span data-sr-icon="building" data-size="14"></span></span><span class="sr-card__meta-text">Estúdio Aurora</span></div>
+                        <div class="sr-card__meta sr-card__info sr-card__info--relation"><span class="sr-card__meta-icon"><span data-sr-icon="tag" data-size="14"></span></span><span class="sr-card__meta-text">Identidade visual</span></div>
+                      </div>
+                      <footer class="sr-card__footer sr-card__footer--two">
+                        <span class="sr-card__counter"><span data-sr-icon="list-todo" data-size="13"></span><strong>8/12</strong></span>
+                        <span class="sr-card__counter"><span data-sr-icon="calendar" data-size="13"></span><strong>18.07</strong></span>
+                      </footer>
+                    </article>
+
+                    <article class="sr-card" data-sr-category="tarefa">
+                      <div class="sr-card__head">
+                        <h3 class="sr-card__title">Manual de Marca v2</h3>
+                        <span class="sr-card__status" style="--sr-status-color:#2e56ff;"><span class="sr-card__status-label">Fazendo</span></span>
+                      </div>
+                      <div class="sr-card__body">
+                        <div class="sr-card__meta sr-card__info sr-card__info--primary"><span class="sr-card__meta-icon"><span data-sr-icon="building" data-size="14"></span></span><span class="sr-card__meta-text">Estúdio Aurora</span></div>
+                        <div class="sr-card__meta sr-card__info sr-card__info--secondary"><span class="sr-card__meta-icon"><span data-sr-icon="folder" data-size="14"></span></span><span class="sr-card__meta-text">Nova Identidade Aurora</span></div>
+                      </div>
+                      <footer class="sr-card__footer sr-card__footer--task">
+                        <div class="sr-row" style="gap:6px;"><span class="sr-avatar sr-avatar--sm" style="--sr-avatar-bg:#5dac83;">MC</span><span style="font-size:12px;font-weight:600;">Marina</span></div>
+                        <span class="sr-card__counter"><span data-sr-icon="list-todo" data-size="13"></span><strong>3/5</strong></span>
+                      </footer>
+                    </article>
+                  </div>
+                </div>
+
+                <div class="sr-empty-state" id="home-cards-empty" hidden>
+                  <span data-sr-icon="search" data-size="24"></span>
+                  <div><strong>Nenhum card encontrado</strong><p>Limpe a busca ou troque o filtro selecionado.</p></div>
+                </div>
+              </div>
+
+              <div class="sr-tab-panel" role="tabpanel" data-sr-tab-panel="gaveta" hidden>
+                <div class="sr-stack">
+                  <p class="sr-muted">A gaveta retrátil (<code>CardDrawer</code>) permite manter filas horizontais de itens sem ocupar a tela inteira.</p>
+                  <section class="sr-drawer is-open" data-sr-drawer>
+                    <header class="sr-drawer__header">
+                      <div class="sr-drawer__controls">
+                        <span class="sr-drawer__count">3</span>
+                        <button type="button" class="sr-drawer__switch" role="switch" aria-checked="true" data-sr-drawer-toggle aria-label="Alternar gaveta"><span></span></button>
+                      </div>
+                      <span class="sr-drawer__icon"><span data-sr-icon="inbox" data-size="16"></span></span>
+                      <div class="sr-drawer__copy"><strong>Backlog Rápido</strong><span>Use o switch para expandir ou recolher</span></div>
+                    </header>
+                    <div class="sr-drawer__list sr-card-collection" data-sr-card-level="4" data-sr-drawer-list>
+                      <div class="sr-drawer__card"><article class="sr-card"><div class="sr-card__head"><h3 class="sr-card__title">Definir tokens</h3><span class="sr-card__status" style="--sr-status-color:#2e56ff;"><span class="sr-card__status-label">Design</span></span></div><div class="sr-card__body"><div class="sr-card__meta sr-card__info sr-card__info--primary"><span class="sr-card__meta-text">SRDesign</span></div></div></article></div>
+                      <div class="sr-drawer__card"><article class="sr-card"><div class="sr-card__head"><h3 class="sr-card__title">Validar mobile</h3><span class="sr-card__status" style="--sr-status-color:#5dac83;"><span class="sr-card__status-label">QA</span></span></div><div class="sr-card__body"><div class="sr-card__meta sr-card__info sr-card__info--primary"><span class="sr-card__meta-text">MobileDock</span></div></div></article></div>
+                      <div class="sr-drawer__card"><article class="sr-card"><div class="sr-card__head"><h3 class="sr-card__title">Revisar AI_GUIDE</h3><span class="sr-card__status" style="--sr-status-color:#7c5ce5;"><span class="sr-card__status-label">Docs</span></span></div><div class="sr-card__body"><div class="sr-card__meta sr-card__info sr-card__info--primary"><span class="sr-card__meta-text">Documentação</span></div></div></article></div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ==================== VIEW 3: CONTROLES, MENUS & SELETORES ==================== -->
+          <section class="sr-showcase-view sr-stack" data-view="controls" hidden>
+            <header class="sr-page-header" style="margin-bottom:0;">
+              <div class="sr-page-header__main">
+                <span class="sr-page-header__icon"><span data-sr-icon="sliders" data-size="28"></span></span>
+                <div class="sr-page-header__copy">
+                  <span class="sr-page-header__eyebrow">Interação</span>
+                  <h1 class="sr-page-header__title">Botões, Menus &amp; Seletores</h1>
+                </div>
+              </div>
+              <div class="sr-page-header__actions">
+                <a class="sr-btn" href="components/global-selector.html">Página do GlobalSelector</a>
+              </div>
+            </header>
+
+            <div class="sr-surface sr-stack">
+              <h3>Botões &amp; Badges</h3>
+              <div class="sr-row">
+                <button type="button" class="sr-btn sr-btn--primary"><span data-sr-icon="plus" data-size="16"></span><span>Primário</span></button>
+                <button type="button" class="sr-btn sr-btn--accent">Accent</button>
+                <button type="button" class="sr-btn sr-btn--soft">Soft</button>
+                <button type="button" class="sr-btn">Secundário</button>
+                <button type="button" class="sr-btn sr-btn--danger">Perigo</button>
+                <button type="button" class="sr-btn sr-btn--ghost">Ghost</button>
+              </div>
+              <div class="sr-row">
+                <span class="sr-badge sr-badge--primary">Primário</span>
+                <span class="sr-badge sr-badge--success">Sucesso</span>
+                <span class="sr-badge sr-badge--warning">Atenção</span>
+                <span class="sr-badge sr-badge--danger">Erro</span>
+                <span class="sr-badge sr-badge--violet">Destaque</span>
+              </div>
+            </div>
+
+            <div class="sr-surface sr-stack">
+              <h3>GlobalSelector (Seleção Múltipla ao Vivo)</h3>
+              <div
+                class="sr-selector"
+                data-sr-selector
+                data-mode="multiple"
+                data-selected="m1"
+                data-items='[{"id":"m1","label":"Marina Costa","description":"Product Designer","color":"#2e56ff"},{"id":"m2","label":"Lucas Andrade","description":"Engenheiro Frontend","color":"#5dac83"},{"id":"m3","label":"Carla Menezes","description":"Gestora de Projetos","color":"#7c5ce5"}]'
+              >
+                <div class="sr-selector__heading"><label for="home-multi-sel">Equipe do Projeto</label><span class="sr-selector__counter"></span></div>
+                <ul class="sr-selector__selected-list"></ul>
+                <div class="sr-selector__picker">
+                  <div class="sr-selector__control">
+                    <span class="sr-selector__control-icon"><span data-sr-icon="search" data-size="18"></span></span>
+                    <input id="home-multi-sel" class="sr-selector__input" type="text" role="combobox" aria-expanded="false" autocomplete="off" placeholder="Buscar pessoa para adicionar..." />
+                    <button type="button" class="sr-selector__clear" hidden aria-label="Limpar"><span data-sr-icon="x" data-size="16"></span></button>
+                  </div>
+                  <div class="sr-selector__dropdown" hidden><ul class="sr-selector__list" role="listbox"></ul></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ==================== VIEW 4: FORMULÁRIOS & CONFIGURAÇÕES ==================== -->
+          <section class="sr-showcase-view sr-stack" data-view="forms" hidden>
+            <header class="sr-page-header" style="margin-bottom:0;">
+              <div class="sr-page-header__main">
+                <span class="sr-page-header__icon"><span data-sr-icon="settings" data-size="28"></span></span>
+                <div class="sr-page-header__copy">
+                  <span class="sr-page-header__eyebrow">Configurações</span>
+                  <h1 class="sr-page-header__title">Formulários &amp; Preferências</h1>
+                </div>
+              </div>
+              <div class="sr-page-header__actions">
+                <a class="sr-btn" href="components/forms-settings.html">Abrir página isolada</a>
+              </div>
+            </header>
+
+            <div class="sr-tabs" data-sr-tabs>
+              <div class="sr-tab-list sr-tab-list--overlapping" role="tablist">
+                <button type="button" class="sr-tab is-active" role="tab" aria-selected="true" data-sr-tab="cfg-geral">Geral</button>
+                <button type="button" class="sr-tab" role="tab" aria-selected="false" data-sr-tab="cfg-prefs">Preferências</button>
+              </div>
+              <div class="sr-tab-panel sr-stack" role="tabpanel" data-sr-tab-panel="cfg-geral">
+                <section class="sr-settings-card">
+                  <header class="sr-settings-card__header"><h2>Identidade do Novo Projeto</h2><p>Campos prontos com foco padronizado.</p></header>
+                  <div class="sr-settings-card__body">
+                    <div class="sr-field-grid">
+                      <label class="sr-field"><span>Nome do sistema</span><input class="sr-input" type="text" value="SRDesign App" /></label>
+                      <label class="sr-field"><span>Idioma</span><select class="sr-select"><option>Português (BR)</option><option>English</option></select></label>
+                    </div>
+                    <div class="sr-notice sr-notice--success"><span data-sr-icon="check" data-size="17"></span><span>Estrutura pronta para reaproveitamento em qualquer backend.</span></div>
+                  </div>
+                </section>
+              </div>
+              <div class="sr-tab-panel sr-stack" role="tabpanel" data-sr-tab-panel="cfg-prefs" hidden>
+                <section class="sr-settings-card">
+                  <header class="sr-settings-card__header"><h2>Controles de Preferência</h2></header>
+                  <div class="sr-settings-card__body" style="gap:0;">
+                    <div class="sr-toggle-row">
+                      <div class="sr-toggle-row__copy"><strong>Notificações em tempo real</strong><small>Exibe contador na barra superior.</small></div>
+                      <label class="sr-switch"><input type="checkbox" checked /><span class="sr-switch__track"></span></label>
+                    </div>
+                    <div class="sr-range-row">
+                      <div class="sr-range-row__copy"><strong>Itens por página</strong><small>Ajuste o limite padrão de listagens.</small></div>
+                      <div class="sr-range-control"><input type="range" min="10" max="50" step="5" value="25" data-sr-range="home-range-out" /><output id="home-range-out">25</output></div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </section>
+
+          <!-- ==================== VIEW 5: MODAIS & TEMPLATES ==================== -->
+          <section class="sr-showcase-view sr-stack" data-view="modals" hidden>
+            <header class="sr-page-header" style="margin-bottom:0;">
+              <div class="sr-page-header__main">
+                <span class="sr-page-header__icon"><span data-sr-icon="layers" data-size="28"></span></span>
+                <div class="sr-page-header__copy">
+                  <span class="sr-page-header__eyebrow">Overlays &amp; Telas</span>
+                  <h1 class="sr-page-header__title">Modais &amp; Templates</h1>
+                </div>
+              </div>
+            </header>
+
+            <div class="sr-grid-2">
+              <div class="sr-surface sr-stack">
+                <h3>Modais e Diálogos</h3>
+                <p class="sr-muted" style="font-size:13px;">Clique para testar os overlays interativos diretamente nesta tela.</p>
+                <div class="sr-row">
+                  <button type="button" class="sr-btn sr-btn--primary" data-sr-modal-open="showcase-modal-form">Abrir Modal de Formulário</button>
+                  <button type="button" class="sr-btn sr-btn--danger" data-sr-modal-open="showcase-modal-delete">Abrir AlertDialog</button>
+                </div>
+              </div>
+
+              <div class="sr-surface sr-stack">
+                <h3>Templates de Tela Inteira</h3>
+                <p class="sr-muted" style="font-size:13px;">Telas completas prontas para adaptar à sua nova aplicação.</p>
+                <div class="sr-row">
+                  <a class="sr-btn sr-btn--soft" href="components/auth.html"><span data-sr-icon="shield" data-size="16"></span><span>Abrir Tela de Login</span></a>
+                  <a class="sr-btn" href="components/shell.html"><span data-sr-icon="layout-dashboard" data-size="16"></span><span>Abrir Shell Isolado</span></a>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </main>
+    </div>
+
+    <!-- MOBILE DOCK -->
+    <nav class="sr-mobile-dock" aria-label="Navegação móvel">
+      <button type="button" class="sr-mobile-dock__item is-active" data-view-target="overview" data-view-title="Visão Geral">
+        <span data-sr-icon="layout-dashboard" data-size="22"></span><span>Início</span>
+      </button>
+      <button type="button" class="sr-mobile-dock__item" data-view-target="cards" data-view-title="Cards & Filtros">
+        <span data-sr-icon="grid" data-size="22"></span><span>Cards</span>
+      </button>
+      <button type="button" class="sr-mobile-dock__item" data-view-target="controls" data-view-title="Controles">
+        <span data-sr-icon="sliders" data-size="22"></span><span>Controles</span>
+      </button>
+      <button type="button" class="sr-mobile-dock__item" data-view-target="forms" data-view-title="Formulários">
+        <span data-sr-icon="settings" data-size="22"></span><span>Forms</span>
+      </button>
+      <button type="button" class="sr-mobile-dock__item" data-view-target="modals" data-view-title="Modais">
+        <span data-sr-icon="layers" data-size="22"></span><span>Modais</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- MODAIS DO SHOWCASE -->
+  <div class="sr-modal-backdrop" id="showcase-modal-form" role="presentation" hidden>
+    <div class="sr-modal" role="dialog" aria-modal="true" aria-labelledby="sc-modal-title">
+      <header class="sr-modal__header">
+        <h2 id="sc-modal-title">Novo Registro — SRDesign</h2>
+        <button type="button" class="sr-modal__close" data-sr-modal-close aria-label="Fechar"><span data-sr-icon="x" data-size="19"></span></button>
+      </header>
+      <div class="sr-modal__body">
+        <section class="sr-modal__section">
+          <div class="sr-modal__section-head">
+            <span class="sr-modal__section-title"><span data-sr-icon="folder" data-size="18"></span><span>Informações principais</span></span>
+            <span class="sr-badge sr-badge--primary">Exemplo</span>
+          </div>
+          <div class="sr-field-grid">
+            <label class="sr-modal__control"><span class="sr-modal__control-icon"><span data-sr-icon="file-text" data-size="17"></span></span><input type="text" placeholder="Título do item" /></label>
+            <label class="sr-modal__control"><span class="sr-modal__control-icon"><span data-sr-icon="tag" data-size="17"></span></span><select><option>Projeto</option><option>Cliente</option><option>Tarefa</option></select></label>
+          </div>
+          <label class="sr-modal__control sr-modal__control--textarea"><span class="sr-modal__control-icon"><span data-sr-icon="pencil" data-size="17"></span></span><textarea placeholder="Detalhes adicionais..."></textarea></label>
+        </section>
+        <div class="sr-modal__actions">
+          <div class="sr-modal__action-group">
+            <button type="button" class="sr-btn" data-sr-modal-close>Cancelar</button>
+            <button type="button" class="sr-btn sr-btn--success" data-sr-modal-close><span data-sr-icon="check" data-size="16"></span><span>Salvar</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sr-modal-backdrop" id="showcase-modal-delete" role="presentation" hidden>
+    <div class="sr-alert-dialog" role="alertdialog" aria-modal="true" aria-labelledby="sc-del-title">
+      <button type="button" class="sr-alert-dialog__close" data-sr-modal-close aria-label="Fechar"><span data-sr-icon="x" data-size="18"></span></button>
+      <span class="sr-alert-dialog__icon"><span data-sr-icon="alert-triangle" data-size="25"></span></span>
+      <h2 id="sc-del-title">Excluir item de exemplo?</h2>
+      <p>Esta janela demonstra o padrão <strong>AlertDialog</strong> do SRDesign com ações de cancelar, arquivar e excluir.</p>
+      <div class="sr-alert-dialog__actions">
+        <button type="button" class="sr-btn" data-sr-modal-close>Cancelar</button>
+        <button type="button" class="sr-btn sr-btn--warning" data-sr-modal-close><span data-sr-icon="archive" data-size="15"></span><span>Arquivar</span></button>
+        <button type="button" class="sr-btn sr-btn--danger" data-sr-modal-close><span data-sr-icon="trash" data-size="15"></span><span>Excluir</span></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="core/sr-icons.js"></script>
+  <script src="core/sr-core.js"></script>
+  <script>
+    function switchView(viewId, title) {
+      document.querySelectorAll("[data-view]").forEach(function (el) {
+        el.hidden = el.getAttribute("data-view") !== viewId;
+      });
+      document.querySelectorAll("[data-view-target]").forEach(function (btn) {
+        var active = btn.getAttribute("data-view-target") === viewId;
+        btn.classList.toggle("is-active", active);
+        if (active) btn.setAttribute("aria-current", "page");
+        else btn.removeAttribute("aria-current");
+      });
+      var titleEl = document.getElementById("topbar-title");
+      if (titleEl && title) titleEl.textContent = title;
+      var main = document.querySelector(".sr-main");
+      if (main) main.scrollTop = 0;
+    }
+
+    document.querySelectorAll("[data-view-target]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        switchView(
+          btn.getAttribute("data-view-target"),
+          btn.getAttribute("data-view-title")
+        );
+      });
+    });
+  </script>
+</body>
+</html>

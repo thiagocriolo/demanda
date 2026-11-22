@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TabSystem — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+  <link rel="stylesheet" href="_preview.css" />
+</head>
+<body>
+  <header class="sr-preview-bar">
+    <div class="sr-preview-bar__left">
+      <a class="sr-btn sr-btn--sm" href="../index.html"><span data-sr-icon="arrow-left" data-size="14"></span><span>Voltar</span></a>
+      <span class="sr-preview-bar__title">TabSystem (Abas estilo Pasta)</span>
+    </div>
+    <span class="sr-badge sr-badge--primary">core/components/sr-tabs.css</span>
+  </header>
+
+  <main class="sr-preview-wrap">
+    <section class="sr-preview-block sr-preview-block--canvas">
+      <div class="sr-preview-block__head">
+        <h2>Abas Padrão com Badges</h2>
+        <p>Suporte completo a clique e setas esquerda/direita do teclado.</p>
+      </div>
+
+      <div class="sr-tabs" data-sr-tabs>
+        <div class="sr-tab-list" role="tablist" aria-label="Categorias">
+          <button type="button" class="sr-tab is-active" role="tab" aria-selected="true" data-sr-tab="pessoas">
+            <span data-sr-icon="users" data-size="16"></span>
+            <span>Pessoas</span>
+            <span class="sr-tab__badge">24</span>
+          </button>
+          <button type="button" class="sr-tab" role="tab" aria-selected="false" data-sr-tab="projetos">
+            <span data-sr-icon="folder" data-size="16"></span>
+            <span>Projetos</span>
+            <span class="sr-tab__badge">8</span>
+          </button>
+          <button type="button" class="sr-tab" role="tab" aria-selected="false" data-sr-tab="tarefas">
+            <span data-sr-icon="list-todo" data-size="16"></span>
+            <span>Tarefas</span>
+            <span class="sr-tab__badge">41</span>
+          </button>
+        </div>
+
+        <div class="sr-tab-panel" role="tabpanel" data-sr-tab-panel="pessoas">
+          <div class="sr-stack">
+            <h3>Painel de Pessoas</h3>
+            <p class="sr-muted">O painel branco se conecta perfeitamente à aba ativa, criando a metáfora de pasta física característica do SRDesign.</p>
+            <div class="sr-notice">Use <code>data-sr-tabs</code>, <code>data-sr-tab="id"</code> e <code>data-sr-tab-panel="id"</code> para ativação automática sem escrever JS.</div>
+          </div>
+        </div>
+        <div class="sr-tab-panel" role="tabpanel" data-sr-tab-panel="projetos" hidden>
+          <div class="sr-stack">
+            <h3>Painel de Projetos</h3>
+            <p class="sr-muted">Conteúdo isolado para a aba de Projetos.</p>
+          </div>
+        </div>
+        <div class="sr-tab-panel" role="tabpanel" data-sr-tab-panel="tarefas" hidden>
+          <div class="sr-stack">
+            <h3>Painel de Tarefas</h3>
+            <p class="sr-muted">Conteúdo isolado para a aba de Tarefas.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sr-preview-block sr-preview-block--canvas">
+      <div class="sr-preview-block__head">
+        <h2>Abas Sobrepostas (<code>.sr-tab-list--overlapping</code>)</h2>
+        <p>As abas inativas se sobrepõem levemente e a aba ativa abre espaço automático.</p>
+      </div>
+
+      <div class="sr-tabs" data-sr-tabs>
+        <div class="sr-tab-list sr-tab-list--overlapping" role="tablist">
+          <button type="button" class="sr-tab is-active" role="tab" aria-selected="true" data-sr-tab="geral">Geral</button>
+          <button type="button" class="sr-tab" role="tab" aria-selected="false" data-sr-tab="aparencia">Aparência</button>
+          <button type="button" class="sr-tab" role="tab" aria-selected="false" data-sr-tab="permissoes">Permissões</button>
+          <button type="button" class="sr-tab" role="tab" aria-selected="false" data-sr-tab="integracoes">Integrações</button>
+        </div>
+        <div class="sr-tab-panel" role="tabpanel" data-sr-tab-panel="geral" style="min-height:140px;"><strong>Configurações Gerais</strong><p class="sr-muted" style="margin-top:6px;">Preferências básicas da conta e do workspace.</p></div>
+        <div class="sr-tab-panel" role="tabpanel" data-sr-tab-panel="aparencia" style="min-height:140px;" hidden><strong>Aparência</strong><p class="sr-muted" style="margin-top:6px;">Densidade de cards, comportamento da sidebar e tema.</p></div>
+        <div class="sr-tab-panel" role="tabpanel" data-sr-tab-panel="permissoes" style="min-height:140px;" hidden><strong>Permissões</strong><p class="sr-muted" style="margin-top:6px;">Controle de papéis e membros.</p></div>
+        <div class="sr-tab-panel" role="tabpanel" data-sr-tab-panel="integracoes" style="min-height:140px;" hidden><strong>Integrações</strong><p class="sr-muted" style="margin-top:6px;">Webhooks e conexões externas.</p></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+</body>
+</html>

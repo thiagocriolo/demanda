@@ -14,6 +14,7 @@
     Trash2,
   } from "@lucide/svelte";
   import FinanceEntryModal from "$lib/finance/FinanceEntryModal.svelte";
+  import FinanceMonthPicker from "$lib/finance/FinanceMonthPicker.svelte";
   import {
     FinanceApiError,
     changeFinanceEntryState,
@@ -30,25 +31,30 @@
   import TabSystem from "$lib/ui/TabSystem.svelte";
   import PageHeader from "$lib/ui/PageHeader.svelte";
   import type { TabItem } from "$lib/ui/Tabs.svelte";
-  import {
-    GLOBAL_WORKSPACE_ID,
-    loadActiveWorkspaceId,
-    observeWorkspaces,
-    PERSONAL_WORKSPACE_ID,
-  } from "$lib/workspaces/workspace-storage";
+  import { observeWorkspaces } from "$lib/workspaces/workspace-storage";
   import {
     formatFinanceDate,
     formatMoney,
     formatMonth,
-    normalizeSearch,
+    shiftMonth,
     type FinanceEntry,
     type FinanceEntryDraft,
-    type FinanceEntryMode,
     type FinanceEntryType,
   } from "$lib/finance/finance";
+  import {
+    MONTH_ENTRIES_PAGE_SIZE,
+    UPCOMING_ENTRIES_LIMIT,
+    compareFinanceEntriesByDate,
+    matchesFinanceFilters,
+    nextVisibleFinanceEntriesCount,
+    paginateFinanceEntries,
+    resolveUpcomingStartDate,
+    selectUpcomingFinanceEntries,
+    type FinanceModeFilter,
+  } from "$lib/finance/listings";
 
   type FinanceTab = "painel" | "receitas" | "despesas";
-  type FinanceFilter = "todas" | FinanceEntryMode;
+  type FinanceFilter = FinanceModeFilter;
   type DashboardMetric = {
     label: string;
     value: string;
@@ -62,15 +68,14 @@
     { id: "receitas", label: "Receitas" },
     { id: "despesas", label: "Despesas" },
   ];
-  function shiftMonth(value: string, offset: number): string {
-    const [year, month] = value.split("-").map(Number);
-    const date = new Date(Date.UTC(year, month - 1 + offset, 1));
-    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
-  }
-
   function currentMonth(): string {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function currentDate(): string {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   }
 
   function isFinanceTab(value: string): value is FinanceTab {
@@ -94,11 +99,11 @@
   let initialized = $state(false);
   let search = $state("");
   let modeFilter = $state<FinanceFilter>("todas");
+  let visibleMonthCount = $state(MONTH_ENTRIES_PAGE_SIZE);
   let modalType = $state<FinanceEntryType | null>(null);
   let editingEntry = $state<FinanceEntry | null>(null);
   let message = $state("");
   let financeLoading = $state(false);
-  let activeWorkspaceId = $state(PERSONAL_WORKSPACE_ID);
 
   const editingInstallmentEntries = $derived.by(() => {
     if (!editingEntry?.installmentGroupId) return [];
@@ -120,7 +125,6 @@
       /^\d{4}-\d{2}$/.test(requestedMonth)
         ? requestedMonth
         : thisMonth;
-    activeWorkspaceId = loadActiveWorkspaceId();
     selectedMonth = initialMonth;
     planningStartMonth = initialMonth;
     planningMonths = configuredPlanningMonths(settings.financePlanningMonths);
@@ -137,7 +141,6 @@
     void loadSettingsFromServer()
       .then(applyFinanceSettings)
       .catch(() => undefined);
-    activeWorkspaceId = loadActiveWorkspaceId();
     void reloadFinance();
     const requestedTab = page.url.searchParams.get("tab");
     if (requestedTab && isFinanceTab(requestedTab)) {
@@ -145,7 +148,6 @@
     }
     initialized = true;
     return observeWorkspaces(() => {
-      activeWorkspaceId = loadActiveWorkspaceId();
       message = "";
       editingEntry = null;
       modalType = null;
@@ -176,20 +178,30 @@
     replaceState(url, page.state);
   });
 
-  const workspaceEntries = $derived(
-    entries.filter(
-      (entry) =>
-        activeWorkspaceId === GLOBAL_WORKSPACE_ID ||
-        entry.workspaceId === activeWorkspaceId,
-    ),
-  );
+  $effect(() => {
+    void selectedMonth;
+    void activeTab;
+    void search;
+    void modeFilter;
+    visibleMonthCount = MONTH_ENTRIES_PAGE_SIZE;
+  });
+
+  const workspaceEntries = $derived(entries);
 
   const monthEntries = $derived(
     workspaceEntries
       .filter((entry) => entry.date.startsWith(selectedMonth))
-      .toSorted((a, b) => a.date.localeCompare(b.date)),
+      .toSorted(compareFinanceEntriesByDate),
   );
-  const visibleMonthEntries = $derived(monthEntries.filter(isEntryVisible));
+  const upcomingStartDate = $derived(
+    resolveUpcomingStartDate(selectedMonth, currentDate()),
+  );
+  const upcomingDashboardEntries = $derived(
+    selectUpcomingFinanceEntries(workspaceEntries, {
+      fromDate: upcomingStartDate,
+      limit: UPCOMING_ENTRIES_LIMIT,
+    }),
+  );
   const receipts = $derived(
     monthEntries.filter((entry) => entry.type === "receita"),
   );
@@ -341,22 +353,32 @@
   const activeTypeEntries = $derived(
     activeType === "receita" ? receipts : expenses,
   );
-  const filteredEntries = $derived.by(() => {
-    const query = normalizeSearch(search.trim());
-    return activeTypeEntries.filter((entry) => {
-      const matchesMode = modeFilter === "todas" || entry.mode === modeFilter;
-      const haystack = normalizeSearch(
-        [entry.title, entry.category, entry.businessName, entry.notes]
-          .filter(Boolean)
-          .join(" "),
-      );
-      return (
+  const filteredEntries = $derived(
+    activeTypeEntries.filter(
+      (entry) =>
         isEntryVisible(entry) &&
-        matchesMode &&
-        (!query || haystack.includes(query))
-      );
-    });
-  });
+        matchesFinanceFilters(entry, { modeFilter, search }),
+    ),
+  );
+  const paginatedMonthEntries = $derived(
+    paginateFinanceEntries(filteredEntries, visibleMonthCount),
+  );
+  const upcomingActiveTypeEntries = $derived(
+    selectUpcomingFinanceEntries(workspaceEntries, {
+      fromDate: upcomingStartDate,
+      type: activeType,
+      modeFilter,
+      search,
+      limit: UPCOMING_ENTRIES_LIMIT,
+    }),
+  );
+
+  function loadMoreMonthEntries(): void {
+    visibleMonthCount = nextVisibleFinanceEntriesCount(
+      visibleMonthCount,
+      MONTH_ENTRIES_PAGE_SIZE,
+    );
+  }
 
   function isEntryVisible(entry: FinanceEntry): boolean {
     return (showSettled || !entry.settled) && (showPaused || !entry.paused);
@@ -472,6 +494,14 @@
     );
   }
 
+  function selectMonth(nextMonth: string): void {
+    selectedMonth = nextMonth;
+    const planningEndMonth = shiftMonth(planningStartMonth, planningMonths - 1);
+    if (nextMonth < planningStartMonth || nextMonth > planningEndMonth) {
+      planningStartMonth = nextMonth;
+    }
+  }
+
   function selectTab(tab: FinanceTab): void {
     activeTab = tab;
     search = "";
@@ -490,25 +520,29 @@
 
 <svelte:head><title>Financeiro · Demanda</title></svelte:head>
 
-<PageHeader
-  eyebrow="Financeiro"
-  title={formatMonth(selectedMonth)}
-  icon={BadgeDollarSign}
->
+<PageHeader eyebrow="Meu negócio" title="Financeiro" icon={BadgeDollarSign}>
   {#snippet actions()}
     <div class="hero-actions" aria-label="Ações rápidas do financeiro">
-      <button
-        class="action-button revenue"
-        type="button"
-        onclick={() => openCreate("receita")}
-        ><Plus size={17} />Nova receita</button
-      >
-      <button
-        class="action-button expense"
-        type="button"
-        onclick={() => openCreate("despesa")}
-        ><Minus size={17} />Nova despesa</button
-      >
+      <FinanceMonthPicker
+        value={selectedMonth}
+        currentMonth={currentMonth()}
+        onchange={selectMonth}
+        compact
+      />
+      <div class="hero-action-buttons">
+        <button
+          class="action-button revenue"
+          type="button"
+          onclick={() => openCreate("receita")}
+          ><Plus size={17} />Nova receita</button
+        >
+        <button
+          class="action-button expense"
+          type="button"
+          onclick={() => openCreate("despesa")}
+          ><Minus size={17} />Nova despesa</button
+        >
+      </div>
     </div>
   {/snippet}
 </PageHeader>
@@ -585,22 +619,12 @@
 
       <article class="content-card upcoming-card">
         <header class="card-header"><h2>Próximos lançamentos</h2></header>
-        {#if visibleMonthEntries.length}
+        {#if upcomingDashboardEntries.length}
           <div class="upcoming-list">
-            {#each visibleMonthEntries.slice(0, 4) as entry}
+            {#each upcomingDashboardEntries as entry (entry.id)}
               <article class="upcoming-row">
                 <strong>{entry.title}</strong>
-                <span
-                  >{entry.paused
-                    ? "Pausada"
-                    : entry.settled
-                      ? entry.type === "receita"
-                        ? "Recebida"
-                        : "Paga"
-                      : entry.type === "receita"
-                        ? "Receita"
-                        : "Despesa"}</span
-                >
+                <span>{entry.type === "receita" ? "Receita" : "Despesa"}</span>
                 <strong>{dashboardMoney(entry.amount)}</strong>
                 <span>{formatFinanceDate(entry.date)}</span>
               </article>
@@ -662,7 +686,7 @@
 
         {#if filteredEntries.length}
           <div class="month-list">
-            {#each filteredEntries as entry (entry.id)}
+            {#each paginatedMonthEntries.items as entry (entry.id)}
               <article
                 class:revenue={entry.type === "receita"}
                 class:expense={entry.type === "despesa"}
@@ -748,6 +772,15 @@
               </article>
             {/each}
           </div>
+          {#if paginatedMonthEntries.hasMore}
+            <div class="month-list-footer">
+              <button
+                class="load-more-button"
+                type="button"
+                onclick={loadMoreMonthEntries}>Carregar mais</button
+              >
+            </div>
+          {/if}
         {:else}
           <p class="empty">
             Nenhuma {activeType === "receita"
@@ -758,10 +791,10 @@
       </article>
 
       <article class="content-card upcoming-card">
-        <header class="card-header"><h2>Lançamentos exibidos</h2></header>
-        {#if filteredEntries.length}
+        <header class="card-header"><h2>Próximos lançamentos</h2></header>
+        {#if upcomingActiveTypeEntries.length}
           <div class="upcoming-list">
-            {#each filteredEntries.slice(0, 6) as entry}
+            {#each upcomingActiveTypeEntries as entry (entry.id)}
               <article class="upcoming-row">
                 <strong>{entry.title}</strong>
                 <span>{entry.mode === "pontual" ? "Pontual" : "Fixa"}</span>
@@ -772,8 +805,8 @@
           </div>
         {:else}
           <p class="empty">
-            Nenhuma {activeType === "receita" ? "receita" : "despesa"}
-            corresponde à visualização configurada.
+            Nenhuma {activeType === "receita" ? "receita" : "despesa"} em aberto encontrada
+            nos próximos meses.
           </p>
         {/if}
       </article>
@@ -796,10 +829,19 @@
     display: grid;
     gap: 14px;
   }
+  :global(.page-header) {
+    --page-header-padding: 16px clamp(20px, 2.5vw, 28px);
+  }
   .hero-actions {
+    display: grid;
+    width: 280px;
+    justify-items: end;
+    gap: 5px;
+  }
+  .hero-action-buttons {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    width: 100%;
+    gap: 8px;
   }
   .action-button {
     display: inline-flex;
@@ -816,6 +858,11 @@
     transition:
       filter var(--motion-fast),
       transform var(--motion-fast);
+  }
+  .hero-action-buttons .action-button {
+    flex: 1 1 0;
+    padding-inline: 8px;
+    white-space: nowrap;
   }
   .action-button:hover {
     filter: brightness(0.94);
@@ -1093,6 +1140,34 @@
     display: grid;
     gap: 10px;
   }
+  .month-list-footer {
+    display: flex;
+    justify-content: center;
+    padding-top: 4px;
+  }
+  .load-more-button {
+    display: inline-flex;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0 20px;
+    color: var(--ink-950);
+    background: var(--surface-soft);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    transition:
+      border-color var(--motion-fast),
+      background var(--motion-fast),
+      transform var(--motion-fast);
+  }
+  .load-more-button:hover {
+    border-color: var(--border-strong);
+    background: var(--surface-hover);
+    transform: translateY(-1px);
+  }
   .month-item {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(140px, auto);
@@ -1229,7 +1304,10 @@
     .hero-actions {
       width: 100%;
     }
-    .hero-actions button {
+    .hero-action-buttons {
+      width: 100%;
+    }
+    .hero-action-buttons button {
       flex: 1;
     }
     .dashboard-matrix,
@@ -1264,9 +1342,12 @@
   }
   @media (max-width: 470px) {
     .hero-actions {
+      justify-items: stretch;
+    }
+    .hero-action-buttons {
       flex-direction: column;
     }
-    .hero-actions button {
+    .hero-action-buttons button {
       width: 100%;
     }
     .status-filters {
@@ -1280,7 +1361,8 @@
       align-items: stretch;
       flex-direction: column;
     }
-    .mini-button {
+    .mini-button,
+    .load-more-button {
       width: 100%;
     }
   }

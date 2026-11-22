@@ -14,15 +14,15 @@ describe("records page configuration", () => {
     expect(recordsTabFromPath("/clientes/desconhecido")).toBeUndefined();
   });
 
-  it("keeps routes aligned with the visible tabs", () => {
+  it("expõe somente pessoas e negócios como abas", () => {
     const tabIds = recordsTabs.map(({ id }) => id);
-    expect(tabIds).toEqual([
+    expect(tabIds).toEqual(["pessoas", "negocios"]);
+    expect(Object.keys(recordsTabRoutes)).toEqual([
       "pessoas",
       "negocios",
       "contratos",
       "projetos",
       "tarefas",
     ]);
-    expect(Object.keys(recordsTabRoutes)).toEqual(tabIds);
   });
 });

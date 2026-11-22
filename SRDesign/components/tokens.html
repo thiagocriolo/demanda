@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tokens &amp; Fundações — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+  <link rel="stylesheet" href="_preview.css" />
+</head>
+<body>
+  <header class="sr-preview-bar">
+    <div class="sr-preview-bar__left">
+      <a class="sr-btn sr-btn--sm" href="../index.html">
+        <span data-sr-icon="arrow-left" data-size="14"></span>
+        <span>Voltar ao Showcase</span>
+      </a>
+      <span class="sr-preview-bar__title">Tokens &amp; Fundações</span>
+    </div>
+    <span class="sr-badge sr-badge--primary">core/sr-tokens.css</span>
+  </header>
+
+  <main class="sr-preview-wrap">
+    <header class="sr-page-header">
+      <div class="sr-page-header__main">
+        <span class="sr-page-header__icon">
+          <span data-sr-icon="palette" data-size="28"></span>
+        </span>
+        <div class="sr-page-header__copy">
+          <span class="sr-page-header__eyebrow">Fundações</span>
+          <h1 class="sr-page-header__title">Tokens &amp; Tipografia</h1>
+          <p class="sr-page-header__subtitle">
+            Paleta de sistema, superfícies, tipografia Pogonia, raios e sombras que definem o SRDesign.
+          </p>
+        </div>
+      </div>
+      <div class="sr-page-header__actions">
+        <label class="sr-btn sr-btn--soft" style="cursor:pointer;">
+          <span>Testar cor primária</span>
+          <input type="color" value="#2e56ff" aria-label="Escolher cor primária" style="width:22px;height:22px;border:0;background:none;padding:0;cursor:pointer;" oninput="SRDesign.setPrimaryColor(this.value)" />
+        </label>
+        <button type="button" class="sr-btn" onclick="SRDesign.setPrimaryColor('#2e56ff')">Resetar</button>
+      </div>
+    </header>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>Cores de Sistema e Marca</h2>
+        <p>Alterar <code>--sr-primary</code> recalcula automaticamente tints e sombras via <code>color-mix()</code>.</p>
+      </div>
+      <div class="sr-swatch-grid">
+        <div class="sr-swatch"><div class="sr-swatch__color" style="background:var(--sr-primary)"></div><div class="sr-swatch__meta"><strong>Primary</strong><code>--sr-primary</code></div></div>
+        <div class="sr-swatch"><div class="sr-swatch__color" style="background:var(--sr-brand-50)"></div><div class="sr-swatch__meta"><strong>Brand 50</strong><code>--sr-brand-50</code></div></div>
+        <div class="sr-swatch"><div class="sr-swatch__color" style="background:var(--sr-accent)"></div><div class="sr-swatch__meta"><strong>Accent (Green)</strong><code>--sr-accent</code></div></div>
+        <div class="sr-swatch"><div class="sr-swatch__color" style="background:var(--sr-warning)"></div><div class="sr-swatch__meta"><strong>Warning (Yellow)</strong><code>--sr-warning</code></div></div>
+        <div class="sr-swatch"><div class="sr-swatch__color" style="background:var(--sr-danger)"></div><div class="sr-swatch__meta"><strong>Danger (Red)</strong><code>--sr-danger</code></div></div>
+        <div class="sr-swatch"><div class="sr-swatch__color" style="background:var(--sr-violet)"></div><div class="sr-swatch__meta"><strong>Violet</strong><code>--sr-violet</code></div></div>
+      </div>
+    </section>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>Superfícies e Inks</h2>
+        <p>Contraste claro, limpo e consistente entre canvas, painéis e texto.</p>
+      </div>
+      <div class="sr-swatch-grid">
+        <div class="sr-swatch"><div class="sr-swatch__color" style="background:var(--sr-canvas)"></div><div class="sr-swatch__meta"><strong>Canvas</strong><code>#f7f7f7</code></div></div>
+        <div class="sr-swatch"><div class="sr-swatch__color" style="background:var(--sr-surface)"></div><div class="sr-swatch__meta"><strong>Surface / Panel</strong><code>#ffffff</code></div></div>
+        <div class="sr-swatch"><div class="sr-swatch__color" style="background:var(--sr-main-background)"></div><div class="sr-swatch__meta"><strong>Main Background</strong><code>--sr-main-background</code></div></div>
+        <div class="sr-swatch"><div class="sr-swatch__color" style="background:var(--sr-ink-950)"></div><div class="sr-swatch__meta"><strong>Ink 950</strong><code>#0f172a</code></div></div>
+        <div class="sr-swatch"><div class="sr-swatch__color" style="background:var(--sr-ink-700)"></div><div class="sr-swatch__meta"><strong>Ink 700</strong><code>#334155</code></div></div>
+        <div class="sr-swatch"><div class="sr-swatch__color" style="background:var(--sr-ink-500)"></div><div class="sr-swatch__meta"><strong>Ink 500</strong><code>#64748b</code></div></div>
+      </div>
+    </section>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>Tipografia — Família Pogonia</h2>
+        <p>Quatro pesos locais embutidos em <code>assets/fonts/pogonia/</code>.</p>
+      </div>
+      <div class="sr-stack sr-stack--sm">
+        <div style="font-size:28px;font-weight:600;letter-spacing:-0.03em;">Pogonia Semibold (600) — Títulos &amp; Cabeçalhos</div>
+        <div style="font-size:20px;font-weight:500;">Pogonia Medium (500) — Subtítulos, abas e ações</div>
+        <div style="font-size:15px;font-weight:400;">Pogonia Regular (400) — Corpo de texto, itens de menu e formulários.</div>
+        <div style="font-size:22px;font-weight:300;">Pogonia Light (300) — Wordmark e contrastes tipográficos</div>
+      </div>
+    </section>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>Raios e Sombras</h2>
+      </div>
+      <div class="sr-row" style="gap:16px;">
+        <div style="padding:18px 22px;border:1px solid var(--sr-border);border-radius:var(--sr-radius-sm);background:var(--sr-canvas);"><strong>sm</strong> (8px)</div>
+        <div style="padding:18px 22px;border:1px solid var(--sr-border);border-radius:var(--sr-radius-md);background:var(--sr-canvas);"><strong>md</strong> (12px)</div>
+        <div style="padding:18px 22px;border:1px solid var(--sr-border);border-radius:var(--sr-radius-lg);background:var(--sr-canvas);"><strong>lg</strong> (14px)</div>
+        <div style="padding:18px 22px;border:1px solid var(--sr-border);border-radius:var(--sr-radius-xl);background:var(--sr-canvas);"><strong>xl</strong> (16px)</div>
+        <div style="padding:18px 22px;border:1px solid var(--sr-border);border-radius:var(--sr-radius-pill);background:var(--sr-canvas);"><strong>pill</strong> (999px)</div>
+        <div style="padding:18px 22px;border:1px solid var(--sr-border);border-radius:var(--sr-radius-lg);background:var(--sr-surface);box-shadow:var(--sr-shadow-md);"><strong>shadow-md</strong></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+</body>
+</html>

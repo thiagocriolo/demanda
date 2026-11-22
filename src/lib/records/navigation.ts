@@ -10,11 +10,8 @@ export const recordsTabRoutes: Record<RecordsTab, string> = {
 };
 
 export const recordsTabs: TabItem[] = [
-  { id: "pessoas", label: "Contatos" },
+  { id: "pessoas", label: "Pessoas" },
   { id: "negocios", label: "Negócios" },
-  { id: "contratos", label: "Contratos" },
-  { id: "projetos", label: "Projetos" },
-  { id: "tarefas", label: "Tarefas" },
 ];
 
 export function recordsTabFromPath(pathname: string): RecordsTab | undefined {
@@ -24,9 +21,10 @@ export function recordsTabFromPath(pathname: string): RecordsTab | undefined {
     .at(-1)
     ?.toLocaleLowerCase("pt-BR");
 
-  if (segment === "contatos") return "pessoas";
+  if (segment === "pessoas" || segment === "contatos") return "pessoas";
   if (segment === "negócios") return "negocios";
+  if (segment === "contratos") return "contratos";
   if (segment === "projetos") return "projetos";
-  if (segment === "tarefas") return "tarefas";
+  if (segment === "entregas" || segment === "tarefas") return "tarefas";
   return undefined;
 }

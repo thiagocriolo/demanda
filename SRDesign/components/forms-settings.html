@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Formulários &amp; Configurações — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+  <link rel="stylesheet" href="_preview.css" />
+</head>
+<body>
+  <header class="sr-preview-bar">
+    <div class="sr-preview-bar__left">
+      <a class="sr-btn sr-btn--sm" href="../index.html"><span data-sr-icon="arrow-left" data-size="14"></span><span>Voltar</span></a>
+      <span class="sr-preview-bar__title">Formulários &amp; SettingsCard</span>
+    </div>
+    <span class="sr-badge sr-badge--primary">core/components/sr-forms.css</span>
+  </header>
+
+  <main class="sr-preview-wrap">
+    <section class="sr-settings-card">
+      <header class="sr-settings-card__header">
+        <h2>Informações do Projeto</h2>
+        <p>Campos organizados em <code>.sr-field-grid</code> com labels semibold e inputs limpos.</p>
+      </header>
+      <div class="sr-settings-card__body">
+        <div class="sr-field-grid">
+          <label class="sr-field">
+            <span>Nome da aplicação</span>
+            <input class="sr-input" type="text" value="Meu Novo Produto" />
+            <small>Exibido na barra superior e na tela de autenticação.</small>
+          </label>
+          <label class="sr-field">
+            <span>Categoria</span>
+            <select class="sr-select">
+              <option>Gestão de Operações</option>
+              <option>CRM &amp; Vendas</option>
+              <option>Portal do Cliente</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="sr-field">
+          <span>Descrição resumida</span>
+          <textarea class="sr-textarea" placeholder="Descreva o propósito da aplicação..."></textarea>
+        </label>
+
+        <div class="sr-notice">
+          <span data-sr-icon="info" data-size="18"></span>
+          <span>Alterações de perfil são aplicadas em todo o workspace imediatamente.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="sr-settings-card">
+      <header class="sr-settings-card__header">
+        <h2>Preferências de Interface</h2>
+        <p>Linhas padronizadas para switches (<code>.sr-toggle-row</code>), seletores (<code>.sr-choice-row</code>) e controle numérico (<code>.sr-range-row</code>).</p>
+      </header>
+      <div class="sr-settings-card__body" style="gap:0;">
+        <div class="sr-toggle-row">
+          <div class="sr-toggle-row__copy">
+            <strong>Iniciar com barra lateral recolhida</strong>
+            <small>Amplia a área útil em monitores menores mantendo os ícones acessíveis.</small>
+          </div>
+          <label class="sr-switch">
+            <input type="checkbox" checked />
+            <span class="sr-switch__track"></span>
+          </label>
+        </div>
+
+        <div class="sr-choice-row">
+          <div class="sr-choice-row__copy">
+            <strong>Página inicial padrão</strong>
+            <small>Define qual tela abre logo após o login do usuário.</small>
+          </div>
+          <select class="sr-select">
+            <option>Dashboard</option>
+            <option>Projetos</option>
+            <option>Agenda</option>
+          </select>
+        </div>
+
+        <div class="sr-range-row">
+          <div class="sr-range-row__copy">
+            <strong>Densidade padrão dos cards</strong>
+            <small>Controla o nível inicial de detalhes exibidos nas listas (1 a 10).</small>
+          </div>
+          <div class="sr-range-control">
+            <input type="range" min="1" max="10" value="7" data-sr-range="range-out" />
+            <output id="range-out">7</output>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sr-settings-card sr-settings-card--danger">
+      <header class="sr-settings-card__header">
+        <h2>Zona de Atenção</h2>
+        <p>Use <code>.sr-settings-card--danger</code> para ações irreversíveis ou críticas.</p>
+      </header>
+      <div class="sr-settings-card__body">
+        <div class="sr-row sr-row--between">
+          <div>
+            <strong style="display:block;font-size:13px;">Limpar dados de demonstração</strong>
+            <small class="sr-muted">Remove registros fictícios mantendo a estrutura do projeto.</small>
+          </div>
+          <button type="button" class="sr-btn sr-btn--danger"><span data-sr-icon="trash" data-size="15"></span><span>Limpar tudo</span></button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FloatingMenu &amp; Popover — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+  <link rel="stylesheet" href="_preview.css" />
+</head>
+<body>
+  <header class="sr-preview-bar">
+    <div class="sr-preview-bar__left">
+      <a class="sr-btn sr-btn--sm" href="../index.html"><span data-sr-icon="arrow-left" data-size="14"></span><span>Voltar</span></a>
+      <span class="sr-preview-bar__title">FloatingMenu &amp; Popover</span>
+    </div>
+    <span class="sr-badge sr-badge--primary">core/components/sr-menus.css</span>
+  </header>
+
+  <main class="sr-preview-wrap">
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>Menus Flutuantes com Seta Direcional</h2>
+        <p>Fecha automaticamente ao clicar fora, escolher um item ou pressionar <code>Esc</code>.</p>
+      </div>
+
+      <div class="sr-row" style="gap:16px;align-items:flex-start;min-height:110px;">
+        <!-- Padrão (start / brand) -->
+        <div class="sr-menu" data-sr-dropdown>
+          <button type="button" class="sr-menu__trigger" data-sr-dropdown-trigger aria-haspopup="menu" aria-expanded="false">
+            <span class="sr-menu__icon"><span data-sr-icon="plus" data-size="16"></span></span>
+            <span class="sr-menu__label">Criar (Start)</span>
+            <span class="sr-menu__chevron"><span data-sr-icon="chevron-down" data-size="15"></span></span>
+          </button>
+          <div class="sr-menu__bubble" data-sr-dropdown-menu role="menu" hidden>
+            <button type="button" class="sr-menu__item" role="menuitem" data-value="Pessoa">
+              <span class="sr-menu__item-icon"><span data-sr-icon="user" data-size="16"></span></span>
+              <span class="sr-menu__item-copy"><strong>Pessoa</strong><small>Contato ou cliente</small></span>
+            </button>
+            <button type="button" class="sr-menu__item" role="menuitem" data-value="Projeto">
+              <span class="sr-menu__item-icon"><span data-sr-icon="folder" data-size="16"></span></span>
+              <span class="sr-menu__item-copy"><strong>Projeto</strong><small>Entregas e cronograma</small></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Verde / Accent alinhado à direita -->
+        <div class="sr-menu sr-menu--end" data-sr-dropdown>
+          <button type="button" class="sr-menu__trigger sr-menu__trigger--accent" data-sr-dropdown-trigger aria-haspopup="menu" aria-expanded="false">
+            <span class="sr-menu__icon"><span data-sr-icon="sparkles" data-size="16"></span></span>
+            <span class="sr-menu__label">Ações (End / Verde)</span>
+            <span class="sr-menu__chevron"><span data-sr-icon="chevron-down" data-size="15"></span></span>
+          </button>
+          <div class="sr-menu__bubble" data-sr-dropdown-menu role="menu" hidden>
+            <button type="button" class="sr-menu__item" role="menuitem" data-value="Duplicar">
+              <span class="sr-menu__item-icon"><span data-sr-icon="copy" data-size="16"></span></span>
+              <span class="sr-menu__item-copy"><strong>Duplicar modelo</strong><small>Cria cópia editável</small></span>
+            </button>
+            <button type="button" class="sr-menu__item" role="menuitem" data-value="Arquivar">
+              <span class="sr-menu__item-icon"><span data-sr-icon="archive" data-size="16"></span></span>
+              <span class="sr-menu__item-copy"><strong>Arquivar</strong><small>Remove das listas ativas</small></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Lateral (side) -->
+        <div class="sr-menu sr-menu--side" data-sr-dropdown>
+          <button type="button" class="sr-menu__trigger sr-menu__trigger--neutral" data-sr-dropdown-trigger aria-haspopup="menu" aria-expanded="false">
+            <span class="sr-menu__icon"><span data-sr-icon="layers" data-size="16"></span></span>
+            <span class="sr-menu__label">Abrir ao Lado (Side)</span>
+            <span class="sr-menu__chevron"><span data-sr-icon="chevron-down" data-size="15"></span></span>
+          </button>
+          <div class="sr-menu__bubble" data-sr-dropdown-menu role="menu" hidden>
+            <button type="button" class="sr-menu__item" role="menuitem" data-value="Workspace A">
+              <span class="sr-menu__item-icon"><span data-sr-icon="building" data-size="16"></span></span>
+              <span class="sr-menu__item-copy"><strong>Estúdio Aurora</strong><small>Workspace ativo</small></span>
+            </button>
+            <button type="button" class="sr-menu__item" role="menuitem" data-value="Workspace B">
+              <span class="sr-menu__item-icon"><span data-sr-icon="briefcase" data-size="16"></span></span>
+              <span class="sr-menu__item-copy"><strong>Projeto Pessoal</strong><small>4 membros</small></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Context Popover (3 pontinhos) -->
+        <div class="sr-popover" data-sr-dropdown>
+          <button type="button" class="sr-popover__trigger" data-sr-dropdown-trigger aria-haspopup="menu" aria-expanded="false" aria-label="Mais opções">
+            <span data-sr-icon="ellipsis-vertical" data-size="18"></span>
+          </button>
+          <div class="sr-popover__menu" data-sr-dropdown-menu role="menu" hidden>
+            <button type="button" class="sr-popover__item" role="menuitem" data-value="Ver"><span data-sr-icon="eye" data-size="15"></span><span>Ver detalhes</span></button>
+            <button type="button" class="sr-popover__item" role="menuitem" data-value="Editar"><span data-sr-icon="pencil" data-size="15"></span><span>Editar</span></button>
+            <button type="button" class="sr-popover__item" role="menuitem" data-value="Copiar"><span data-sr-icon="copy" data-size="15"></span><span>Copiar</span></button>
+            <button type="button" class="sr-popover__item sr-popover__item--danger" role="menuitem" data-value="Excluir"><span data-sr-icon="trash" data-size="15"></span><span>Excluir</span></button>
+          </div>
+        </div>
+      </div>
+
+      <p class="sr-notice" id="menu-feedback">Selecione qualquer opção acima para ver o evento <code>sr:menu-select</code> em ação.</p>
+    </section>
+  </main>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+  <script>
+    document.addEventListener("sr:menu-select", function (e) {
+      document.getElementById("menu-feedback").innerHTML =
+        "Evento disparado: <strong>" + e.detail.value + "</strong>";
+    });
+  </script>
+</body>
+</html>

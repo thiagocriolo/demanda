@@ -1,0 +1,130 @@
+{
+  "name": "SRDesign",
+  "displayName": "SRDesign (Sara Design)",
+  "version": "1.0.0",
+  "description": "Design System e UI Kit portátil em HTML, CSS e JavaScript puro, extraído do projeto Demanda.",
+  "entrypoints": {
+    "showcase": "index.html",
+    "css": "core/sr-design.css",
+    "icons": "core/sr-icons.js",
+    "js": "core/sr-core.js",
+    "humanManual": "MANUAL.md",
+    "aiGuide": "AI_GUIDE.md"
+  },
+  "prefix": {
+    "css": ".sr-",
+    "tokens": "--sr-",
+    "attributes": "data-sr-",
+    "globalJs": "window.SRDesign"
+  },
+  "components": [
+    {
+      "id": "tokens",
+      "name": "Tokens & Tipografia",
+      "category": "foundations",
+      "css": ["core/sr-tokens.css", "core/sr-base.css"],
+      "preview": "components/tokens.html"
+    },
+    {
+      "id": "shell",
+      "name": "AppShell (Sidebar, Topbar, MobileDock)",
+      "category": "layout",
+      "css": ["core/components/sr-shell.css"],
+      "attributes": ["data-sr-shell", "data-sr-sidebar-toggle", "data-sr-dropdown"],
+      "preview": "components/shell.html"
+    },
+    {
+      "id": "page-header",
+      "name": "PageHeader",
+      "category": "layout",
+      "css": ["core/components/sr-page-header.css"],
+      "preview": "components/page-header.html"
+    },
+    {
+      "id": "buttons",
+      "name": "Botões & TopbarSaveButton",
+      "category": "controls",
+      "css": ["core/components/sr-buttons.css"],
+      "preview": "components/buttons.html"
+    },
+    {
+      "id": "tabs",
+      "name": "TabSystem",
+      "category": "navigation",
+      "css": ["core/components/sr-tabs.css"],
+      "attributes": ["data-sr-tabs", "data-sr-tab", "data-sr-tab-panel"],
+      "preview": "components/tabs.html"
+    },
+    {
+      "id": "filter-bar",
+      "name": "FilterBar",
+      "category": "filtering",
+      "css": ["core/components/sr-filter-bar.css"],
+      "attributes": ["data-sr-filter-bar", "data-sr-filter-option", "data-sr-filter-input", "data-sr-filter-clear", "data-sr-filter-target"],
+      "preview": "components/filter-bar.html"
+    },
+    {
+      "id": "floating-menu",
+      "name": "FloatingMenu & Context Popover",
+      "category": "navigation",
+      "css": ["core/components/sr-menus.css"],
+      "attributes": ["data-sr-dropdown", "data-sr-dropdown-trigger", "data-sr-dropdown-menu"],
+      "preview": "components/floating-menu.html"
+    },
+    {
+      "id": "global-selector",
+      "name": "GlobalSelector",
+      "category": "forms",
+      "css": ["core/components/sr-selector.css"],
+      "attributes": ["data-sr-selector", "data-mode", "data-items"],
+      "preview": "components/global-selector.html"
+    },
+    {
+      "id": "cards",
+      "name": "EntityCards, Escala 1-10, StatCard & NextStep",
+      "category": "data-display",
+      "css": ["core/components/sr-cards.css"],
+      "attributes": ["data-sr-card-level", "data-sr-card-scale"],
+      "preview": "components/cards.html"
+    },
+    {
+      "id": "card-drawer",
+      "name": "CardDrawer",
+      "category": "overlays",
+      "css": ["core/components/sr-drawer.css"],
+      "attributes": ["data-sr-drawer", "data-sr-drawer-toggle", "data-sr-drawer-list"],
+      "preview": "components/card-drawer.html"
+    },
+    {
+      "id": "forms-settings",
+      "name": "Formulários & SettingsCard",
+      "category": "forms",
+      "css": ["core/components/sr-forms.css"],
+      "attributes": ["data-sr-range"],
+      "preview": "components/forms-settings.html"
+    },
+    {
+      "id": "modals",
+      "name": "Modais & AlertDialog",
+      "category": "overlays",
+      "css": ["core/components/sr-modals.css"],
+      "attributes": ["data-sr-modal-open", "data-sr-modal-close"],
+      "preview": "components/modals.html"
+    },
+    {
+      "id": "avatars-badges",
+      "name": "Avatares, Badges, Notices & EmptyState",
+      "category": "feedback",
+      "css": ["core/components/sr-forms.css", "core/components/sr-cards.css"],
+      "preview": "components/avatars-badges.html"
+    },
+    {
+      "id": "auth",
+      "name": "AuthShell (Login / Cadastro)",
+      "category": "templates",
+      "css": ["core/components/sr-auth.css"],
+      "attributes": ["data-sr-password-toggle"],
+      "preview": "components/auth.html"
+    }
+  ]
+}

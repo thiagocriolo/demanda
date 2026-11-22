@@ -2,14 +2,13 @@
   import { onMount } from "svelte";
   import type { Component } from "svelte";
   import {
-    AlarmClockOff,
+    ArrowRight,
     ArrowUpRight,
-    BriefcaseBusiness,
+    BellRing,
     CalendarCheck2,
     CalendarDays,
     CalendarRange,
     Check,
-    FolderClock,
     FolderKanban,
     HandCoins,
     Inbox,
@@ -18,6 +17,7 @@
     ReceiptText,
     Scale,
     Trash2,
+    TriangleAlert,
     UsersRound,
     Wallet,
   } from "@lucide/svelte";
@@ -80,12 +80,21 @@
     tone: Tone;
     href: string;
   };
+  type AttentionLevel = "urgent" | "warning" | "next";
+  type AttentionCard = {
+    level: AttentionLevel;
+    label: string;
+    title: string;
+    client: string;
+    tone: Tone;
+    icon: Component;
+    href: string;
+  };
   const PERSONAL_TASK_TITLE_MAX_LENGTH = 80;
   const tabs: { id: DashboardTab; label: string }[] = [
-    { id: "hoje", label: "Hoje" },
     { id: "entregas", label: "Entregas" },
     { id: "operacao", label: "Operação" },
-    { id: "carga", label: "Carga de trabalho" },
+    { id: "carga", label: "Carga horária" },
     { id: "pendencias", label: "Pendências" },
   ];
 
@@ -95,7 +104,7 @@
   let schedule = $state<ScheduleMap>({});
   let financeEntries = $state<FinanceEntry[]>([]);
   let activeWorkspaceId = $state(PERSONAL_WORKSPACE_ID);
-  let activeTab = $state<DashboardTab>("hoje");
+  let activeTab = $state<DashboardTab>("entregas");
   let personalTasks = $state<PersonalTask[]>([]);
   let personalTaskTitle = $state("");
   let projectsLoading = $state(false);
@@ -365,37 +374,18 @@
       return entry?.date.startsWith(currentMonth) ? [{ task, entry }] : [];
     }),
   );
-  const weekCompletedTasks = $derived(
-    scheduledThisWeek.filter(({ task }) => isScheduleComplete(task)),
-  );
-  const weekTodoTasks = $derived(
-    scheduledThisWeek.filter(
-      ({ task, entry }) => !isScheduleComplete(task) && entry.date >= today,
-    ),
-  );
-  const weeklyHours = $derived(
-    scheduledThisWeek.reduce(
-      (total, { entry }) => total + entry.durationSlots * 0.5,
-      0,
-    ),
-  );
-  const overduePayments = $derived(
-    financeEntries.filter(
-      (entry) => !entry.settled && !entry.paused && entry.date < today,
-    ),
-  );
-
-  const scheduledToday = $derived(
+  const scheduledTodayAll = $derived(
     scheduleTasks
       .flatMap((task) => {
         const entry = schedule[task.id];
-        return entry?.date === today && !isScheduleComplete(task)
-          ? [{ task, entry }]
-          : [];
+        return entry?.date === today ? [{ task, entry }] : [];
       })
       .sort(
         (left, right) => left.entry.startMinutes - right.entry.startMinutes,
       ),
+  );
+  const scheduledToday = $derived(
+    scheduledTodayAll.filter(({ task }) => !isScheduleComplete(task)),
   );
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const currentScheduledSubtask = $derived(
@@ -446,10 +436,28 @@
     };
   });
   const todayScheduledMinutes = $derived(
-    scheduledToday.reduce(
+    scheduledTodayAll.reduce(
       (total, { entry }) => total + entry.durationSlots * 30,
       0,
     ),
+  );
+  const completedTodayScheduledMinutes = $derived(
+    scheduledTodayAll
+      .filter(({ task }) => isScheduleComplete(task))
+      .reduce((total, { entry }) => total + entry.durationSlots * 30, 0),
+  );
+  const remainingScheduledMinutes = $derived(
+    Math.max(0, todayScheduledMinutes - completedTodayScheduledMinutes),
+  );
+  const dayProgress = $derived(
+    todayScheduledMinutes > 0
+      ? Math.round(
+          (completedTodayScheduledMinutes / todayScheduledMinutes) * 100,
+        )
+      : 0,
+  );
+  const completedTodayTaskCount = $derived(
+    scheduledTodayAll.filter(({ task }) => isScheduleComplete(task)).length,
   );
   const todayCapacityUsed = $derived(
     remainingWorkday.availableMinutes > 0
@@ -477,6 +485,38 @@
       href: "/clientes/projetos",
     })),
   ]);
+  const dashboardDateLabel = new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(now);
+  const nextDelivery = $derived.by(() => {
+    if (todayFocus) {
+      return {
+        label: `Próxima entrega às ${timeFromMinutes(todayFocus.entry.startMinutes)}`,
+        title: todayFocus.task.nome,
+        context: [todayFocus.task.taskNome, todayFocus.task.projeto]
+          .filter(Boolean)
+          .join(" · "),
+        href: "/cronograma",
+      };
+    }
+    const due = todayDeliveries[0];
+    if (due) {
+      return {
+        label: "Entrega prevista para hoje",
+        title: due.title,
+        context: due.kind,
+        href: due.href,
+      };
+    }
+    return {
+      label: "Sem entregas hoje",
+      title: "",
+      context: "",
+      href: "/agenda",
+    };
+  });
   const todaySignals = $derived<TodaySignal[]>([
     ...(todayTasksWithoutExecution.length
       ? [
@@ -528,36 +568,40 @@
     return `${String(hours).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
   }
 
-  const alertMetrics = $derived<Metric[]>([
-    {
-      value: String(overdueTasks.length),
-      label: "tarefas atrasadas",
-      tone: "danger",
-      icon: AlarmClockOff,
-      href: "/pauta",
-    },
-    {
-      value: String(overdueProjects.length),
-      label: "projetos atrasados",
-      tone: "info",
-      icon: FolderClock,
-      href: "/clientes/projetos",
-    },
-    {
-      value: `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(weeklyHours)}h`,
-      label: "horas de trabalho",
-      tone: "info",
-      icon: BriefcaseBusiness,
-      href: "/cronograma",
-    },
-    {
-      value: String(overduePayments.length),
-      label: "pagamentos atrasados",
-      tone: "success",
-      icon: HandCoins,
-      href: "/financeiro?tab=painel",
-    },
-  ]);
+  const schedulePreview = $derived.by(() => {
+    const currentSlotStart = Math.floor(nowMinutes / 30) * 30;
+    return Array.from({ length: 5 }, (_, index) => {
+      const startMinutes = currentSlotStart + (index - 2) * 30;
+      const endMinutes = startMinutes + 30;
+      const item = scheduledTodayAll.find(
+        ({ entry }) =>
+          startMinutes >= entry.startMinutes &&
+          startMinutes < entry.startMinutes + entry.durationSlots * 30,
+      );
+      const complete = item ? isScheduleComplete(item.task) : false;
+      const current = index === 2;
+      const state = complete
+        ? "done"
+        : item
+          ? current
+            ? "current"
+            : startMinutes < currentSlotStart
+              ? "missed"
+              : "planned"
+          : "free";
+
+      return {
+        id: `${startMinutes}-${item?.task.id ?? "free"}`,
+        time: `${timeFromMinutes((startMinutes + 1440) % 1440)}–${timeFromMinutes((endMinutes + 1440) % 1440)}`,
+        current,
+        state,
+        title: item?.task.nome ?? "Livre",
+        description: item
+          ? [item.task.taskNome, item.task.projeto].filter(Boolean).join(" · ")
+          : "",
+      };
+    });
+  });
 
   const operationMetrics = $derived<Metric[]>([
     {
@@ -654,6 +698,28 @@
     },
   ]);
 
+  function workdayColor(halfHourSteps: number): string {
+    const stops = [
+      [46, 86, 255],
+      [65, 169, 105],
+      [234, 179, 8],
+      [220, 38, 38],
+    ] as const;
+    const position = Math.min(48, Math.max(0, halfHourSteps)) / 16;
+    const start = stops[Math.min(2, Math.floor(position))]!;
+    const end = stops[Math.min(3, Math.ceil(position))]!;
+    const progress = position - Math.floor(position);
+    const channels = start.map((channel, index) =>
+      Math.round(channel + (end[index]! - channel) * progress),
+    );
+    return `rgb(${channels.join(" ")})`;
+  }
+
+  function workdayStyle(hours: number): string {
+    const halfHourSteps = Math.min(48, Math.max(0, Math.round(hours * 2)));
+    return `--workday-load: ${(halfHourSteps / 48) * 100}%; --workday-color: ${workdayColor(halfHourSteps)}`;
+  }
+
   const weekDays = $derived(
     Array.from({ length: 7 }, (_, index) => {
       const date = new Date(`${weekStart}T12:00:00`);
@@ -678,12 +744,7 @@
         iso,
         label: `${new Intl.DateTimeFormat("pt-BR", { weekday: "short" })
           .format(date)
-          .replace(
-            ".",
-            "",
-          )} ${String(date.getDate()).padStart(2, "0")}/${String(
-          date.getMonth() + 1,
-        ).padStart(2, "0")}`,
+          .replace(".", "")} ${String(date.getDate()).padStart(2, "0")}`,
         count: scheduled.length,
         hours,
         today: iso === today,
@@ -691,10 +752,6 @@
       };
     }),
   );
-  const maxDayHours = $derived(
-    Math.max(1, ...weekDays.map((day) => day.hours)),
-  );
-
   const monthFinance = $derived(
     financeEntries.filter(
       (entry) => entry.date.startsWith(currentMonth) && !entry.paused,
@@ -747,26 +804,80 @@
     },
   ]);
 
-  const attentionTotal = $derived(
-    overdueTasks.length + weekCompletedTasks.length + weekTodoTasks.length,
-  );
-  const attentionParts = $derived([
-    {
-      label: "Tarefas atrasadas",
-      value: overdueTasks.length,
-      tone: "danger",
-    },
-    {
-      label: "Tarefas concluídas",
-      value: weekCompletedTasks.length,
-      tone: "success",
-    },
-    {
-      label: "Tarefas à fazer",
-      value: weekTodoTasks.length,
-      tone: "info",
-    },
-  ] as const);
+  const attentionCards = $derived.by(() => {
+    const levelDetails = (
+      level: AttentionLevel,
+    ): Pick<AttentionCard, "label" | "tone" | "icon"> => {
+      if (level === "urgent") {
+        return { label: "Urgente", tone: "danger", icon: TriangleAlert };
+      }
+      if (level === "warning") {
+        return { label: "Aviso", tone: "warning", icon: BellRing };
+      }
+      return { label: "A seguir", tone: "info", icon: ArrowRight };
+    };
+
+    const cardFor = (
+      record: EntityRecord,
+      kind: "task" | "project",
+      level: AttentionLevel,
+    ): AttentionCard & { date: string } => ({
+      ...levelDetails(level),
+      level,
+      title: record.nome,
+      client:
+        record.negocio || record.business_name || "Cliente não informado",
+      date: recordDate(record, kind),
+      href: kind === "task" ? "/pauta" : "/clientes/projetos",
+    });
+
+    const byDate = (left: { date: string }, right: { date: string }) =>
+      left.date.localeCompare(right.date);
+    const urgent = [
+      ...overdueTasks.map((task) => cardFor(task, "task", "urgent")),
+      ...overdueProjects.map((project) =>
+        cardFor(project, "project", "urgent"),
+      ),
+    ].sort(byDate);
+    const warning = [
+      ...openTasks
+        .filter((task) => {
+          const date = recordDate(task, "task");
+          return date >= today && date <= weekEnd;
+        })
+        .map((task) => cardFor(task, "task", "warning")),
+      ...activeProjects
+        .filter((project) => {
+          const date = recordDate(project, "project");
+          return date >= today && date <= weekEnd;
+        })
+        .map((project) => cardFor(project, "project", "warning")),
+    ].sort(byDate);
+    const next = [
+      ...openTasks
+        .filter((task) => recordDate(task, "task") > weekEnd)
+        .map((task) => cardFor(task, "task", "next")),
+      ...activeProjects
+        .filter((project) => recordDate(project, "project") > weekEnd)
+        .map((project) => cardFor(project, "project", "next")),
+    ].sort(byDate);
+
+    const cards = [...urgent, ...warning, ...next].slice(0, 3);
+    if (cards.length) return cards;
+
+    return (["urgent", "warning", "next"] as const).map((level) => ({
+      ...levelDetails(level),
+      level,
+      title:
+        level === "urgent"
+          ? "Nenhuma demanda urgente"
+          : level === "warning"
+            ? "Nenhum aviso no período"
+            : "Nada a seguir",
+      client: "Tudo sob controle",
+      href: "/pauta",
+    }));
+  });
 </script>
 
 <svelte:head><title>Dashboard · Demanda</title></svelte:head>
@@ -776,7 +887,7 @@
   aria-label="Dashboard"
   aria-busy={projectsLoading || tasksLoading}
 >
-  <section class="panel alerts-panel" aria-labelledby="alertas-title">
+  <section class="panel alerts-panel" aria-label="Resumo do dia">
     {#if projectsLoading}
       <p class="projects-state" role="status">Atualizando projetos…</p>
     {:else if projectsError}
@@ -795,62 +906,41 @@
         </button>
       </div>
     {/if}
-    <h3 id="alertas-title">Alertas</h3>
-    <div class="alert-grid">
-      {#each alertMetrics as metric (metric.label)}
-        {@const MetricIcon = metric.icon}
-        <a
-          class:payment-metric={metric.label === "pagamentos atrasados"}
-          class="alert-metric tone-{metric.tone}"
-          href={metric.href}
-        >
-          <span class="metric-icon"
-            ><MetricIcon size={20} strokeWidth={1.9} /></span
-          >
-          <span class="metric-copy">
-            <strong>{metric.value}</strong>
-            <span>{metric.label}</span>
-          </span>
-        </a>
-      {/each}
-    </div>
+    <div class="daily-summary" aria-labelledby="resumo-dia-title">
+      <a class="daily-next-delivery" href={nextDelivery.href}>
+        <span class="daily-date">{dashboardDateLabel}</span>
+        <strong>{nextDelivery.label}</strong>
+        <small>{nextDelivery.title}</small>
+      </a>
 
-    <div class="attention" aria-label="Indicadores da semana">
-      <div class="attention-bar">
-        {#if attentionTotal === 0}
-          <span class="segment neutral" style="width: 100%"></span>
-        {:else}
-          {#each attentionParts as part (part.label)}
-            {#if part.value > 0}
-              <span
-                class="segment {part.tone}"
-                style={`width: ${(part.value / attentionTotal) * 100}%`}
-              ></span>
-            {/if}
-          {/each}
-        {/if}
-      </div>
-      <div class="attention-legend">
-        <div class="attention-statuses">
-          {#each attentionParts as part (part.label)}
-            {#if attentionTotal === 0 || part.value > 0}
-              <span
-                class="attention-legend-item"
-                style={`--legend-size: ${
-                  attentionTotal > 0
-                    ? (part.value / attentionTotal) * 100
-                    : 100 / attentionParts.length
-                }%`}
-                ><i class={part.tone}></i><strong>{part.value}</strong
-                >{part.label}</span
-              >
-            {/if}
-          {/each}
+      <section class="daily-progress" aria-labelledby="resumo-dia-title">
+        <div class="daily-progress-head">
+          <h3 id="resumo-dia-title">Conclusão do dia</h3>
+          <strong>{dayProgress}%</strong>
         </div>
-        <span class="attention-total"
-          ><i></i><strong>{attentionTotal}</strong>Total de tarefas</span
+        <div
+          class="daily-progress-track"
+          role="progressbar"
+          aria-label="Conclusão das horas reservadas hoje"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow={dayProgress}
         >
-      </div>
+          <span style={`width: ${dayProgress}%`}></span>
+        </div>
+      </section>
+
+      <a class="daily-total" href="/cronograma">
+        <span>Horas</span>
+        <strong>{formatDuration(remainingScheduledMinutes)}</strong>
+        <small>restantes</small>
+      </a>
+
+      <a class="daily-total" href="/pauta">
+        <span>Tarefas</span>
+        <strong>{scheduledToday.length}</strong>
+        <small>restantes</small>
+      </a>
     </div>
   </section>
 
@@ -902,6 +992,29 @@
           {/if}
         </div>
       </div>
+    </section>
+
+    <section class="panel today-panel" aria-labelledby="hoje-title">
+      <div class="section-head">
+        <div>
+          <h3 id="hoje-title">Hoje</h3>
+        </div>
+        <a href="/cronograma">Abrir <ArrowUpRight size={15} /></a>
+      </div>
+
+      <ol class="schedule-preview" aria-label="Prévia do cronograma atual">
+        {#each schedulePreview as slot (slot.id)}
+          <li class:current={slot.current} class="schedule-slot {slot.state}">
+            <span class="schedule-slot-time">{slot.time}</span>
+            <span class="schedule-slot-marker" aria-hidden="true"></span>
+            <a href="/cronograma">
+              <strong>{slot.title}</strong>
+              <small>{slot.description}</small>
+            </a>
+            {#if slot.current}<span class="schedule-slot-now">Agora</span>{/if}
+          </li>
+        {/each}
+      </ol>
     </section>
 
     <TabSystem
@@ -1175,23 +1288,20 @@
                 class:today={day.today}
                 class="workday tone-{day.tone}"
                 href="/cronograma"
-                style={`--workday-load: ${
-                  day.hours > 0
-                    ? Math.max(12, (day.hours / maxDayHours) * 100)
-                    : 0
-                }%`}
+                style={workdayStyle(day.hours)}
               >
                 <span class="workday-top">
                   <span>{day.label}</span>
                   {#if day.today}<i aria-label="Hoje"></i>{/if}
                 </span>
-                <strong>{day.count}</strong>
-                <small
+                <strong
                   >{new Intl.NumberFormat("pt-BR", {
                     maximumFractionDigits: 1,
-                  }).format(day.hours)}h de trabalho</small
+                  }).format(day.hours)}h</strong
                 >
-                <span class="workday-bar" aria-hidden="true"><i></i></span>
+                <span class="workday-bar" aria-hidden="true"
+                  >{#if day.hours >= 0.5}<i></i>{/if}</span
+                >
               </a>
             {/each}
           </div>
@@ -1239,40 +1349,80 @@
     </TabSystem>
   </section>
 
-  <section class="panel finance-panel" aria-labelledby="financas-title">
-    <div class="section-head">
-      <h3 id="financas-title">Finanças</h3>
-      <a href="/financeiro?tab=painel">Abrir <ArrowUpRight size={15} /></a>
-    </div>
-    <div class="finance-grid">
-      {#each financeMetrics as metric (metric.title)}
-        {@const MetricIcon = metric.icon}
-        <a
-          class:solid={metric.solid}
-          class="finance-metric tone-{metric.tone}"
-          href="/financeiro?tab=painel"
-        >
-          <span class="finance-icon"
-            ><MetricIcon size={22} strokeWidth={1.9} /></span
+  <section class="lower-grid" aria-label="Prioridades e finanças">
+    <section class="panel attention-panel" aria-labelledby="atencao-title">
+      <div class="section-head">
+        <div>
+          <h3 id="atencao-title">Atenção</h3>
+        </div>
+        <a href="/pauta">Ver pauta <ArrowUpRight size={15} /></a>
+      </div>
+      <div class="attention-cards">
+        {#each attentionCards as card, index (`${card.title}-${index}`)}
+          {@const AttentionIcon = card.icon}
+          <a class="attention-card tone-{card.tone}" href={card.href}>
+            <span class="attention-card-head">
+              <span class="attention-card-icon"
+                ><AttentionIcon size={17} strokeWidth={2} /></span
+              >
+              <span>{card.label}</span>
+            </span>
+            <span class="attention-card-body">
+              <strong>{card.title}</strong>
+              <small>{card.client}</small>
+            </span>
+          </a>
+        {/each}
+      </div>
+    </section>
+
+    <section class="panel finance-panel" aria-labelledby="financas-title">
+      <div class="section-head">
+        <h3 id="financas-title">Finanças</h3>
+        <a href="/financeiro?tab=painel">Abrir <ArrowUpRight size={15} /></a>
+      </div>
+      <div class="finance-grid">
+        {#each financeMetrics as metric (metric.title)}
+          {@const MetricIcon = metric.icon}
+          <a
+            class:solid={metric.solid}
+            class="finance-metric tone-{metric.tone}"
+            href="/financeiro?tab=painel"
           >
-          <span class="finance-copy">
-            <span>{metric.title}</span>
-            <strong>{metric.value}</strong>
-          </span>
-        </a>
-      {/each}
-    </div>
+            <span class="finance-card-head">
+              <span class="finance-icon"
+                ><MetricIcon size={18} strokeWidth={1.9} /></span
+              >
+              <span class="finance-copy"><span>{metric.title}</span></span>
+            </span>
+            <span class="finance-card-value">
+              <strong>{metric.value}</strong>
+            </span>
+          </a>
+        {/each}
+      </div>
+    </section>
   </section>
 </section>
 
 <style>
   .dashboard-page {
     --dash-gap: 12px;
+    --dashboard-panel-padding: 16px;
+    --dashboard-section-gap: 12px;
+    --dashboard-type-display: 600 32px/1 var(--font-sans);
+    --dashboard-type-section: 600 20px/1.15 var(--font-sans);
+    --dashboard-type-component: 600 16px/1.2 var(--font-sans);
+    --dashboard-type-metric: 600 18px/1.1 var(--font-sans);
+    --dashboard-type-ui: 600 12px/1.2 var(--font-sans);
+    --dashboard-type-body: 400 12px/1.4 var(--font-sans);
+    --dashboard-type-meta: 500 11px/1.25 var(--font-sans);
+    --dashboard-type-eyebrow: 600 10px/1.1 var(--font-sans);
     width: 100%;
     min-width: 0;
     min-height: calc(100dvh - var(--topbar-height) - (var(--main-padding) * 2));
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
     gap: var(--dash-gap);
     color: var(--ink-950);
   }
@@ -1294,7 +1444,7 @@
 
   .alerts-panel {
     position: relative;
-    padding: 20px;
+    padding: 14px 20px;
     border-color: rgba(46, 86, 255, 0.22);
     background: linear-gradient(
       135deg,
@@ -1328,6 +1478,132 @@
     color: inherit;
     background: transparent;
     font: inherit;
+    white-space: nowrap;
+  }
+
+  .daily-summary {
+    min-width: 0;
+    display: grid;
+    grid-template-columns:
+      minmax(190px, 1.05fr) minmax(280px, 1.45fr) minmax(150px, 0.58fr)
+      minmax(150px, 0.58fr);
+    align-items: center;
+  }
+
+  .daily-summary > * {
+    min-width: 0;
+    min-height: 58px;
+    padding: 4px 20px;
+  }
+
+  .daily-summary > * + * {
+    border-left: 1px solid rgba(15, 23, 42, 0.16);
+  }
+
+  .daily-next-delivery {
+    display: grid;
+    align-content: center;
+    gap: 3px;
+  }
+
+  .daily-date {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: capitalize;
+  }
+
+  .daily-next-delivery strong {
+    overflow: hidden;
+    color: #081631;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .daily-next-delivery small {
+    overflow: hidden;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .daily-next-delivery small:empty {
+    display: none;
+  }
+
+  .daily-progress {
+    display: grid;
+    align-content: center;
+    gap: 8px;
+  }
+
+  .daily-progress-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .daily-progress h3 {
+    font-size: 16px;
+  }
+
+  .daily-progress-head > strong {
+    color: #081631;
+    font-size: 16px;
+  }
+
+  .daily-progress-track {
+    width: 100%;
+    height: 12px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #dfe5ff;
+  }
+
+  .daily-progress-track > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #153bf3, #2e56ff);
+    transition: width var(--motion-fast) ease;
+  }
+
+  .daily-total {
+    display: grid;
+    align-content: center;
+    gap: 3px;
+  }
+
+  .daily-total > span {
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+
+  .daily-total strong {
+    overflow: hidden;
+    color: #081631;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .daily-total small {
+    overflow: hidden;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 600;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
@@ -1440,101 +1716,195 @@
     font-weight: 500;
   }
 
-  .attention {
-    margin-top: 14px;
-  }
-
-  .attention-bar {
-    width: 100%;
-    height: 10px;
-    display: flex;
-    overflow: hidden;
-    border-radius: 999px;
-    background: rgba(100, 116, 139, 0.16);
-  }
-
-  .segment,
-  .attention-legend i {
-    background: #94a3b8;
-  }
-
-  .segment.success,
-  .attention-legend i.success {
-    background: #5dac83;
-  }
-
-  .segment.danger,
-  .attention-legend i.danger {
-    background: #dc2626;
-  }
-
-  .segment.info,
-  .attention-legend i.info {
-    background: #2e56ff;
-  }
-
-  .attention-legend {
-    position: relative;
-    min-width: 0;
-    margin-top: 8px;
-  }
-
-  .attention-statuses {
-    width: 100%;
-    min-width: 0;
-    display: flex;
-  }
-
-  .attention-legend-item {
-    flex: 0 0 var(--legend-size, auto);
-    min-width: 3px;
-    white-space: nowrap;
-  }
-
-  .attention-legend span {
-    display: flex;
-    align-items: baseline;
-    gap: 4px;
-    color: #64748b;
-    font-size: 12px;
-  }
-
-  .attention-legend i {
-    width: 9px;
-    height: 9px;
-    align-self: center;
-    border-radius: 50%;
-  }
-
-  .attention-legend strong {
-    color: #12213b;
-    font-size: 12px;
-  }
-
-  .attention-total {
-    position: absolute;
-    top: 0;
-    right: 0;
-    z-index: 1;
-    padding-left: 14px;
-    justify-content: flex-end;
-    background: linear-gradient(90deg, rgba(255, 255, 255, 0), #fff 14px);
-    white-space: nowrap;
-  }
-
-  .attention-total i {
-    background: #64748b;
-  }
-
   .main-grid {
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--dash-gap);
   }
 
+  .today-panel {
+    order: 1;
+    min-height: 0;
+    padding: var(--dashboard-panel-padding);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 0;
+    background: linear-gradient(145deg, #f4f7ff 0%, #ffffff 55%, #f4fbf7 100%);
+  }
+
+  .schedule-preview {
+    position: relative;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-rows: repeat(5, minmax(0, 1fr));
+    gap: 0;
+    list-style: none;
+  }
+
+  .schedule-preview::before {
+    position: absolute;
+    top: 18px;
+    bottom: 18px;
+    left: 97px;
+    width: 1px;
+    background: #e2e8f0;
+    content: "";
+  }
+
+  .schedule-slot {
+    --slot-color: #94a3b8;
+    min-width: 0;
+    min-height: 0;
+    padding: 8px;
+    display: grid;
+    grid-template-columns: 78px 9px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: #64748b;
+  }
+
+  .schedule-slot-time {
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .schedule-slot-marker {
+    position: relative;
+    z-index: 1;
+    width: 8px;
+    height: 8px;
+    border: 2px solid var(--slot-color);
+    border-radius: 50%;
+    background: #fff;
+  }
+
+  .schedule-slot:not(.current) {
+    border-bottom-color: rgba(148, 163, 184, 0.18);
+    border-radius: 0;
+  }
+
+  .schedule-slot:last-child:not(.current) {
+    border-bottom-color: transparent;
+  }
+
+  .schedule-slot a {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+
+  .schedule-slot a strong,
+  .schedule-slot a small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .schedule-slot a strong {
+    color: #334155;
+    font-size: 11px;
+    line-height: 1.15;
+  }
+
+  .schedule-slot a small {
+    color: #94a3b8;
+    font-size: 10px;
+  }
+
+  .schedule-slot a small:empty {
+    display: none;
+  }
+
+  .schedule-slot.done {
+    --slot-color: #4e9d74;
+    background: rgba(93, 172, 131, 0.07);
+  }
+
+  .schedule-slot.done .schedule-slot-marker {
+    background: var(--slot-color);
+    box-shadow: inset 0 0 0 2px #fff;
+  }
+
+  .schedule-slot.planned {
+    --slot-color: #2e56ff;
+    background: rgba(46, 86, 255, 0.04);
+  }
+
+  .schedule-slot.missed {
+    --slot-color: #e08a29;
+    background: rgba(234, 179, 8, 0.06);
+  }
+
+  .schedule-slot.current {
+    --slot-color: #244cff;
+    border: 0;
+    border-radius: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(233, 239, 255, 0.82) 14%,
+      #f7f9ff 50%,
+      rgba(233, 239, 255, 0.82) 86%,
+      transparent 100%
+    );
+    box-shadow: none;
+  }
+
+  .schedule-slot.current::before,
+  .schedule-slot.current::after {
+    position: absolute;
+    right: 0;
+    left: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(46, 86, 255, 0.32) 14%,
+      rgba(46, 86, 255, 0.32) 86%,
+      transparent
+    );
+    content: "";
+    pointer-events: none;
+  }
+
+  .schedule-slot.current::before {
+    top: 0;
+  }
+
+  .schedule-slot.current::after {
+    bottom: 0;
+  }
+
+  .schedule-slot.current .schedule-slot-marker {
+    background: var(--slot-color);
+    box-shadow: 0 0 0 4px rgba(46, 86, 255, 0.12);
+  }
+
+  .schedule-slot.current a strong {
+    color: #10245a;
+  }
+
+  .schedule-slot-now {
+    padding: 3px 6px;
+    border-radius: 999px;
+    color: #2047e7;
+    background: rgba(46, 86, 255, 0.1);
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
   .personal-panel {
+    order: 3;
     min-height: 0;
     padding: 0;
     display: grid;
@@ -1542,7 +1912,7 @@
   }
 
   .personal-head {
-    padding: 16px 32px 12px;
+    padding: var(--dashboard-panel-padding);
     border-bottom: 1px solid rgba(15, 23, 42, 0.13);
   }
 
@@ -1680,26 +2050,78 @@
   }
 
   :global(.dashboard-control-system) {
+    order: 2;
     min-width: 0;
     min-height: 0;
     height: 100%;
   }
 
+  :global(.dashboard-control-system .tab-list) {
+    gap: 4px;
+    margin-top: -10px;
+    padding: 10px 14px 0;
+  }
+
+  :global(.dashboard-control-system .tab-button) {
+    min-height: 36px;
+    padding: 7px 10px;
+    border-radius: 10px 10px 0 0;
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  :global(.dashboard-control-system .tab-button--inactive) {
+    border-color: #dce2eb;
+    color: #64748b;
+    background: #f3f5f8;
+    box-shadow: 1px 0 3px rgba(15, 23, 42, 0.07);
+  }
+
+  :global(.dashboard-control-system .tab-button--inactive:hover) {
+    color: #334155;
+    background: #edf1f6;
+  }
+
+  :global(.dashboard-control-system .tab-button--active) {
+    color: #10245a;
+    background: #fff;
+    box-shadow: 0 -1px 5px rgba(15, 23, 42, 0.06);
+    font-weight: 750;
+  }
+
+  :global(
+    .dashboard-control-system
+      .tab-list.overlapping
+      .tab-button--active:not(:first-child)
+  ),
+  :global(
+    .dashboard-control-system .tab-list.overlapping .tab-button--active + .tab-button
+  ) {
+    margin-left: calc(-1 * var(--tab-overlap));
+  }
+
   :global(.dashboard-control-panel) {
     flex: 1;
     min-height: 0;
-    padding: 20px;
+    padding: 16px;
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-gutter: stable;
-    scroll-padding: 20px;
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, #ffffff 88%, rgba(46, 86, 255, 0.1)) 0%,
-      #ffffff 48%,
-      color-mix(in srgb, #ffffff 90%, rgba(93, 172, 131, 0.16)) 100%
-    );
-    box-shadow: 0 18px 40px rgba(46, 86, 255, 0.06);
+    scroll-padding: 16px;
+    background:
+      linear-gradient(
+        to bottom,
+        #ffffff 0,
+        #ffffff 1px,
+        rgba(255, 255, 255, 0.92) 10px,
+        rgba(255, 255, 255, 0) 38px
+      ),
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, #ffffff 88%, rgba(46, 86, 255, 0.1)) 0%,
+        #ffffff 48%,
+        color-mix(in srgb, #ffffff 90%, rgba(93, 172, 131, 0.16)) 100%
+      );
+    box-shadow: 0 12px 28px rgba(46, 86, 255, 0.05);
   }
 
   .today-dashboard {
@@ -2497,7 +2919,7 @@
   }
 
   .workload {
-    min-height: 274px;
+    min-height: 210px;
     height: 100%;
   }
 
@@ -2507,17 +2929,17 @@
     height: 100%;
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 10px;
+    gap: 6px;
   }
 
   .workday {
     position: relative;
     min-width: 0;
-    min-height: 260px;
-    padding: 10px;
+    min-height: 190px;
+    padding: 8px;
     display: grid;
-    grid-template-rows: auto auto auto minmax(120px, 1fr);
-    gap: 8px;
+    grid-template-rows: auto auto minmax(76px, 1fr);
+    gap: 6px;
     border: 1px solid
       color-mix(in srgb, var(--tone-border) 72%, rgba(15, 23, 42, 0.12));
     border-radius: 12px;
@@ -2544,7 +2966,7 @@
     min-width: 0;
     overflow: hidden;
     color: #64748b;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     line-height: 1;
     text-overflow: ellipsis;
@@ -2562,20 +2984,13 @@
 
   .workday > strong {
     color: #081631;
-    font-size: 24px;
+    font-size: 18px;
     line-height: 1;
-  }
-
-  .workday > small {
-    color: #334155;
-    font-size: 11px;
-    line-height: 1.25;
   }
 
   .workday-bar {
     width: 100%;
-    min-height: 120px;
-    padding: 5px 7px;
+    min-height: 76px;
     overflow: hidden;
     align-self: stretch;
     display: flex;
@@ -2589,21 +3004,166 @@
     display: block;
     width: 100%;
     height: var(--workday-load, 0%);
-    min-height: 4px;
-    border-radius: inherit;
-    background: var(--tone);
+    background: linear-gradient(
+      to top,
+      var(--workday-color),
+      color-mix(in srgb, var(--workday-color) 68%, #ffffff)
+    );
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    transition:
+      height var(--motion-base) ease,
+      background var(--motion-base) ease;
+  }
+
+  .lower-grid {
+    --dashboard-summary-card-height: 106px;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+    gap: var(--dash-gap);
+  }
+
+  .attention-panel,
+  .finance-panel {
+    box-sizing: border-box;
+    height: 100%;
+    padding: var(--dashboard-panel-padding);
+    display: grid;
+    grid-template-rows:
+      32px
+      var(--dashboard-section-gap)
+      var(--dashboard-summary-card-height);
+    align-content: start;
   }
 
   .finance-panel {
-    padding: 20px;
+    grid-column: span 2;
+  }
+
+  .attention-cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: var(--dashboard-summary-card-height);
+    gap: 8px;
+  }
+
+  .attention-card,
+  .finance-metric {
+    --tone: #2e56ff;
+    --tone-ink: #2047e7;
+    --tone-bg: rgba(46, 86, 255, 0.1);
+    --tone-border: rgba(46, 86, 255, 0.22);
+    box-sizing: border-box;
+    height: 100%;
+    min-height: 0;
+    padding: 12px;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--tone-border);
+    border-radius: 10px;
+  }
+
+  .attention-card {
+    min-width: 0;
+    padding: 10px;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    align-items: stretch;
+    gap: 9px;
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, #fff 88%, var(--tone-bg)),
+      #fff
+    );
+  }
+
+  .attention-card:hover {
+    border-color: color-mix(in srgb, var(--tone) 52%, var(--tone-border));
+    transform: translateY(-1px);
+  }
+
+  .attention-card-head {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    color: var(--tone-ink);
+  }
+
+  .attention-card-icon {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--tone-border);
+    border-radius: 10px;
+    color: var(--tone-ink);
+    background: var(--tone-bg);
+  }
+
+  .attention-card-body {
+    min-width: 0;
+    display: grid;
+    align-content: end;
+    gap: 3px;
+    padding-top: 8px;
+    border-top: 1px solid color-mix(in srgb, var(--tone-border) 58%, transparent);
+  }
+
+  .attention-card-body strong {
+    display: -webkit-box;
+    overflow: hidden;
+    color: #0c1c39;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    text-overflow: ellipsis;
+  }
+
+  .attention-card-body small {
+    min-width: 0;
+    overflow: hidden;
+    color: #64748b;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .attention-card.tone-danger {
+    --tone: #dc2626;
+    --tone-ink: #a11b1b;
+    --tone-bg: rgba(220, 38, 38, 0.11);
+    --tone-border: rgba(220, 38, 38, 0.26);
+  }
+
+  .attention-card.tone-warning {
+    --tone: #eab308;
+    --tone-ink: #87570a;
+    --tone-bg: rgba(234, 179, 8, 0.13);
+    --tone-border: rgba(234, 179, 8, 0.28);
+  }
+
+  .attention-card.tone-success {
+    --tone: #5dac83;
+    --tone-ink: #216642;
+    --tone-bg: rgba(93, 172, 131, 0.12);
+    --tone-border: rgba(93, 172, 131, 0.25);
   }
 
   .section-head {
+    min-height: 32px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 12px;
+    margin: 0;
+  }
+
+  .section-head h3 {
+    margin: 0;
   }
 
   .section-head a {
@@ -2624,26 +3184,29 @@
     min-width: 0;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
+    grid-auto-rows: var(--dashboard-summary-card-height);
+    gap: 8px;
+  }
+
+  .attention-cards,
+  .finance-grid {
+    grid-row: 3;
   }
 
   .finance-metric {
-    --tone: #2e56ff;
-    --tone-ink: #2047e7;
-    --tone-bg: rgba(46, 86, 255, 0.07);
-    --tone-border: rgba(46, 86, 255, 0.22);
     position: relative;
     min-width: 0;
-    min-height: 96px;
-    padding: 10px 12px;
-    display: grid;
-    grid-template-columns: 42px minmax(0, 1fr);
-    align-items: center;
-    gap: 12px;
+    padding: 10px;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    align-items: stretch;
+    gap: 8px;
     overflow: hidden;
-    border: 1px solid
-      color-mix(in srgb, var(--tone-border) 70%, rgba(15, 23, 42, 0.12));
-    border-radius: 0;
+    border-color: color-mix(
+      in srgb,
+      var(--tone-border) 70%,
+      rgba(15, 23, 42, 0.12)
+    );
     background: linear-gradient(
       180deg,
       color-mix(in srgb, #ffffff 90%, var(--tone-bg)),
@@ -2676,12 +3239,12 @@
   }
 
   .finance-icon {
-    width: 42px;
-    height: 42px;
+    width: 30px;
+    height: 30px;
     display: grid;
     place-items: center;
     border: 1px solid var(--tone-border);
-    border-radius: 12px;
+    border-radius: 10px;
     color: var(--tone-ink);
     background: var(--tone-bg);
   }
@@ -2689,14 +3252,13 @@
   .finance-copy {
     min-width: 0;
     display: grid;
-    gap: 5px;
   }
 
   .finance-copy > span {
     overflow: hidden;
     color: #64748b;
-    font-size: 12px;
-    font-weight: 600;
+    font-size: 10px;
+    font-weight: 700;
     text-overflow: ellipsis;
     text-transform: uppercase;
     white-space: nowrap;
@@ -2705,8 +3267,33 @@
   .finance-copy strong {
     overflow: hidden;
     color: #081631;
-    font-size: 24px;
-    font-weight: 600;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .finance-card-head {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .finance-card-value {
+    min-width: 0;
+    display: flex;
+    align-items: end;
+    padding-top: 8px;
+    border-top: 1px solid color-mix(in srgb, var(--tone-border) 58%, transparent);
+  }
+
+  .finance-card-value strong {
+    overflow: hidden;
+    color: #081631;
+    font-size: 18px;
+    font-weight: 700;
     line-height: 1;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2723,7 +3310,7 @@
   }
 
   .finance-metric.solid .finance-copy > span,
-  .finance-metric.solid .finance-copy strong {
+  .finance-metric.solid .finance-card-value strong {
     color: #fff;
   }
 
@@ -2735,8 +3322,28 @@
   }
 
   @media (max-width: 1120px) {
+    .daily-summary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .daily-summary > *:nth-child(3) {
+      border-left: 0;
+    }
+
+    .daily-summary > *:nth-child(n + 3) {
+      border-top: 1px solid rgba(15, 23, 42, 0.16);
+    }
+
     .main-grid {
       grid-template-columns: 1fr;
+    }
+
+    .lower-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .finance-panel {
+      grid-column: auto;
     }
 
     .personal-panel,
@@ -2757,14 +3364,31 @@
   @media (max-width: 760px) {
     .dashboard-page {
       --dash-gap: 10px;
+      --dashboard-panel-padding: 14px;
       min-height: auto;
       grid-template-rows: auto;
     }
 
     .alerts-panel,
     :global(.dashboard-control-panel),
+    .attention-panel,
     .finance-panel {
-      padding: 14px;
+      padding: var(--dashboard-panel-padding);
+    }
+
+    .daily-summary {
+      grid-template-columns: 1fr;
+    }
+
+    .daily-summary > * {
+      min-height: 0;
+      padding: 13px 0;
+      border: 0;
+    }
+
+    .daily-summary > * + * {
+      border-top: 1px solid rgba(15, 23, 42, 0.12);
+      border-left: 0;
     }
 
     .personal-panel {
@@ -2820,8 +3444,11 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .control-card,
-    .control-card.featured {
+    .attention-card {
+      grid-template-columns: 36px minmax(0, 1fr);
+    }
+
+    .control-card {
       grid-column: auto;
       min-height: 132px;
     }
@@ -2839,5 +3466,112 @@
     .week-grid {
       grid-template-columns: 1fr;
     }
+  }
+
+  /* Typography hierarchy: components choose a role instead of bespoke text values. */
+  .dashboard-page strong {
+    font-weight: 600;
+  }
+
+  .dashboard-page h3 {
+    font: var(--dashboard-type-section);
+  }
+
+  .daily-progress h3,
+  .today-signals h2,
+  .today-route h2,
+  .today-deliveries h2,
+  .today-capacity h2,
+  .pending-empty strong {
+    font: var(--dashboard-type-component);
+  }
+
+  .control-copy strong,
+  .featured .control-copy strong {
+    font: var(--dashboard-type-display);
+  }
+
+  .daily-next-delivery strong,
+  .daily-progress-head > strong,
+  .daily-total strong,
+  .metric-copy strong,
+  .today-focus-copy strong,
+  .today-stat strong,
+  .today-capacity > .today-section-head > strong,
+  .workday > strong,
+  .finance-copy strong {
+    font: var(--dashboard-type-metric);
+  }
+
+  :global(.dashboard-control-system .tab-button),
+  .section-head a,
+  .metric-copy span,
+  .control-copy span,
+  .today-section-head a,
+  .today-focus-action,
+  .today-stat > span,
+  .today-all-clear,
+  .today-signal strong,
+  .today-timeline a strong,
+  .today-route-empty a,
+  .today-capacity-action,
+  .today-delivery-list strong,
+  .today-actions a,
+  .attention-card-head > span:last-child,
+  .attention-card-body strong,
+  .invitation-copy strong,
+  .invitation-card button {
+    font: var(--dashboard-type-ui);
+  }
+
+  .personal-form input,
+  .notebook li > span,
+  .today-focus-copy p,
+  .today-signal small,
+  .today-deliveries-empty,
+  .pending-empty p,
+  .invitation-copy p {
+    font: var(--dashboard-type-body);
+  }
+
+  .daily-date,
+  .daily-next-delivery small,
+  .daily-total small,
+  .schedule-slot a strong,
+  .schedule-slot a small,
+  .today-focus-meta,
+  .today-route-summary,
+  .today-timeline a span,
+  .today-timeline-duration,
+  .today-timeline-duration small,
+  .today-route-empty,
+  .today-capacity-notes,
+  .attention-card-body small,
+  .workday-top > span,
+  .invitation-message {
+    font: var(--dashboard-type-meta);
+  }
+
+  .daily-total > span,
+  .today-eyebrow,
+  .today-focus-state,
+  .schedule-slot-now,
+  .today-delivery-list a > span,
+  .invitation-copy small,
+  .finance-copy > span {
+    font: var(--dashboard-type-eyebrow);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .schedule-slot-time,
+  .today-timeline-time {
+    font: var(--dashboard-type-meta);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .daily-date,
+  .workday-top > span {
+    text-transform: none;
   }
 </style>

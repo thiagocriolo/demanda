@@ -21,10 +21,6 @@ import type {
   BusinessResponsibleContactOption,
   BusinessResponsibleUserOption,
 } from "../../businesses/types";
-import {
-  INSTITUTIONAL_PROJECT_NAME,
-  INSTITUTIONAL_PROJECT_STATUS,
-} from "../../projects/institutional";
 import { affectedRows, type Database } from "../db/database";
 import { databaseConstraint, escapeLikeMySql } from "../db/helpers";
 import {
@@ -736,14 +732,6 @@ export async function createWorkspaceBusiness(
         .where(eq(businesses.id, id))
         .limit(1);
       if (!created) throw new Error("O negocio nao pode ser criado.");
-      await transaction.insert(projects).values({
-        workspaceId,
-        businessId: created.id,
-        isInstitutional: true,
-        name: INSTITUTIONAL_PROJECT_NAME,
-        statusKey: INSTITUTIONAL_PROJECT_STATUS,
-        startDate: created.createdAt.toISOString().slice(0, 10),
-      });
       await insertBusinessDetails(transaction, workspaceId, created.id, input);
       const [business] = await hydrateBusinesses(
         transaction,

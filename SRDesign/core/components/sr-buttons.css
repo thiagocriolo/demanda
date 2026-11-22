@@ -1,0 +1,210 @@
+/* ==========================================================================
+   SRDesign — Botões e Controles de Ação
+   ========================================================================== */
+
+.sr-btn {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid var(--sr-border);
+  border-radius: 10px;
+  color: var(--sr-ink-700);
+  background: var(--sr-surface);
+  font-size: var(--sr-text-sm);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background var(--sr-motion-fast),
+    border-color var(--sr-motion-fast),
+    color var(--sr-motion-fast),
+    box-shadow var(--sr-motion-fast),
+    transform var(--sr-motion-fast);
+}
+
+.sr-btn:hover:not(:disabled) {
+  border-color: var(--sr-border-strong);
+  background: var(--sr-surface-soft);
+}
+
+.sr-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.sr-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+/* Variantes de tom */
+.sr-btn--primary {
+  border-color: var(--sr-brand-600);
+  color: #ffffff;
+  background: var(--sr-brand-600);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--sr-primary) 18%, transparent);
+}
+
+.sr-btn--primary:hover:not(:disabled) {
+  border-color: var(--sr-brand-700);
+  background: var(--sr-brand-700);
+}
+
+.sr-btn--accent {
+  border-color: var(--sr-accent);
+  color: #ffffff;
+  background: var(--sr-accent);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--sr-accent) 22%, transparent);
+}
+
+.sr-btn--accent:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--sr-accent) 88%, #000000);
+  background: color-mix(in srgb, var(--sr-accent) 92%, #000000);
+}
+
+.sr-btn--success {
+  border-color: #16a34a;
+  color: #ffffff;
+  background: #16a34a;
+}
+
+.sr-btn--success:hover:not(:disabled) {
+  border-color: #15803d;
+  background: #15803d;
+}
+
+.sr-btn--warning {
+  border-color: #b7791f;
+  color: #ffffff;
+  background: #b7791f;
+}
+
+.sr-btn--warning:hover:not(:disabled) {
+  border-color: #975a16;
+  background: #975a16;
+}
+
+.sr-btn--danger {
+  border-color: var(--sr-danger);
+  color: #ffffff;
+  background: var(--sr-danger);
+}
+
+.sr-btn--danger:hover:not(:disabled) {
+  border-color: #b91c1c;
+  background: #b91c1c;
+}
+
+.sr-btn--soft {
+  border-color: var(--sr-brand-100);
+  color: var(--sr-brand-600);
+  background: var(--sr-brand-50);
+}
+
+.sr-btn--soft:hover:not(:disabled) {
+  background: var(--sr-brand-100);
+}
+
+.sr-btn--ghost {
+  border-color: transparent;
+  color: var(--sr-ink-500);
+  background: transparent;
+}
+
+.sr-btn--ghost:hover:not(:disabled) {
+  border-color: transparent;
+  color: var(--sr-ink-800);
+  background: var(--sr-surface-soft);
+}
+
+/* Tamanhos */
+.sr-btn--sm {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: var(--sr-radius-sm);
+  font-size: var(--sr-text-xs);
+}
+
+.sr-btn--lg {
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: var(--sr-radius-md);
+  font-size: var(--sr-text-md);
+}
+
+.sr-btn--block {
+  width: 100%;
+}
+
+.sr-btn--icon {
+  width: 40px;
+  min-height: 40px;
+  padding: 0;
+}
+
+.sr-btn--icon.sr-btn--sm {
+  width: 32px;
+  min-height: 32px;
+}
+
+/* Botão de Salvar da Topbar (com estados dirty / saving / saved) */
+.sr-save-btn {
+  display: inline-flex;
+  min-width: 96px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid var(--sr-border-strong);
+  border-radius: 10px;
+  color: var(--sr-ink-700);
+  background: transparent;
+  font-size: var(--sr-text-sm);
+  font-weight: 600;
+  transition:
+    border-color var(--sr-motion-fast),
+    color var(--sr-motion-fast),
+    background var(--sr-motion-fast);
+}
+
+.sr-save-btn:hover:not(:disabled) {
+  border-color: var(--sr-ink-400);
+  color: var(--sr-ink-800);
+  background: var(--sr-surface-soft);
+}
+
+.sr-save-btn.is-dirty {
+  border-color: var(--sr-brand-600);
+  color: #ffffff;
+  background: var(--sr-brand-600);
+}
+
+.sr-save-btn.is-dirty:hover:not(:disabled) {
+  border-color: var(--sr-brand-700);
+  background: var(--sr-brand-700);
+}
+
+.sr-save-btn.is-saved {
+  border-color: var(--sr-accent);
+  color: var(--sr-accent);
+  background: color-mix(in srgb, var(--sr-accent) 10%, transparent);
+}
+
+.sr-save-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 560px) {
+  .sr-save-btn--compact-mobile {
+    width: 40px;
+    min-width: 40px;
+    padding: 0;
+  }
+  .sr-save-btn--compact-mobile .sr-save-btn__label {
+    display: none;
+  }
+}

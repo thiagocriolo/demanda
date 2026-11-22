@@ -1,0 +1,119 @@
+/* ==========================================================================
+   SRDesign — Estilo Auxiliar das Páginas de Preview (components/*.html)
+   Este arquivo NÃO precisa ser importado pelo projeto destino.
+   ========================================================================== */
+
+.sr-preview-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--sr-border);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(8px);
+}
+
+.sr-preview-bar__left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sr-preview-bar__title {
+  font-size: var(--sr-text-md);
+  font-weight: 600;
+  color: var(--sr-ink-950);
+}
+
+.sr-preview-wrap {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+  display: grid;
+  gap: 22px;
+}
+
+.sr-preview-block {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--sr-border);
+  border-radius: var(--sr-radius-xl);
+  background: var(--sr-surface);
+}
+
+.sr-preview-block--canvas {
+  background: var(--sr-main-background);
+}
+
+.sr-preview-block__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sr-preview-block__head h2 {
+  font-size: var(--sr-text-lg);
+  font-weight: 600;
+  color: var(--sr-ink-950);
+}
+
+.sr-preview-block__head p {
+  font-size: var(--sr-text-sm);
+  color: var(--sr-ink-500);
+}
+
+.sr-code {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--sr-border);
+  border-radius: var(--sr-radius-md);
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: var(--sr-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.sr-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+  gap: 12px;
+}
+
+.sr-swatch {
+  border: 1px solid var(--sr-border);
+  border-radius: var(--sr-radius-md);
+  overflow: hidden;
+  background: var(--sr-surface);
+}
+
+.sr-swatch__color {
+  height: 64px;
+  border-bottom: 1px solid var(--sr-border);
+}
+
+.sr-swatch__meta {
+  padding: 10px 12px;
+  display: grid;
+  gap: 2px;
+}
+
+.sr-swatch__meta strong {
+  font-size: var(--sr-text-sm);
+  color: var(--sr-ink-950);
+}
+
+.sr-swatch__meta code {
+  font-family: var(--sr-font-mono);
+  font-size: 11px;
+  color: var(--sr-ink-500);
+}

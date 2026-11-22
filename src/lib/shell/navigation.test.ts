@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@lucide/svelte", () => ({
   BadgeDollarSign: {},
-  Blocks: {},
   BriefcaseBusiness: {},
   Calendar: {},
-  ChartNoAxesCombined: {},
   CircleUserRound: {},
+  FileText: {},
   GalleryVerticalEnd: {},
   Handshake: {},
+  History: {},
   LayoutDashboard: {},
   ListTodo: {},
   MonitorCog: {},
@@ -16,7 +16,6 @@ vi.mock("@lucide/svelte", () => ({
   Newspaper: {},
   Settings2: {},
   SlidersHorizontal: {},
-  SquareStack: {},
   Timeline: {},
   UsersRound: {},
   Wrench: {},
@@ -24,6 +23,7 @@ vi.mock("@lucide/svelte", () => ({
 
 import {
   areaNavigation,
+  businessNavigation,
   configNavigation,
   getNavigation,
   navigationMode,
@@ -32,30 +32,37 @@ import {
 import { resolvePageTitle, resolveTopbarTitle } from "./page-title";
 
 describe("navegação das áreas", () => {
-  it("mantém os itens operacionais em Meu negócio", () => {
+  it("separa as rotas de Meu negócio das configurações", () => {
+    expect(navigationMode("/contratos")).toBe("business");
     expect(navigationMode("/clientes")).toBe("business");
-    expect(navigationMode("/ferramentas/recursos")).toBe("config");
-    expect(navigationMode("/financeiro")).toBe("config");
+    expect(navigationMode("/ferramentas/recursos")).toBe("business");
+    expect(navigationMode("/financeiro")).toBe("business");
+    expect(navigationMode("/historico")).toBe("business");
   });
 
-  it("organiza os rótulos e os itens da área Meu negócio", () => {
-    expect(areaNavigation.find(({ area }) => area === "config")?.label).toBe(
+  it("organiza os menus de Meu negócio e Configurações", () => {
+    expect(areaNavigation.find(({ area }) => area === "business")?.label).toBe(
       "Meu negócio",
     );
-    expect(configNavigation.map(({ label }) => label)).toEqual([
+    expect(businessNavigation.map(({ label }) => label)).toEqual([
+      "Contratos",
       "Clientes",
-      "Modelos",
+      "Serviços",
       "Ferramentas",
       "Financeiro",
+      "Relatórios",
+    ]);
+    expect(configNavigation.map(({ label }) => label)).toEqual([
       "Preferências",
-      "Configurações",
+      "Interface",
+      "Sistema",
     ]);
     expect(workspaceNavigation.map(({ label }) => label)).not.toContain(
       "Clientes",
     );
   });
 
-  it("permite trocar apenas o menu visível sem mudar a rota", () => {
+  it("permite trocar o menu visível sem mudar a rota", () => {
     expect(getNavigation("/dashboard", "social").mode).toBe("social");
     expect(getNavigation("/dashboard", "social").primary).not.toEqual(
       workspaceNavigation,
@@ -65,14 +72,9 @@ describe("navegação das áreas", () => {
     );
   });
 
-  it("mantém o título de ferramentas após a mudança de área", () => {
-    expect(resolveTopbarTitle("/ferramentas")).toBe("Ferramentas");
-    expect(resolvePageTitle("/ferramentas")).toBe("Ferramentas");
-  });
-
-  it("usa Modelos e Meu negócio nos títulos apropriados", () => {
-    expect(resolvePageTitle("/meunegocio")).toBe("Modelos");
-    expect(resolveTopbarTitle("/meunegocio")).toBe("Modelos");
-    expect(resolveTopbarTitle("/preferencias")).toBe("Meu negócio");
+  it("usa os títulos reorganizados", () => {
+    expect(resolvePageTitle("/meunegocio")).toBe("Serviços");
+    expect(resolveTopbarTitle("/meunegocio")).toBe("Serviços");
+    expect(resolveTopbarTitle("/preferencias")).toBe("Configurações");
   });
 });

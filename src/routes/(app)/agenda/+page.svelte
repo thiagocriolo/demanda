@@ -135,8 +135,8 @@
   let dailyDates = $derived([cursor, ...upcomingDates]);
   let weekdays = $derived(showWeekends ? allWeekdays : allWeekdays.slice(0, 5));
   let weeklyDates = $derived.by(() => {
-    const first = addDays(startOfWeek(cursor), -14);
-    const dates = Array.from({ length: 35 }, (_, index) =>
+    const first = startOfWeek(cursor);
+    const dates = Array.from({ length: 7 }, (_, index) =>
       addDays(first, index),
     );
     return showWeekends ? dates : dates.filter((date) => !isWeekend(date));
@@ -1234,11 +1234,21 @@
   }
   .week-grid {
     display: flex;
-    width: max-content;
+    width: 100%;
+    min-width: 980px;
     height: 100%;
     min-height: 100%;
     align-items: stretch;
-    gap: 12px;
+    gap: 0;
+  }
+  .week-grid :global(.day-column + .day-column) {
+    border-left: 0;
+  }
+  .week-grid :global(.day-column:first-child) {
+    border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+  }
+  .week-grid :global(.day-column:last-child) {
+    border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
   }
   .month-grid {
     display: grid;
@@ -1262,7 +1272,7 @@
     padding: 9px;
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    background: var(--surface-soft);
+    background: #fff;
     transition:
       border-color var(--motion-fast),
       box-shadow var(--motion-fast);

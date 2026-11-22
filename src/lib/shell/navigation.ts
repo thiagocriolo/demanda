@@ -3,8 +3,10 @@ import {
   BriefcaseBusiness,
   Calendar,
   CircleUserRound,
+  FileText,
   GalleryVerticalEnd,
   Handshake,
+  History,
   LayoutDashboard,
   ListTodo,
   MonitorCog,
@@ -17,7 +19,7 @@ import {
   Wrench,
 } from "@lucide/svelte";
 
-export type NavigationMode = "workspace" | "config" | "social";
+export type NavigationMode = "workspace" | "business" | "config" | "social";
 
 export type NavigationItem = {
   label: string;
@@ -39,13 +41,23 @@ export const workspaceNavigation: NavigationItem[] = [
   { label: "Agenda", href: "/agenda", icon: Calendar },
 ];
 
-export const configNavigation: NavigationItem[] = [
+export const businessNavigation: NavigationItem[] = [
+  { label: "Contratos", href: "/contratos", icon: FileText },
   { label: "Clientes", href: "/clientes", icon: GalleryVerticalEnd },
-  { label: "Modelos", href: "/meunegocio", icon: BriefcaseBusiness },
+  { label: "Serviços", href: "/meunegocio", icon: BriefcaseBusiness },
   { label: "Ferramentas", href: "/ferramentas", icon: Wrench },
   { label: "Financeiro", href: "/financeiro", icon: BadgeDollarSign },
-  { label: "Preferências", href: "/preferencias", icon: SlidersHorizontal },
-  { label: "Configurações", href: "/config/sistema", icon: MonitorCog },
+  { label: "Relatórios", href: "/historico", icon: History },
+];
+
+export const configNavigation: NavigationItem[] = [
+  {
+    label: "Preferências",
+    href: "/config/preferencias",
+    icon: SlidersHorizontal,
+  },
+  { label: "Interface", href: "/config/interface", icon: MonitorCog },
+  { label: "Sistema", href: "/config/sistema", icon: Settings2 },
 ];
 
 export const socialNavigation: NavigationItem[] = [
@@ -58,6 +70,7 @@ export const socialNavigation: NavigationItem[] = [
 
 const modeNavigation: Record<NavigationMode, NavigationItem[]> = {
   workspace: workspaceNavigation,
+  business: businessNavigation,
   config: configNavigation,
   social: socialNavigation,
 };
@@ -69,13 +82,14 @@ export const areaNavigation: NavigationItem[] = [
     icon: LayoutDashboard,
     area: "workspace",
   },
-  { label: "Social", href: "/social", icon: Handshake, area: "social" },
   {
     label: "Meu negócio",
-    href: "/config",
-    icon: Settings2,
-    area: "config",
+    href: "/contratos",
+    icon: BriefcaseBusiness,
+    area: "business",
   },
+  { label: "Social", href: "/social", icon: Handshake, area: "social" },
+  { label: "Configurações", href: "/config", icon: Settings2, area: "config" },
 ];
 
 export function isConfigPath(pathname: string): boolean {
@@ -84,52 +98,44 @@ export function isConfigPath(pathname: string): boolean {
     path === "/config" ||
     path.startsWith("/config/") ||
     path === "/preferencias" ||
-    path.startsWith("/preferencias/") ||
-    path === "/meunegocio" ||
-    path.startsWith("/meunegocio/")
+    path.startsWith("/preferencias/")
   );
 }
 
-/** Routes displayed within the Meu negócio navigation area. */
 export function isBusinessPath(pathname: string): boolean {
   const path = decodeURIComponent(pathname).replace(/\/$/, "") || "/";
   return (
-    isConfigPath(path) ||
+    path === "/contratos" ||
+    path.startsWith("/contratos/") ||
     path === "/clientes" ||
     path.startsWith("/clientes/") ||
+    path === "/meunegocio" ||
+    path.startsWith("/meunegocio/") ||
     path === "/ferramentas" ||
     path.startsWith("/ferramentas/") ||
     path === "/financeiro" ||
-    path.startsWith("/financeiro/")
+    path.startsWith("/financeiro/") ||
+    path === "/historico" ||
+    path.startsWith("/historico/")
   );
 }
 
 export function navigationMode(pathname: string): NavigationMode {
   const path = decodeURIComponent(pathname);
-  if (isBusinessPath(path)) return "config";
+  if (isConfigPath(path)) return "config";
+  if (isBusinessPath(path)) return "business";
   if (path === "/social" || path.startsWith("/social/")) return "social";
   return "workspace";
 }
 
-/**
- * Returns the navigation shown in the sidebar. `selectedMode` is intentionally
- * independent from the current route: choosing an area only changes the menu;
- * navigating to one of its entries is what changes the page content.
- */
-export function getNavigation(
-  pathname: string,
-  selectedMode?: NavigationMode,
-) {
+export function getNavigation(pathname: string, selectedMode?: NavigationMode) {
   const mode = selectedMode ?? navigationMode(pathname);
-  return {
-    mode,
-    primary: modeNavigation[mode],
-    secondary: areaNavigation,
-  };
+  return { mode, primary: modeNavigation[mode], secondary: areaNavigation };
 }
 
 export const allNavigation = [
   ...workspaceNavigation,
+  ...businessNavigation,
   ...configNavigation,
   ...socialNavigation,
 ];

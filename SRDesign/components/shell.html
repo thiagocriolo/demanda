@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AppShell — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+</head>
+<body>
+  <div class="sr-shell" data-sr-shell>
+    <aside class="sr-sidebar" aria-label="Barra lateral">
+      <div class="sr-sidebar__top">
+        <button type="button" class="sr-sidebar__toggle" data-sr-sidebar-toggle aria-expanded="true" aria-label="Recolher menu">
+          <span class="sr-sidebar__toggle-icon"><span data-sr-icon="menu" data-size="21"></span></span>
+          <span class="sr-sidebar__toggle-label">Menu</span>
+        </button>
+      </div>
+
+      <div class="sr-sidebar__menus">
+        <div class="sr-sidebar__slot">
+          <div class="sr-menu sr-menu--fill sr-menu--sidebar" data-sr-dropdown>
+            <button type="button" class="sr-menu__trigger sr-menu__trigger--accent" data-sr-dropdown-trigger aria-haspopup="menu" aria-expanded="false">
+              <span class="sr-menu__icon"><span data-sr-icon="plus" data-size="18"></span></span>
+              <span class="sr-menu__label">Novo item</span>
+              <span class="sr-menu__chevron"><span data-sr-icon="chevron-down" data-size="15"></span></span>
+            </button>
+            <div class="sr-menu__bubble" data-sr-dropdown-menu role="menu" hidden>
+              <button type="button" class="sr-menu__item" role="menuitem">
+                <span class="sr-menu__item-icon"><span data-sr-icon="folder" data-size="16"></span></span>
+                <span class="sr-menu__item-copy"><strong>Novo Projeto</strong><small>Criar estrutura completa</small></span>
+              </button>
+              <button type="button" class="sr-menu__item" role="menuitem">
+                <span class="sr-menu__item-icon"><span data-sr-icon="list-todo" data-size="16"></span></span>
+                <span class="sr-menu__item-copy"><strong>Nova Tarefa</strong><small>Adicionar à fila</small></span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <nav class="sr-sidebar__section" aria-label="Menu principal">
+          <a class="sr-nav-item is-active" href="#visao" aria-current="page" title="Visão Geral">
+            <span class="sr-nav-item__icon"><span data-sr-icon="layout-dashboard" data-size="20"></span></span>
+            <span class="sr-nav-item__label">Visão Geral</span>
+          </a>
+          <a class="sr-nav-item" href="#projetos" title="Projetos">
+            <span class="sr-nav-item__icon"><span data-sr-icon="folder" data-size="20"></span></span>
+            <span class="sr-nav-item__label">Projetos</span>
+          </a>
+          <a class="sr-nav-item" href="#agenda" title="Agenda">
+            <span class="sr-nav-item__icon"><span data-sr-icon="calendar" data-size="20"></span></span>
+            <span class="sr-nav-item__label">Agenda</span>
+          </a>
+          <a class="sr-nav-item" href="#equipe" title="Equipe">
+            <span class="sr-nav-item__icon"><span data-sr-icon="users" data-size="20"></span></span>
+            <span class="sr-nav-item__label">Equipe</span>
+          </a>
+        </nav>
+
+        <div class="sr-sidebar__secondary">
+          <nav class="sr-sidebar__section" aria-label="Áreas">
+            <a class="sr-nav-item sr-nav-item--secondary is-active" href="#workspace">
+              <span class="sr-nav-item__icon"><span data-sr-icon="briefcase" data-size="20"></span></span>
+              <span class="sr-nav-item__label">Workspace</span>
+            </a>
+            <a class="sr-nav-item sr-nav-item--secondary" href="#config">
+              <span class="sr-nav-item__icon"><span data-sr-icon="settings" data-size="20"></span></span>
+              <span class="sr-nav-item__label">Configurações</span>
+            </a>
+            <a class="sr-nav-item sr-nav-item--secondary" href="../index.html">
+              <span class="sr-nav-item__icon"><span data-sr-icon="arrow-left" data-size="20"></span></span>
+              <span class="sr-nav-item__label">Voltar ao Showcase</span>
+            </a>
+          </nav>
+        </div>
+      </div>
+    </aside>
+
+    <div class="sr-workspace">
+      <header class="sr-topbar">
+        <div class="sr-topbar__left">
+          <strong class="sr-topbar__title">AppShell Isolado</strong>
+        </div>
+
+        <a class="sr-wordmark" href="../index.html">
+          <span class="sr-wordmark__strong">SR</span><span class="sr-wordmark__dot">•</span><span class="sr-wordmark__light">Design</span>
+        </a>
+
+        <div class="sr-topbar__right">
+          <div class="sr-notification" data-sr-dropdown>
+            <button type="button" class="sr-notification__trigger" data-sr-dropdown-trigger aria-expanded="false" aria-label="Notificações">
+              <span data-sr-icon="bell" data-size="19"></span>
+              <span class="sr-notification__badge">2</span>
+            </button>
+            <section class="sr-notification__panel" data-sr-dropdown-menu hidden>
+              <div class="sr-notification__header">
+                <div><strong>Notificações</strong><small>Atualizações recentes</small></div>
+                <button type="button" class="sr-notification__close" data-sr-dropdown-close aria-label="Fechar"><span data-sr-icon="x" data-size="15"></span></button>
+              </div>
+              <div class="sr-notification__items">
+                <article class="sr-notification__item">
+                  <span class="sr-notification__item-icon"><span data-sr-icon="users" data-size="17"></span></span>
+                  <div class="sr-notification__item-copy">
+                    <strong>Convite de Workspace</strong>
+                    <p>Marina convidou você para o projeto Aurora.</p>
+                  </div>
+                </article>
+                <article class="sr-notification__item">
+                  <span class="sr-notification__item-icon"><span data-sr-icon="sparkles" data-size="17"></span></span>
+                  <div class="sr-notification__item-copy">
+                    <strong>SRDesign Pronto</strong>
+                    <p>Casca responsiva com Sidebar, Topbar e MobileDock.</p>
+                  </div>
+                </article>
+              </div>
+            </section>
+          </div>
+
+          <span class="sr-topbar__divider" aria-hidden="true"></span>
+
+          <div class="sr-account" data-sr-dropdown>
+            <button type="button" class="sr-account__trigger" data-sr-dropdown-trigger aria-expanded="false">
+              <span class="sr-account__identity">
+                <span class="sr-account__identity-inner">
+                  <strong>Sara Designer</strong>
+                  <small>@sara</small>
+                </span>
+              </span>
+              <span class="sr-account__avatar">SD</span>
+            </button>
+            <div class="sr-account__menu" data-sr-dropdown-menu role="menu" hidden>
+              <a href="#perfil" role="menuitem"><span data-sr-icon="user" data-size="16"></span><span>Ver perfil</span></a>
+              <button type="button" class="is-danger" role="menuitem"><span data-sr-icon="log-out" data-size="16"></span><span>Sair</span></button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="sr-main">
+        <div class="sr-page-width">
+          <header class="sr-page-header">
+            <div class="sr-page-header__main">
+              <span class="sr-page-header__icon"><span data-sr-icon="layout-dashboard" data-size="28"></span></span>
+              <div class="sr-page-header__copy">
+                <span class="sr-page-header__eyebrow">Casca Estrutural</span>
+                <h1 class="sr-page-header__title">AppShell Responsivo</h1>
+                <p class="sr-page-header__subtitle">Clique em "Menu" na barra lateral para recolher/expandir ou redimensione abaixo de 920px para ver o MobileDock.</p>
+              </div>
+            </div>
+            <div class="sr-page-header__actions">
+              <a class="sr-btn sr-btn--primary" href="../index.html">Abrir Showcase Completo</a>
+            </div>
+          </header>
+
+          <div class="sr-grid-3">
+            <div class="sr-stat-card">
+              <div class="sr-stat-card__top"><span>Sidebar Desktop</span><span class="sr-stat-card__icon"><span data-sr-icon="menu" data-size="17"></span></span></div>
+              <div class="sr-stat-card__value">280px → 70px</div>
+              <div class="sr-stat-card__meta">Transição suave via <code>.is-collapsed</code></div>
+            </div>
+            <div class="sr-stat-card">
+              <div class="sr-stat-card__top"><span>Topbar</span><span class="sr-stat-card__icon"><span data-sr-icon="bell" data-size="17"></span></span></div>
+              <div class="sr-stat-card__value">3 colunas</div>
+              <div class="sr-stat-card__meta">Título + Wordmark central + Ações</div>
+            </div>
+            <div class="sr-stat-card">
+              <div class="sr-stat-card__top"><span>MobileDock</span><span class="sr-stat-card__icon"><span data-sr-icon="compass" data-size="17"></span></span></div>
+              <div class="sr-stat-card__value">&lt;= 920px</div>
+              <div class="sr-stat-card__meta">Dock fixo inferior com safe-area</div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <nav class="sr-mobile-dock" aria-label="Navegação móvel">
+      <a class="sr-mobile-dock__item is-active" href="#visao"><span data-sr-icon="layout-dashboard" data-size="22"></span><span>Início</span></a>
+      <a class="sr-mobile-dock__item" href="#projetos"><span data-sr-icon="folder" data-size="22"></span><span>Projetos</span></a>
+      <a class="sr-mobile-dock__item" href="#agenda"><span data-sr-icon="calendar" data-size="22"></span><span>Agenda</span></a>
+      <a class="sr-mobile-dock__item" href="../index.html"><span data-sr-icon="arrow-left" data-size="22"></span><span>Showcase</span></a>
+    </nav>
+  </div>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+</body>
+</html>

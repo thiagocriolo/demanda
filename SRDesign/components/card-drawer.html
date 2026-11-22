@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CardDrawer — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+  <link rel="stylesheet" href="_preview.css" />
+</head>
+<body>
+  <header class="sr-preview-bar">
+    <div class="sr-preview-bar__left">
+      <a class="sr-btn sr-btn--sm" href="../index.html"><span data-sr-icon="arrow-left" data-size="14"></span><span>Voltar</span></a>
+      <span class="sr-preview-bar__title">CardDrawer (Gaveta Inferior)</span>
+    </div>
+    <span class="sr-badge sr-badge--primary">core/components/sr-drawer.css</span>
+  </header>
+
+  <main class="sr-preview-wrap">
+    <section class="sr-preview-block sr-preview-block--canvas">
+      <div class="sr-preview-block__head">
+        <h2>Gaveta Expansível com Scroll Horizontal</h2>
+        <p>Use o switch verde para abrir/fechar e role o mouse horizontalmente sobre os cards.</p>
+      </div>
+
+      <div style="min-height:280px;display:flex;flex-direction:column;justify-content:flex-end;border:1px dashed var(--sr-border-strong);border-radius:var(--sr-radius-xl);padding:20px 16px 0;background:var(--sr-surface);">
+        <p class="sr-muted" style="text-align:center;margin:auto 0;font-size:13px;">Área principal da tela (ex.: Agenda ou Cronograma)</p>
+
+        <section class="sr-drawer is-open" data-sr-drawer aria-label="Fila de itens sem agenda">
+          <header class="sr-drawer__header">
+            <div class="sr-drawer__controls">
+              <span class="sr-drawer__count">5</span>
+              <button type="button" class="sr-drawer__switch" role="switch" aria-checked="true" aria-label="Expandir ou recolher gaveta" data-sr-drawer-toggle>
+                <span aria-hidden="true"></span>
+              </button>
+            </div>
+            <span class="sr-drawer__icon"><span data-sr-icon="inbox" data-size="16"></span></span>
+            <div class="sr-drawer__copy">
+              <strong>Fila sem agendamento</strong>
+              <span>Arraste um card para o cronograma ou use a roda do mouse para navegar</span>
+            </div>
+          </header>
+
+          <div class="sr-drawer__list sr-card-collection" data-sr-card-level="4" data-sr-drawer-list>
+            <div class="sr-drawer__card"><article class="sr-card"><div class="sr-card__head"><h3 class="sr-card__title">Revisar wireframe</h3><span class="sr-card__status" style="--sr-status-color:#2e56ff;"><span class="sr-card__status-label">UI/UX</span></span></div><div class="sr-card__body"><div class="sr-card__meta sr-card__info sr-card__info--primary"><span class="sr-card__meta-text">Portal SRDesign</span></div></div></article></div>
+            <div class="sr-drawer__card"><article class="sr-card"><div class="sr-card__head"><h3 class="sr-card__title">Aprovar paleta</h3><span class="sr-card__status" style="--sr-status-color:#5dac83;"><span class="sr-card__status-label">Branding</span></span></div><div class="sr-card__body"><div class="sr-card__meta sr-card__info sr-card__info--primary"><span class="sr-card__meta-text">Estúdio Aurora</span></div></div></article></div>
+            <div class="sr-drawer__card"><article class="sr-card"><div class="sr-card__head"><h3 class="sr-card__title">Validar contratos</h3><span class="sr-card__status" style="--sr-status-color:#eab308;"><span class="sr-card__status-label">Financeiro</span></span></div><div class="sr-card__body"><div class="sr-card__meta sr-card__info sr-card__info--primary"><span class="sr-card__meta-text">Norte Tech</span></div></div></article></div>
+            <div class="sr-drawer__card"><article class="sr-card"><div class="sr-card__head"><h3 class="sr-card__title">Publicar guia IA</h3><span class="sr-card__status" style="--sr-status-color:#7c5ce5;"><span class="sr-card__status-label">Docs</span></span></div><div class="sr-card__body"><div class="sr-card__meta sr-card__info sr-card__info--primary"><span class="sr-card__meta-text">SRDesign v1</span></div></div></article></div>
+            <div class="sr-drawer__card"><article class="sr-card"><div class="sr-card__head"><h3 class="sr-card__title">Testar mobile</h3><span class="sr-card__status" style="--sr-status-color:#dc2626;"><span class="sr-card__status-label">QA</span></span></div><div class="sr-card__body"><div class="sr-card__meta sr-card__info sr-card__info--primary"><span class="sr-card__meta-text">MobileDock</span></div></div></article></div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+</body>
+</html>

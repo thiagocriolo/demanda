@@ -1,0 +1,144 @@
+/* ==========================================================================
+   SRDesign — TabSystem (Abas estilo pasta com suporte a sobreposição)
+   ========================================================================== */
+
+.sr-tabs {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.sr-tab-list {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 0 20px;
+  margin-bottom: -1px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+  isolation: isolate;
+}
+
+.sr-tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.sr-tab {
+  position: relative;
+  display: inline-flex;
+  min-height: 42px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border-radius: var(--sr-radius-lg) var(--sr-radius-lg) 0 0;
+  border-width: 1px 1px 0;
+  border-style: solid;
+  border-color: #d5d6d9;
+  color: var(--sr-muted);
+  background: linear-gradient(to top, #d5d6d9 0%, #e4e8ed 30%);
+  box-shadow: 1px 2px 4px 0 rgb(49 52 58 / 20%);
+  font-size: var(--sr-text-md);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition:
+    margin var(--sr-motion-fast) ease,
+    background var(--sr-motion-fast) ease,
+    box-shadow var(--sr-motion-fast) ease,
+    color var(--sr-motion-fast) ease;
+}
+
+.sr-tab:hover {
+  color: var(--sr-text-soft);
+  background: linear-gradient(to top, #e4e8ed 0%, #efefef 30%);
+}
+
+.sr-tab.is-active,
+.sr-tab[aria-selected="true"] {
+  z-index: 4;
+  border: 0;
+  color: var(--sr-text);
+  background: #ffffff;
+  box-shadow: none;
+  font-weight: 600;
+}
+
+.sr-tab:focus-visible {
+  box-shadow: var(--sr-focus-ring);
+}
+
+.sr-tab__badge {
+  min-width: 20px;
+  padding: 2px 6px;
+  border-radius: var(--sr-radius-pill);
+  color: var(--sr-ink-500);
+  background: var(--sr-surface-hover);
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.sr-tab.is-active .sr-tab__badge,
+.sr-tab[aria-selected="true"] .sr-tab__badge {
+  color: var(--sr-text-soft);
+}
+
+/* Modo sobreposto (overlapping tabs) */
+.sr-tab-list--overlapping {
+  gap: 0;
+}
+
+.sr-tab-list--overlapping .sr-tab + .sr-tab {
+  margin-left: calc(-1 * var(--sr-tab-overlap));
+}
+
+.sr-tab-list--overlapping .sr-tab.is-active:not(:first-child),
+.sr-tab-list--overlapping .sr-tab[aria-selected="true"]:not(:first-child),
+.sr-tab-list--overlapping .sr-tab.is-active + .sr-tab,
+.sr-tab-list--overlapping .sr-tab[aria-selected="true"] + .sr-tab {
+  margin-left: 6px;
+}
+
+.sr-tab-panel {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--sr-tab-panel-min-height);
+  padding: clamp(18px, 3vw, 30px);
+  border: 0;
+  border-radius: var(--sr-radius-xl);
+  background: #ffffff;
+}
+
+.sr-tab-panel[hidden] {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .sr-tab-list {
+    padding-inline: 8px;
+  }
+  .sr-tab {
+    min-height: 40px;
+    padding: 9px 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .sr-tab-panel {
+    min-height: var(--sr-tab-panel-mobile-min-height);
+    padding: 16px;
+    border-radius: var(--sr-radius-lg);
+  }
+}

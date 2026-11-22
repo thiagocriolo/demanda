@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FilterBar — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+  <link rel="stylesheet" href="_preview.css" />
+</head>
+<body>
+  <header class="sr-preview-bar">
+    <div class="sr-preview-bar__left">
+      <a class="sr-btn sr-btn--sm" href="../index.html"><span data-sr-icon="arrow-left" data-size="14"></span><span>Voltar</span></a>
+      <span class="sr-preview-bar__title">FilterBar</span>
+    </div>
+    <span class="sr-badge sr-badge--primary">core/components/sr-filter-bar.css</span>
+  </header>
+
+  <main class="sr-preview-wrap">
+    <section class="sr-preview-block sr-preview-block--canvas">
+      <div class="sr-preview-block__head">
+        <h2>Filtro Interativo (Pílulas + Busca + Limpar)</h2>
+        <p>Clique nas categorias ou digite na busca para filtrar os itens abaixo em tempo real.</p>
+      </div>
+
+      <div
+        class="sr-filter-bar"
+        data-sr-filter-bar
+        data-sr-filter-target="#demo-list .sr-stat-card"
+        data-sr-filter-empty="#demo-empty"
+      >
+        <div class="sr-filter-bar__title">
+          <span data-sr-icon="sliders" data-size="16"></span>
+          <span>Filtrar</span>
+        </div>
+
+        <div class="sr-filter-bar__options" role="group" aria-label="Opções de filtro">
+          <button type="button" class="sr-filter-bar__option is-active" aria-pressed="true" data-sr-filter-option="all">
+            Todos <span class="sr-filter-bar__count">6</span>
+          </button>
+          <button type="button" class="sr-filter-bar__option" aria-pressed="false" data-sr-filter-option="ativo">
+            Ativos <span class="sr-filter-bar__count">3</span>
+          </button>
+          <button type="button" class="sr-filter-bar__option" aria-pressed="false" data-sr-filter-option="revisao">
+            Em revisão <span class="sr-filter-bar__count">2</span>
+          </button>
+          <button type="button" class="sr-filter-bar__option" aria-pressed="false" data-sr-filter-option="concluido">
+            Concluídos <span class="sr-filter-bar__count">1</span>
+          </button>
+        </div>
+
+        <div class="sr-filter-bar__controls">
+          <label class="sr-filter-bar__search">
+            <span data-sr-icon="search" data-size="16"></span>
+            <span class="sr-only">Pesquisar</span>
+            <input type="text" placeholder="Buscar projeto..." data-sr-filter-input />
+            <button type="button" class="sr-filter-bar__clear" aria-label="Limpar busca" data-sr-filter-clear hidden>
+              <span data-sr-icon="x" data-size="14"></span>
+            </button>
+          </label>
+        </div>
+      </div>
+
+      <div class="sr-grid-3" id="demo-list">
+        <article class="sr-stat-card" data-sr-category="ativo">
+          <div class="sr-stat-card__top"><strong>Identidade Aurora</strong><span class="sr-badge sr-badge--success">Ativo</span></div>
+          <div class="sr-stat-card__meta">Branding e manual de marca</div>
+        </article>
+        <article class="sr-stat-card" data-sr-category="ativo">
+          <div class="sr-stat-card__top"><strong>Portal SRDesign</strong><span class="sr-badge sr-badge--success">Ativo</span></div>
+          <div class="sr-stat-card__meta">Biblioteca de interface e tokens</div>
+        </article>
+        <article class="sr-stat-card" data-sr-category="revisao">
+          <div class="sr-stat-card__top"><strong>App Financeiro</strong><span class="sr-badge sr-badge--warning">Em revisão</span></div>
+          <div class="sr-stat-card__meta">Fluxo de lançamentos mensais</div>
+        </article>
+        <article class="sr-stat-card" data-sr-category="ativo">
+          <div class="sr-stat-card__top"><strong>Campanha Verão</strong><span class="sr-badge sr-badge--success">Ativo</span></div>
+          <div class="sr-stat-card__meta">Peças sociais e landing page</div>
+        </article>
+        <article class="sr-stat-card" data-sr-category="revisao">
+          <div class="sr-stat-card__top"><strong>Onboarding Mobile</strong><span class="sr-badge sr-badge--warning">Em revisão</span></div>
+          <div class="sr-stat-card__meta">Telas de boas-vindas e login</div>
+        </article>
+        <article class="sr-stat-card" data-sr-category="concluido">
+          <div class="sr-stat-card__top"><strong>Catálogo 2026</strong><span class="sr-badge sr-badge--primary">Concluído</span></div>
+          <div class="sr-stat-card__meta">Publicação entregue ao cliente</div>
+        </article>
+      </div>
+
+      <div class="sr-empty-state" id="demo-empty" hidden>
+        <span data-sr-icon="search" data-size="24"></span>
+        <div>
+          <strong>Nenhum item encontrado</strong>
+          <p>Tente mudar a categoria selecionada ou limpar o termo de busca.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+</body>
+</html>

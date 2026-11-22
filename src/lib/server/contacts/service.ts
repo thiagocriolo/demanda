@@ -25,6 +25,7 @@ import type {
   ContactStatus,
 } from "../../contacts/types";
 import { affectedRows, type Database } from "../db/database";
+import { databaseConstraint, escapeLikeMySql } from "../db/helpers";
 import {
   contactEmails,
   contactNotes,
@@ -104,14 +105,6 @@ async function assertLinkedUserIsValid(
     .where(and(eq(users.id, linkedUserId), isNull(users.deletedAt)))
     .limit(1);
   if (!linkedUser) throw new ContactLinkedUserInvalidError();
-}
-
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
-}
-
-function escapeLikeMySql(value: string): string {
-  return value.replace(/[!%_]/g, (character) => `!${character}`);
 }
 
 function searchCondition(query: string): SQL | undefined {
@@ -346,23 +339,6 @@ async function insertContactDetails(
       })),
     );
   }
-}
-
-function databaseConstraint(error: unknown): string | undefined {
-  const visited = new Set<unknown>();
-  let current = error;
-  while (current && typeof current === "object" && !visited.has(current)) {
-    visited.add(current);
-    if ("constraint" in current && typeof current.constraint === "string") {
-      return current.constraint;
-    }
-    if ("sqlMessage" in current && typeof current.sqlMessage === "string") {
-      const match = /CONSTRAINT `([^`]+)`/u.exec(current.sqlMessage);
-      if (match?.[1]) return match[1];
-    }
-    current = "cause" in current ? current.cause : undefined;
-  }
-  return undefined;
 }
 
 function translateContactConstraint(error: unknown): never {

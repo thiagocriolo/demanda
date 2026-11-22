@@ -11,6 +11,7 @@ describe("URLs canônicas dos registros", () => {
   it("cria uma página estável para cada tipo de card", () => {
     expect(recordPageHref("pessoa", id)).toBe(`/clientes/contatos/${id}`);
     expect(recordPageHref("negocio", id)).toBe(`/clientes/negócios/${id}`);
+    expect(recordPageHref("contrato", id)).toBe(`/clientes/contratos/${id}`);
     expect(recordPageHref("projeto", id)).toBe(`/clientes/projetos/${id}`);
     expect(recordPageHref("tarefa", id)).toBe(`/clientes/tarefas/${id}`);
   });
@@ -22,6 +23,9 @@ describe("URLs canônicas dos registros", () => {
     expect(recordPageHrefForEntity("negocios", id)).toBe(
       recordPageHref("negocio", id),
     );
+    expect(recordPageHrefForEntity("contratos", id)).toBe(
+      recordPageHref("contrato", id),
+    );
     expect(recordPageHrefForEntity("projetos", id)).toBe(
       recordPageHref("projeto", id),
     );
@@ -30,9 +34,10 @@ describe("URLs canônicas dos registros", () => {
     );
   });
 
-  it("reconhece somente os quatro tipos expostos pelas rotas", () => {
+  it("reconhece somente os cinco tipos expostos pelas rotas", () => {
     expect(recordTabFromRoute("contatos")).toBe("pessoas");
     expect(recordTabFromRoute("negócios")).toBe("negocios");
+    expect(recordTabFromRoute("contratos")).toBe("contratos");
     expect(recordTabFromRoute("projetos")).toBe("projetos");
     expect(recordTabFromRoute("tarefas")).toBe("tarefas");
     expect(recordTabFromRoute("outro")).toBeUndefined();

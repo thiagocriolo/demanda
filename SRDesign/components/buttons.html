@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Botões — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+  <link rel="stylesheet" href="_preview.css" />
+</head>
+<body>
+  <header class="sr-preview-bar">
+    <div class="sr-preview-bar__left">
+      <a class="sr-btn sr-btn--sm" href="../index.html"><span data-sr-icon="arrow-left" data-size="14"></span><span>Voltar</span></a>
+      <span class="sr-preview-bar__title">Botões &amp; Ações</span>
+    </div>
+    <span class="sr-badge sr-badge--primary">core/components/sr-buttons.css</span>
+  </header>
+
+  <main class="sr-preview-wrap">
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>Variantes Semânticas</h2>
+        <p>Use <code>.sr-btn</code> combinado com modificadores de tom.</p>
+      </div>
+      <div class="sr-row">
+        <button type="button" class="sr-btn">Padrão</button>
+        <button type="button" class="sr-btn sr-btn--primary"><span data-sr-icon="plus" data-size="16"></span><span>Primário</span></button>
+        <button type="button" class="sr-btn sr-btn--accent"><span data-sr-icon="sparkles" data-size="16"></span><span>Accent (Verde)</span></button>
+        <button type="button" class="sr-btn sr-btn--success"><span data-sr-icon="check" data-size="16"></span><span>Confirmar</span></button>
+        <button type="button" class="sr-btn sr-btn--warning"><span data-sr-icon="archive" data-size="16"></span><span>Arquivar</span></button>
+        <button type="button" class="sr-btn sr-btn--danger"><span data-sr-icon="trash" data-size="16"></span><span>Excluir</span></button>
+        <button type="button" class="sr-btn sr-btn--soft">Soft Brand</button>
+        <button type="button" class="sr-btn sr-btn--ghost">Ghost</button>
+        <button type="button" class="sr-btn sr-btn--primary" disabled>Desabilitado</button>
+      </div>
+    </section>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>Tamanhos e Botões de Ícone</h2>
+      </div>
+      <div class="sr-row">
+        <button type="button" class="sr-btn sr-btn--primary sr-btn--sm">Pequeno (.sr-btn--sm)</button>
+        <button type="button" class="sr-btn sr-btn--primary">Padrão (40px)</button>
+        <button type="button" class="sr-btn sr-btn--primary sr-btn--lg">Grande (.sr-btn--lg)</button>
+        <button type="button" class="sr-btn sr-btn--icon" aria-label="Editar"><span data-sr-icon="pencil" data-size="16"></span></button>
+        <button type="button" class="sr-btn sr-btn--soft sr-btn--icon" aria-label="Copiar"><span data-sr-icon="copy" data-size="16"></span></button>
+        <button type="button" class="sr-btn sr-btn--ghost sr-btn--icon sr-btn--sm" aria-label="Fechar"><span data-sr-icon="x" data-size="15"></span></button>
+      </div>
+    </section>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head">
+        <h2>TopbarSaveButton (Estados de Salvamento)</h2>
+        <p>Clique nos botões para simular o ciclo: limpo → alterações pendentes → salvo.</p>
+      </div>
+      <div class="sr-row">
+        <button type="button" class="sr-save-btn" id="demo-save-btn" onclick="simulateSave(this)">
+          <span data-sr-icon="save" data-size="17"></span>
+          <span class="sr-save-btn__label">Salvar</span>
+        </button>
+        <button type="button" class="sr-btn sr-btn--sm" onclick="markDirty()">Simular edição (is-dirty)</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+  <script>
+    function markDirty() {
+      var btn = document.getElementById("demo-save-btn");
+      btn.classList.remove("is-saved");
+      btn.classList.add("is-dirty");
+      btn.querySelector(".sr-save-btn__label").textContent = "Salvar alterações";
+    }
+    function simulateSave(btn) {
+      btn.disabled = true;
+      btn.querySelector(".sr-save-btn__label").textContent = "Salvando...";
+      setTimeout(function () {
+        btn.disabled = false;
+        btn.classList.remove("is-dirty");
+        btn.classList.add("is-saved");
+        btn.querySelector(".sr-save-btn__label").textContent = "Salvo";
+        setTimeout(function () {
+          btn.classList.remove("is-saved");
+          btn.querySelector(".sr-save-btn__label").textContent = "Salvar";
+        }, 1800);
+      }, 650);
+    }
+  </script>
+</body>
+</html>

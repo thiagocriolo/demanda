@@ -18,6 +18,7 @@ import { affectedRows, type Database } from "../db/database";
 import { databaseConstraint, toIsoTimestamp as iso } from "../db/helpers";
 import {
   businesses,
+  contracts,
   projects,
   tags,
   taskResponsibles,
@@ -27,6 +28,10 @@ import {
   users,
   workspaceMembers,
 } from "../db/schema";
+import {
+  INSTITUTIONAL_PROJECT_NAME,
+  INSTITUTIONAL_PROJECT_STATUS,
+} from "../../projects/institutional";
 import {
   requireWorkspacePermission,
   requireWorkspacePermissionForUpdate,
@@ -398,6 +403,47 @@ async function validateAndLockProject(
     businessId: row.businessId,
     engagementType: row.engagementType,
   };
+}
+
+/**
+ * The institutional project is deliberately materialized only with its first
+ * delivery.  It remains a normal persisted project afterwards, even when its
+ * deliveries are moved elsewhere.
+ */
+async function materializeInstitutionalProject(
+  database: TaskDatabase,
+  workspaceId: string,
+  contractId: string,
+): Promise<{ projectId: string; businessId: string; engagementType: "fee" | "personal" }> {
+  const [contract] = await database
+    .select({ id: contracts.id, businessId: contracts.businessId, archivedAt: contracts.archivedAt })
+    .from(contracts)
+    .where(and(eq(contracts.workspaceId, workspaceId), eq(contracts.id, contractId)))
+    .limit(1)
+    .for("update");
+  if (!contract || contract.archivedAt) throw new TaskRelationsInvalidError();
+
+  const [existing] = await database
+    .select({ projectId: projects.id, businessId: projects.businessId, engagementType: projects.engagementType })
+    .from(projects)
+    .where(and(eq(projects.workspaceId, workspaceId), eq(projects.contractId, contract.id), eq(projects.isInstitutional, true)))
+    .limit(1)
+    .for("update");
+  if (existing) return existing;
+
+  const projectId = randomUUID();
+  await database.insert(projects).values({
+    id: projectId,
+    workspaceId,
+    businessId: contract.businessId,
+    contractId: contract.id,
+    isInstitutional: true,
+    name: INSTITUTIONAL_PROJECT_NAME,
+    statusKey: INSTITUTIONAL_PROJECT_STATUS,
+    engagementType: "personal",
+    contractType: "one_off",
+  });
+  return { projectId, businessId: contract.businessId, engagementType: "personal" };
 }
 
 async function validateAndLockMembers(
@@ -860,11 +906,13 @@ export async function createWorkspaceTaskInTransaction(
     throw new TaskRelationsInvalidError();
   }
   assertCompletionAllowed(input.status, input.subtasks);
-  const project = await validateAndLockProject(
-    transaction,
-    workspaceId,
-    input.projectId,
-  );
+  const project = input.institutionalContractId
+    ? await materializeInstitutionalProject(
+        transaction,
+        workspaceId,
+        input.institutionalContractId,
+      )
+    : await validateAndLockProject(transaction, workspaceId, input.projectId!);
   if (input.engagementType === "fee" && project.engagementType !== "fee") {
     throw new TaskRelationsInvalidError();
   }
@@ -1069,7 +1117,7 @@ export async function updateWorkspaceTask(
       const project = await validateAndLockProject(
         transaction,
         workspaceId,
-        input.projectId,
+        input.projectId!,
         existing.projectId,
       );
       if (input.engagementType === "fee" && project.engagementType !== "fee") {

@@ -120,6 +120,60 @@
     }
   }
 
+  /** Keeps the editable value in Brazilian format while the API receives ISO. */
+  function formatDateForField(value: string): string {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+    return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
+  }
+
+  function parseDateField(value: string): string | null {
+    if (!value) return "";
+
+    const match = /^(\d{2})\/(\d{2})\/(\d{4})$/u.exec(value);
+    if (!match) return null;
+
+    const [, day, month, year] = match;
+    const isoDate = `${year}-${month}-${day}`;
+    const date = new Date(`${isoDate}T00:00:00Z`);
+    return Number.isNaN(date.getTime()) ||
+      date.getUTCFullYear() !== Number(year) ||
+      date.getUTCMonth() !== Number(month) - 1 ||
+      date.getUTCDate() !== Number(day)
+      ? null
+      : isoDate;
+  }
+
+  function updateDateField(
+    event: Event,
+    update: (date: string) => void,
+  ): void {
+    const input = event.currentTarget as HTMLInputElement;
+    input.value = formatDateDraft(input.value);
+    const parsed = parseDateField(input.value);
+    input.setCustomValidity(
+      parsed === null ? "Use uma data válida no formato DD/MM/AAAA." : "",
+    );
+    if (parsed !== null) update(parsed);
+  }
+
+  function formatDateDraft(value: string): string {
+    const digits = value.replace(/\D/gu, "").slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+  }
+
+  function updateDateFromPicker(
+    event: Event,
+    update: (date: string) => void,
+  ): void {
+    update((event.currentTarget as HTMLInputElement).value);
+  }
+
+  function openDatePicker(event: MouseEvent): void {
+    (event.currentTarget as HTMLInputElement).showPicker?.();
+  }
+
   function updateInstallmentCount(value: string): void {
     const count = Math.max(1, Math.min(99, Number.parseInt(value, 10) || 1));
     const total = moneyToCents(form.valor);
@@ -343,27 +397,59 @@
             {/if}
 
             <div class="two-column-grid full">
-              <div class="control">
+              <div class="control date-control">
                 <span class="control-icon" aria-hidden="true">
                   <CalendarDays size={16} strokeWidth={1.8} />
                 </span>
                 <input
-                  bind:value={form.dataInicio}
-                  disabled={viewOnly}
+                  class="date-picker"
                   type="date"
-                  aria-label="Data de início"
+                  onclick={openDatePicker}
+                  disabled={viewOnly}
+                  value={form.dataInicio}
+                  aria-label="Abrir calendário para a data de início"
+                  onchange={(event) =>
+                    updateDateFromPicker(event, (date) => (form.dataInicio = date))}
+                />
+                <input
+                  disabled={viewOnly}
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  maxlength="10"
+                  placeholder="DD/MM/AAAA"
+                  value={formatDateForField(form.dataInicio)}
+                  aria-label="Data de início (DD/MM/AAAA)"
+                  oninput={(event) =>
+                    updateDateField(event, (date) => (form.dataInicio = date))}
                 />
               </div>
-              <div class="control">
+              <div class="control date-control">
                 <span class="control-icon" aria-hidden="true">
                   <CalendarDays size={16} strokeWidth={1.8} />
                 </span>
                 <input
-                  bind:value={form.dataFim}
-                  disabled={viewOnly}
+                  class="date-picker"
                   type="date"
+                  onclick={openDatePicker}
+                  disabled={viewOnly}
+                  value={form.dataFim}
                   min={form.dataInicio || undefined}
-                  aria-label="Data de fim"
+                  aria-label="Abrir calendário para a data de fim"
+                  onchange={(event) =>
+                    updateDateFromPicker(event, (date) => (form.dataFim = date))}
+                />
+                <input
+                  disabled={viewOnly}
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  maxlength="10"
+                  placeholder="DD/MM/AAAA"
+                  value={formatDateForField(form.dataFim)}
+                  aria-label="Data de fim (DD/MM/AAAA)"
+                  oninput={(event) =>
+                    updateDateField(event, (date) => (form.dataFim = date))}
                 />
               </div>
             </div>
@@ -409,8 +495,8 @@
           <h3>Pagamento</h3>
           <div class="fields">
             {#if form.contractType === "one_off"}
-              <div class="two-column-grid full">
-                <div class="control">
+              <div class="payment-grid full">
+                <div class="control payment-method">
                   <span class="control-icon" aria-hidden="true">
                     <CreditCard size={16} strokeWidth={1.8} />
                   </span>
@@ -448,23 +534,42 @@
                       <span class="installment-hash" aria-hidden="true">#</span>
                       <span>{String(installment.number).padStart(2, "0")}</span>
                     </div>
-                    <div class="control">
+                    <div class="control date-control">
                       <span class="control-icon" aria-hidden="true">
                         <CalendarDays size={16} strokeWidth={1.8} />
                       </span>
                       <input
+                        class="date-picker"
                         type="date"
+                        onclick={openDatePicker}
                         disabled={viewOnly}
-                        required={index === 0 && moneyToCents(form.valor) > 0}
                         value={installment.dueDate}
-                        aria-label={`Vencimento da parcela ${installment.number}`}
+                        aria-label={`Abrir calendário para o vencimento da parcela ${installment.number}`}
                         onchange={(event) => {
                           if (index === 0) {
-                            updateFirstDueDate(event.currentTarget.value);
+                            updateDateFromPicker(event, updateFirstDueDate);
                           } else {
-                            installment.dueDate = event.currentTarget.value;
+                            updateDateFromPicker(event, (date) => (installment.dueDate = date));
                           }
                         }}
+                      />
+                      <input
+                        disabled={viewOnly}
+                        type="text"
+                        inputmode="numeric"
+                        autocomplete="off"
+                        maxlength="10"
+                        placeholder="DD/MM/AAAA"
+                        required={index === 0 && moneyToCents(form.valor) > 0}
+                        value={formatDateForField(installment.dueDate)}
+                        aria-label={`Vencimento da parcela ${installment.number} (DD/MM/AAAA)`}
+                        oninput={(event) => updateDateField(event, (date) => {
+                          if (index === 0) {
+                            updateFirstDueDate(date);
+                          } else {
+                            installment.dueDate = date;
+                          }
+                        })}
                       />
                     </div>
                     <div class="control installment-amount">
@@ -496,16 +601,31 @@
                     aria-label="Forma de pagamento"
                   />
                 </div>
-                <div class="control">
+                <div class="control date-control">
                   <span class="control-icon" aria-hidden="true">
                     <CalendarDays size={16} strokeWidth={1.8} />
                   </span>
                   <input
-                    value={form.primeiroVencimento}
-                    disabled={viewOnly}
+                    class="date-picker"
                     type="date"
-                    aria-label="Data de vencimento"
-                    onchange={(event) => updateFirstDueDate(event.currentTarget.value)}
+                    onclick={openDatePicker}
+                    disabled={viewOnly}
+                    value={form.primeiroVencimento}
+                    aria-label="Abrir calendário para a data de vencimento"
+                    onchange={(event) =>
+                      updateDateFromPicker(event, updateFirstDueDate)}
+                  />
+                  <input
+                    disabled={viewOnly}
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    maxlength="10"
+                    placeholder="DD/MM/AAAA"
+                    value={formatDateForField(form.primeiroVencimento)}
+                    aria-label="Data de vencimento (DD/MM/AAAA)"
+                    oninput={(event) =>
+                      updateDateField(event, updateFirstDueDate)}
                   />
                 </div>
               </div>
@@ -698,6 +818,16 @@
     gap: 10px;
   }
 
+  .payment-grid {
+    display: grid;
+    grid-template-columns: 58px repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .payment-method {
+    grid-column: 1 / 3;
+  }
+
   .installment-row {
     display: grid;
     grid-template-columns: 58px repeat(2, minmax(0, 1fr));
@@ -727,6 +857,7 @@
   }
 
   .control {
+    position: relative;
     display: grid;
     grid-template-columns: 18px minmax(0, 1fr);
     min-width: 0;
@@ -763,6 +894,26 @@
     align-items: center;
     justify-content: center;
     color: var(--muted);
+  }
+
+  .date-control .control-icon {
+    pointer-events: none;
+  }
+
+  .date-picker {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 42px;
+    min-width: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .date-picker:disabled {
+    cursor: default;
   }
 
   .control.installment-count {
@@ -999,6 +1150,14 @@
   @media (max-width: 520px) {
     .two-column-grid {
       grid-template-columns: minmax(0, 1fr);
+    }
+
+    .payment-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .payment-method {
+      grid-column: auto;
     }
 
     .installment-row {

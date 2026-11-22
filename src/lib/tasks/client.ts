@@ -650,6 +650,9 @@ function mutationFields(
       current?.project_id ??
       ""
     ).trim(),
+    institutionalContractId: (
+      values.institutionalContractId ?? current?.institutionalContractId ?? ""
+    ).trim() || undefined,
     category: (
       values.categoria ??
       values.stage ??

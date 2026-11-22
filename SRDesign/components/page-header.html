@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PageHeader — SRDesign</title>
+  <link rel="stylesheet" href="../core/sr-design.css" />
+  <link rel="stylesheet" href="_preview.css" />
+</head>
+<body>
+  <header class="sr-preview-bar">
+    <div class="sr-preview-bar__left">
+      <a class="sr-btn sr-btn--sm" href="../index.html"><span data-sr-icon="arrow-left" data-size="14"></span><span>Voltar</span></a>
+      <span class="sr-preview-bar__title">PageHeader</span>
+    </div>
+    <span class="sr-badge sr-badge--primary">core/components/sr-page-header.css</span>
+  </header>
+
+  <main class="sr-preview-wrap">
+    <section class="sr-preview-block sr-preview-block--canvas">
+      <div class="sr-preview-block__head">
+        <h2>Padrão com Eyebrow e Ações</h2>
+        <p>Cabeçalho hero com ícone em gradiente e destaque radial sutil.</p>
+      </div>
+      <header class="sr-page-header" style="margin-bottom:0;">
+        <div class="sr-page-header__main">
+          <span class="sr-page-header__icon"><span data-sr-icon="folder" data-size="28"></span></span>
+          <div class="sr-page-header__copy">
+            <span class="sr-page-header__eyebrow">Módulo Principal</span>
+            <h1 class="sr-page-header__title">Gestão de Projetos</h1>
+            <p class="sr-page-header__subtitle">Acompanhe entregas, prazos e responsáveis em um único painel.</p>
+          </div>
+        </div>
+        <div class="sr-page-header__actions">
+          <button type="button" class="sr-btn">Exportar</button>
+          <button type="button" class="sr-btn sr-btn--primary"><span data-sr-icon="plus" data-size="16"></span><span>Novo Projeto</span></button>
+        </div>
+      </header>
+    </section>
+
+    <section class="sr-preview-block sr-preview-block--canvas">
+      <div class="sr-preview-block__head">
+        <h2>Com Área Central (<code>.sr-page-header--has-body</code>)</h2>
+        <p>Ideal para incluir métricas resumidas ou controles de período no centro do cabeçalho.</p>
+      </div>
+      <header class="sr-page-header sr-page-header--has-body" style="margin-bottom:0;">
+        <div class="sr-page-header__main">
+          <span class="sr-page-header__icon"><span data-sr-icon="calendar" data-size="28"></span></span>
+          <div class="sr-page-header__copy">
+            <span class="sr-page-header__eyebrow">Cronograma</span>
+            <h1 class="sr-page-header__title">Planejamento Semanal</h1>
+          </div>
+        </div>
+        <div class="sr-page-header__body">
+          <div class="sr-row">
+            <span class="sr-badge sr-badge--primary">12 entregas</span>
+            <span class="sr-badge sr-badge--success">8 concluídas</span>
+            <span class="sr-badge sr-badge--warning">4 pendentes</span>
+          </div>
+        </div>
+        <div class="sr-page-header__actions">
+          <button type="button" class="sr-btn sr-btn--accent"><span data-sr-icon="sparkles" data-size="16"></span><span>Auto-organizar</span></button>
+        </div>
+      </header>
+    </section>
+
+    <section class="sr-preview-block">
+      <div class="sr-preview-block__head"><h2>Anatomia HTML</h2></div>
+      <pre class="sr-code">&lt;header class="sr-page-header"&gt;
+  &lt;div class="sr-page-header__main"&gt;
+    &lt;span class="sr-page-header__icon"&gt;&lt;span data-sr-icon="folder" data-size="28"&gt;&lt;/span&gt;&lt;/span&gt;
+    &lt;div class="sr-page-header__copy"&gt;
+      &lt;span class="sr-page-header__eyebrow"&gt;Categoria&lt;/span&gt;
+      &lt;h1 class="sr-page-header__title"&gt;Título da Página&lt;/h1&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class="sr-page-header__actions"&gt;
+    &lt;button class="sr-btn sr-btn--primary"&gt;Ação&lt;/button&gt;
+  &lt;/div&gt;
+&lt;/header&gt;</pre>
+    </section>
+  </main>
+
+  <script src="../core/sr-icons.js"></script>
+  <script src="../core/sr-core.js"></script>
+</body>
+</html>
