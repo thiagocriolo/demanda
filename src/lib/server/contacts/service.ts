@@ -35,43 +35,26 @@ import {
   businesses,
   projects,
   tasks,
-  users,
   workspaces,
 } from "../db/schema";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
+import type { ContactDatabase } from "./database";
+import {
+  assertLinkedUserIsValid,
+  insertContactDetails,
+} from "./details";
+import {
+  ContactConflictError,
+  ContactLinkedUserInvalidError,
+  ContactNotFoundError,
+} from "./errors";
 import type { ContactListQuery } from "./validation";
 
-type ContactDatabase = Pick<
-  Database,
-  "select" | "insert" | "update" | "delete"
->;
-
-export class ContactNotFoundError extends Error {
-  readonly status = 404;
-
-  constructor() {
-    super("Contato não encontrado.");
-    this.name = "ContactNotFoundError";
-  }
-}
-
-export class ContactLinkedUserInvalidError extends Error {
-  readonly status = 400;
-
-  constructor() {
-    super("O usuário vinculado não é válido.");
-    this.name = "ContactLinkedUserInvalidError";
-  }
-}
-
-export class ContactConflictError extends Error {
-  readonly status = 409;
-
-  constructor() {
-    super("Já existe um contato seu vinculado a este usuário.");
-    this.name = "ContactConflictError";
-  }
-}
+export {
+  ContactConflictError,
+  ContactLinkedUserInvalidError,
+  ContactNotFoundError,
+} from "./errors";
 
 async function personalWorkspaceId(
   database: ContactDatabase,
@@ -92,19 +75,6 @@ async function personalWorkspaceId(
     throw new Error("O workspace pessoal do usuário não foi encontrado.");
   }
   return workspace.id;
-}
-
-async function assertLinkedUserIsValid(
-  database: ContactDatabase,
-  linkedUserId: string | null,
-): Promise<void> {
-  if (!linkedUserId) return;
-  const [linkedUser] = await database
-    .select({ id: users.id })
-    .from(users)
-    .where(and(eq(users.id, linkedUserId), isNull(users.deletedAt)))
-    .limit(1);
-  if (!linkedUser) throw new ContactLinkedUserInvalidError();
 }
 
 function searchCondition(query: string): SQL | undefined {
@@ -298,47 +268,6 @@ async function findScopedContactRow(
   if (lock) query = query.for("update") as typeof query;
   const [row] = await query;
   return row ?? null;
-}
-
-async function insertContactDetails(
-  database: ContactDatabase,
-  workspaceId: string,
-  contactId: string,
-  input: ContactMutationInput,
-): Promise<void> {
-  if (input.phones.length) {
-    await database.insert(contactPhones).values(
-      input.phones.map((phone) => ({
-        workspaceId,
-        contactId,
-        type: phone.type,
-        number: phone.value,
-        label: phone.label || null,
-        isPrimary: phone.isPrimary,
-      })),
-    );
-  }
-  if (input.emails.length) {
-    await database.insert(contactEmails).values(
-      input.emails.map((email) => ({
-        workspaceId,
-        contactId,
-        type: email.type,
-        address: email.value,
-        label: email.label || null,
-        isPrimary: email.isPrimary,
-      })),
-    );
-  }
-  if (input.notes.length) {
-    await database.insert(contactNotes).values(
-      input.notes.map((note) => ({
-        workspaceId,
-        contactId,
-        body: note.body,
-      })),
-    );
-  }
 }
 
 function translateContactConstraint(error: unknown): never {
