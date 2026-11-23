@@ -199,6 +199,11 @@ async function renameLegacyDeliverySchema(database: Database): Promise<void> {
       ["cronograma_blocks", "task_id", "delivery_id"],
       ["cronograma_blocks", "subtask_id", "task_id"],
       ["project_delivery_routines", "subtasks", "tasks"],
+      [
+        "project_delivery_routines",
+        "source_service_task_template_id",
+        "source_service_delivery_template_id",
+      ],
     ];
     for (const [table, oldName, newName] of columns) {
       if (
