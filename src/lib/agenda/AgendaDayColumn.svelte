@@ -281,8 +281,11 @@
   .daily:not(.has-items) {
     grid-template-rows: auto;
   }
-  .daily:not(.has-items) .day-body {
-    display: none;
+  .daily:not(.has-items).drop-target {
+    grid-template-rows: auto minmax(96px, 1fr);
+  }
+  .daily:not(.has-items).drop-target .day-body {
+    display: block;
   }
   .upcoming {
     min-height: 165px;

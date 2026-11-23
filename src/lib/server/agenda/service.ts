@@ -91,6 +91,7 @@ async function ensureAgendaEntries(
       and(
         eq(projects.workspaceId, workspaceId),
         eq(projects.isActive, true),
+        eq(projects.isInstitutional, false),
         isNull(projects.archivedAt),
       ),
     )
@@ -109,6 +110,7 @@ async function ensureAgendaEntries(
       and(
         eq(deliveries.workspaceId, workspaceId),
         eq(projects.isActive, true),
+        eq(projects.isInstitutional, false),
         isNull(deliveries.archivedAt),
       ),
     )
@@ -306,8 +308,9 @@ export async function moveWorkspaceAgenda(
   database: Database,
   context: RequestAuthorizationContext,
   input: AgendaMoveInput,
+  query: AgendaQuery = {},
 ): Promise<AgendaSnapshot> {
-  const workspaceId = workspaceIdFromContext(context);
+  const workspaceId = query.workspaceId ?? workspaceIdFromContext(context);
   return database.transaction(async (transaction) => {
     await requireWorkspacePermissionForUpdate(
       transaction,

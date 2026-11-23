@@ -5,6 +5,8 @@ export type AgendaTone = "blue" | "green" | "amber" | "red" | "gray";
 
 export type AgendaItem = {
   id: string;
+  /** Workspace owner, used when the Agenda is displaying the global scope. */
+  workspaceId?: string;
   mode: AgendaMode;
   title: string;
   date: string | null;

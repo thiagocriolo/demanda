@@ -64,17 +64,54 @@ export function saveAgendaOrder(
   items: AgendaItem[],
   fetcher: FetchLike = fetch,
 ): Promise<AgendaSnapshot> {
-  const input: AgendaMoveInput = {
-    mode,
-    items: items.map(({ id, date, order, durationMinutes, version }) => ({
-      id,
-      date,
-      order,
-      durationMinutes,
-      version,
-    })),
-  };
-  return request(fetcher, jsonRequest("PUT", input)).then((snapshot) => {
+  const byWorkspace = new Map<string, AgendaItem[]>();
+  for (const item of items) {
+    const key = item.workspaceId ?? "";
+    byWorkspace.set(key, [...(byWorkspace.get(key) ?? []), item]);
+  }
+
+  const saves = [...byWorkspace.entries()].map(([workspaceId, entries]) => {
+    const ordered = [...entries].sort(
+      (left, right) =>
+        (left.date ?? "9999-12-31").localeCompare(right.date ?? "9999-12-31") ||
+        left.order - right.order ||
+        left.id.localeCompare(right.id),
+    );
+    const positionById = new Map<string, number>();
+    let currentDate: string | null | undefined;
+    let position = 0;
+    for (const item of ordered) {
+      if (item.date !== currentDate) {
+        currentDate = item.date;
+        position = 0;
+      }
+      positionById.set(item.id, position++);
+    }
+    const input: AgendaMoveInput = {
+      mode,
+      items: entries.map(({ id, date, durationMinutes, version }) => ({
+        id,
+        date,
+        order: positionById.get(id) ?? 0,
+        durationMinutes,
+        version,
+      })),
+    };
+    const path = workspaceId
+      ? `/api/agenda?workspaceId=${encodeURIComponent(workspaceId)}`
+      : "/api/agenda";
+    return request(fetcher, jsonRequest("PUT", input), path);
+  });
+
+  return Promise.all(saves).then((snapshots) => {
+    const snapshot =
+      snapshots.length === 1
+        ? snapshots[0]!
+        : {
+            workspaceId: GLOBAL_WORKSPACE_SCOPE_ID,
+            projects: snapshots.flatMap(({ projects }) => projects),
+            deliveries: snapshots.flatMap(({ deliveries }) => deliveries),
+          };
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("demanda:deliveries-changed"));
     }

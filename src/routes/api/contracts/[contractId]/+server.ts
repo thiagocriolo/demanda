@@ -166,7 +166,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
             .update(projects)
             .set({
               startDate: parsed.data.startDate,
-              endDate: parsed.data.endDate,
+              endDate: null,
               contractType: "recurring",
               updatedAt,
             })
@@ -181,7 +181,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
             name: "Institucional",
             statusKey: "execucao",
             startDate: parsed.data.startDate,
-            endDate: parsed.data.endDate,
+            endDate: null,
             engagementType: "personal",
             contractType: "recurring",
             createdAt: updatedAt,

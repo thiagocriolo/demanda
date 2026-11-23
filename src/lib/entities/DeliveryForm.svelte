@@ -213,6 +213,13 @@
         )
       : [],
   );
+  let isInstitutionalProject = $derived(
+    form.projetoId === `institutional:${form.contractId}` ||
+      projects.some(
+        (project) =>
+          project.id === form.projetoId && project.isInstitutional === "true",
+      ),
+  );
   let selectedContract = $derived(
     contracts.find(({ id }) => id === form.contractId),
   );
@@ -261,6 +268,9 @@
       ...currentTagRelations.map(tagItem),
     ]),
   );
+  $effect(() => {
+    if (isInstitutionalProject && form.dataEntrega) form.dataEntrega = "";
+  });
 
   function text(...values: Array<string | undefined>): string {
     return values.find((value) => value?.trim())?.trim() ?? "";
@@ -1080,10 +1090,10 @@
       responsibleUserIds: JSON.stringify(responsibleUserIds),
       tags: tagLabels.join(", "),
       tagLabels: JSON.stringify(tagLabels),
-      dataEntrega: form.dataEntrega,
-      data_entrega: form.dataEntrega,
-      dueDate: form.dataEntrega,
-      due_date: form.dataEntrega,
+      dataEntrega: isInstitutionalProject ? "" : form.dataEntrega,
+      data_entrega: isInstitutionalProject ? "" : form.dataEntrega,
+      dueDate: isInstitutionalProject ? "" : form.dataEntrega,
+      due_date: isInstitutionalProject ? "" : form.dataEntrega,
       duracao,
       duration: duracao,
       tarefas: JSON.stringify(savedTasks),
@@ -1243,26 +1253,28 @@
                   Boolean(projectError)}
               />
 
-              <div
-                class:date-control--empty={!form.dataEntrega}
-                class="control date-control"
-              >
-                <span class="control-icon" aria-hidden="true">
-                  <CalendarDays size={16} strokeWidth={1.8} />
-                </span>
-                <input
-                  bind:value={form.dataEntrega}
-                  type="date"
-                  placeholder="Data de entrega"
-                  disabled={viewOnly}
-                  aria-label="Data de entrega da entrega"
-                />
-                {#if !form.dataEntrega}
-                  <span class="date-placeholder" aria-hidden="true"
-                    >Data de entrega</span
-                  >
-                {/if}
-              </div>
+              {#if !isInstitutionalProject}
+                <div
+                  class:date-control--empty={!form.dataEntrega}
+                  class="control date-control"
+                >
+                  <span class="control-icon" aria-hidden="true">
+                    <CalendarDays size={16} strokeWidth={1.8} />
+                  </span>
+                  <input
+                    bind:value={form.dataEntrega}
+                    type="date"
+                    placeholder="Data de entrega"
+                    disabled={viewOnly}
+                    aria-label="Data de entrega da entrega"
+                  />
+                  {#if !form.dataEntrega}
+                    <span class="date-placeholder" aria-hidden="true"
+                      >Data de entrega</span
+                    >
+                  {/if}
+                </div>
+              {/if}
             </div>
 
             <div class="three-column-grid full">

@@ -21,6 +21,7 @@ import {
   contracts,
   projectDeliveryRoutines,
   projects,
+  agendaEntries,
   tags,
   deliveryResponsibles,
   deliveries,
@@ -380,12 +381,14 @@ async function validateAndLockProject(
   projectId: string;
   businessId: string;
   engagementType: "fee" | "personal";
+  isInstitutional: boolean;
 }> {
   const [row] = await database
     .select({
       projectId: projects.id,
       businessId: projects.businessId,
       engagementType: projects.engagementType,
+      isInstitutional: projects.isInstitutional,
       projectArchivedAt: projects.archivedAt,
       businessArchivedAt: businesses.archivedAt,
     })
@@ -407,6 +410,7 @@ async function validateAndLockProject(
     projectId: row.projectId,
     businessId: row.businessId,
     engagementType: row.engagementType,
+    isInstitutional: row.isInstitutional,
   };
 }
 
@@ -423,6 +427,7 @@ async function materializeInstitutionalProject(
   projectId: string;
   businessId: string;
   engagementType: "fee" | "personal";
+  isInstitutional: boolean;
 }> {
   const [contract] = await database
     .select({
@@ -443,6 +448,7 @@ async function materializeInstitutionalProject(
       projectId: projects.id,
       businessId: projects.businessId,
       engagementType: projects.engagementType,
+      isInstitutional: projects.isInstitutional,
     })
     .from(projects)
     .where(
@@ -472,6 +478,7 @@ async function materializeInstitutionalProject(
     projectId,
     businessId: contract.businessId,
     engagementType: "personal",
+    isInstitutional: true,
   };
 }
 
@@ -1033,7 +1040,7 @@ export async function createWorkspaceDeliveryInTransaction(
     categoryKey: input.category || null,
     priorityKey: input.priority,
     statusKey: input.status,
-    dueDate: input.dueDate,
+    dueDate: project.isInstitutional ? null : input.dueDate,
     engagementType: input.engagementType ?? "personal",
     sortOrder: input.sortOrder ?? 0,
     boardOrder: {},
@@ -1257,7 +1264,7 @@ export async function updateWorkspaceDelivery(
           categoryKey: input.category || null,
           priorityKey: input.priority,
           statusKey: input.status,
-          dueDate: input.dueDate,
+          dueDate: project.isInstitutional ? null : input.dueDate,
           engagementType: input.engagementType ?? "personal",
           sortOrder: input.sortOrder ?? existing.sortOrder,
           boardOrder,
@@ -1273,6 +1280,16 @@ export async function updateWorkspaceDelivery(
           ),
         );
       if (affectedRows(deliveryRows) !== 1) throw new DeliveryVersionConflictError();
+      if (project.isInstitutional) {
+        await transaction
+          .delete(agendaEntries)
+          .where(
+            and(
+              eq(agendaEntries.workspaceId, workspaceId),
+              eq(agendaEntries.deliveryId, deliveryId),
+            ),
+          );
+      }
       await appendDataChangeAuditLog(
         transaction,
         {
@@ -1308,7 +1325,7 @@ export async function updateWorkspaceDelivery(
             {
               field: "dueDate",
               before: existing.dueDate,
-              after: input.dueDate,
+              after: project.isInstitutional ? null : input.dueDate,
             },
           ].filter((change) => change.before !== change.after),
         },

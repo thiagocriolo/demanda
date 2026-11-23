@@ -76,6 +76,7 @@ function projectItem(
   const status = projectStatuses[record.status] ?? projectStatuses.planejamento;
   return {
     id: record.id,
+    workspaceId: record.workspaceId,
     mode: "projects",
     title: record.nome || "Projeto sem nome",
     date: schedule.date,
@@ -118,6 +119,7 @@ function deliveryItem(
   const responsibleUser = resolveResponsibleUser(record, workspaceUsers);
   return {
     id: record.id,
+    workspaceId: record.workspaceId,
     mode: "deliveries",
     title: record.nome || "Entrega sem nome",
     date: schedule.date,

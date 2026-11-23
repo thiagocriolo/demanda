@@ -162,6 +162,13 @@
       "when": 1794400000016,
       "tag": "0022_rename_delivery_routine_source",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1794400000017,
+      "tag": "0023_exclude_institutional_projects_from_agenda",
+      "breakpoints": true
     }
   ]
 }

@@ -26,12 +26,18 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   }
 };
 
-export const PUT: RequestHandler = async ({ locals, request }) => {
+export const PUT: RequestHandler = async ({ locals, request, url }) => {
   const context = requireAuthenticatedRequest(locals);
   const parsed = agendaMoveSchema.safeParse(await readRequestInput(request));
   if (!parsed.success) error(400, "Movimento da Agenda invalido.");
+  const query = agendaQuerySchema.safeParse(
+    Object.fromEntries(url.searchParams),
+  );
+  if (!query.success) error(400, "Workspace da Agenda invalido.");
   try {
-    return json(await moveWorkspaceAgenda(getDatabase(), context, parsed.data));
+    return json(
+      await moveWorkspaceAgenda(getDatabase(), context, parsed.data, query.data),
+    );
   } catch (cause) {
     throwAgendaHttpError(cause);
   }

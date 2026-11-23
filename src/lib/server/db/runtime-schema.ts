@@ -29,6 +29,40 @@ async function applyRuntimeSchema(database: Database): Promise<void> {
   // installations receive the same Delivery -> Task vocabulary as migrated
   // installations while preserving every existing UUID and row.
   await renameLegacyDeliverySchema(database);
+  // Institutional projects are governed by the contract cycle. They never
+  // carry a delivery date and must not be materialized in the Agenda.
+  await database.execute(
+    sql.raw(
+      "UPDATE projects SET end_date = NULL WHERE is_institutional = true AND end_date IS NOT NULL",
+    ),
+  );
+  await database.execute(
+    sql.raw(`
+      UPDATE deliveries d
+      INNER JOIN projects p
+        ON p.workspace_id = d.workspace_id AND p.id = d.project_id
+      SET d.due_date = NULL
+      WHERE p.is_institutional = true AND d.due_date IS NOT NULL
+    `),
+  );
+  await database.execute(
+    sql.raw(`
+      DELETE ae FROM agenda_entries ae
+      INNER JOIN projects p
+        ON p.workspace_id = ae.workspace_id AND p.id = ae.project_id
+      WHERE ae.entity_kind = 'project' AND p.is_institutional = true
+    `),
+  );
+  await database.execute(
+    sql.raw(`
+      DELETE ae FROM agenda_entries ae
+      INNER JOIN deliveries d
+        ON d.workspace_id = ae.workspace_id AND d.id = ae.delivery_id
+      INNER JOIN projects p
+        ON p.workspace_id = d.workspace_id AND p.id = d.project_id
+      WHERE ae.entity_kind = 'delivery' AND p.is_institutional = true
+    `),
+  );
   await addColumnIfMissing(
     database,
     "projects",

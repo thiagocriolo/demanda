@@ -246,7 +246,7 @@ async function rollInstitutionalProjectWeekInTransaction(
         categoryKey: routine.categoryKey,
         priorityKey: routine.priorityKey,
         statusKey: routine.statusKey,
-        dueDate: occurrenceDate,
+        dueDate: null,
         sortOrder: 0,
         boardOrder: {},
         createdAt: now,

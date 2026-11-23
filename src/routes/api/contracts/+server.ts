@@ -304,7 +304,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
           name: "Institucional",
           statusKey: "execucao",
           startDate: contract.startDate,
-          endDate: contract.endDate,
+          endDate: null,
           engagementType: "personal",
           contractType: "recurring",
           createdAt: now,
