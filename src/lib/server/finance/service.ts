@@ -29,63 +29,21 @@ import {
   workspaceMembers,
   workspaces,
 } from "../db/schema";
+import type { FinanceDatabase } from "./database";
+import {
+  FinancialEntryNotFoundError,
+  FinancialInvalidOperationError,
+  FinancialVersionConflictError,
+} from "./errors";
+import { centsToDecimal, decimalToCents } from "./money";
 
-type FinanceDatabase = Pick<
-  Database,
-  "select" | "insert" | "update" | "delete"
->;
 type StoredEntry = typeof financialEntries.$inferSelect;
 
-export class FinancialVersionConflictError extends Error {
-  readonly status = 409;
-
-  constructor() {
-    super(
-      "O lançamento financeiro foi alterado em outra sessão. Recarregue e tente novamente.",
-    );
-    this.name = "FinancialVersionConflictError";
-  }
-}
-
-export class FinancialEntryNotFoundError extends Error {
-  readonly status = 404;
-
-  constructor() {
-    super("O lançamento financeiro não existe neste workspace.");
-    this.name = "FinancialEntryNotFoundError";
-  }
-}
-
-export class FinancialInvalidOperationError extends Error {
-  readonly status = 409;
-
-  constructor(message = "A operação financeira não é válida.") {
-    super(message);
-    this.name = "FinancialInvalidOperationError";
-  }
-}
-
-function centsToDecimal(cents: number): string {
-  if (!Number.isSafeInteger(cents) || cents <= 0) {
-    throw new FinancialInvalidOperationError("O valor monetário é inválido.");
-  }
-  const whole = Math.trunc(cents / 100);
-  const fraction = String(cents % 100).padStart(2, "0");
-  return `${whole}.${fraction}`;
-}
-
-function decimalToCents(value: string): number {
-  const match = /^(\d+)(?:\.(\d{1,2}))?$/u.exec(value);
-  if (!match) throw new FinancialInvalidOperationError();
-  const cents =
-    BigInt(match[1]!) * 100n + BigInt((match[2] ?? "").padEnd(2, "0"));
-  if (cents > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new FinancialInvalidOperationError(
-      "O valor monetário excede o limite seguro.",
-    );
-  }
-  return Number(cents);
-}
+export {
+  FinancialEntryNotFoundError,
+  FinancialInvalidOperationError,
+  FinancialVersionConflictError,
+} from "./errors";
 
 async function lockWorkspace(
   database: FinanceDatabase,
