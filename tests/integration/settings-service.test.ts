@@ -14,11 +14,11 @@ import {
   businesses,
   contacts,
   contracts,
-  deliveryTemplateSubtasks,
+  deliveryTemplateTasks,
   deliveryTemplates,
   financialEntries,
   projects,
-  serviceTaskTemplates,
+  serviceDeliveryTemplates,
   services,
   userPreferences,
   users,
@@ -217,7 +217,7 @@ describe("BE-09: configuracoes persistentes", () => {
           paymentMethod: "Pix",
           paymentTerms: "Entrada e entrega",
           financeNotes: "",
-          tasks: [
+          deliveries: [
             {
               id: "ocorrencia-be09-1",
               templateId: "modelo-entrega-be09",
@@ -238,9 +238,9 @@ describe("BE-09: configuracoes persistentes", () => {
           name: "Entrega BE09",
           category: "planejamento",
           briefing: "Entrega persistente",
-          subtasks: [
+          tasks: [
             {
-              id: "subtarefa-be09",
+              id: "tarefa-be09",
               nome: "Validar entrega",
               duracao: "1,5",
               status: "pendente",
@@ -267,11 +267,11 @@ describe("BE-09: configuracoes persistentes", () => {
 
       expect(saved.version).toBe(initial.version + 1);
       expect(saved.settings.serviceTemplates[0]?.name).toBe("Projeto BE09");
-      expect(saved.settings.serviceTemplates[0]?.tasks).toMatchObject([
+      expect(saved.settings.serviceTemplates[0]?.deliveries).toMatchObject([
         { name: "Entrega inicial" },
         { name: "Entrega revisada" },
       ]);
-      expect(saved.settings.deliveryTemplates[0]?.subtasks[0]?.duracao).toBe(
+      expect(saved.settings.deliveryTemplates[0]?.tasks[0]?.duracao).toBe(
         "1.5",
       );
       expect(memberView.settings).toEqual(saved.settings);
@@ -287,30 +287,30 @@ describe("BE-09: configuracoes persistentes", () => {
         .select({ services: count(services.id) })
         .from(services)
         .where(eq(services.workspaceId, data.workspace.id));
-      const [subtasks] = await transaction
+      const [tasks] = await transaction
         .select({ total: count() })
-        .from(deliveryTemplateSubtasks)
+        .from(deliveryTemplateTasks)
         .innerJoin(
           deliveryTemplates,
           and(
             eq(
               deliveryTemplates.id,
-              deliveryTemplateSubtasks.deliveryTemplateId,
+              deliveryTemplateTasks.deliveryTemplateId,
             ),
             eq(
               deliveryTemplates.workspaceId,
-              deliveryTemplateSubtasks.workspaceId,
+              deliveryTemplateTasks.workspaceId,
             ),
           ),
         )
         .where(eq(deliveryTemplates.workspaceId, data.workspace.id));
-      const [taskOccurrences] = await transaction
+      const [deliveryOccurrences] = await transaction
         .select({ total: count() })
-        .from(serviceTaskTemplates)
-        .where(eq(serviceTaskTemplates.workspaceId, data.workspace.id));
+        .from(serviceDeliveryTemplates)
+        .where(eq(serviceDeliveryTemplates.workspaceId, data.workspace.id));
       expect(persisted?.services).toBe(1);
-      expect(subtasks?.total).toBe(1);
-      expect(taskOccurrences?.total).toBe(2);
+      expect(tasks?.total).toBe(1);
+      expect(deliveryOccurrences?.total).toBe(2);
 
       const isolated = await getWorkspaceSettings(
         transaction,
@@ -346,7 +346,7 @@ describe("BE-09: configuracoes persistentes", () => {
           paymentMethod: "",
           paymentTerms: "",
           financeNotes: "",
-          tasks: [],
+          deliveries: [],
         },
       ];
 

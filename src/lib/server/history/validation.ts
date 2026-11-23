@@ -3,8 +3,8 @@ import { z } from "zod";
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 export const historyModules = [
+  "deliveries",
   "tasks",
-  "subtasks",
   "cronograma",
   "agenda",
   "projects",

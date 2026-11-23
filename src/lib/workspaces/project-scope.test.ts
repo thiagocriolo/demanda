@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EntityRecord } from "$lib/entities/types";
-import { taskBelongsToProjects } from "./project-scope";
+import { deliveryBelongsToProjects } from "./project-scope";
 
 const project: EntityRecord = {
   id: "project-server-id",
@@ -10,13 +10,13 @@ const project: EntityRecord = {
   updatedAt: "2026-07-14T00:00:00.000Z",
 };
 
-describe("taskBelongsToProjects", () => {
+describe("deliveryBelongsToProjects", () => {
   it("aceita somente o ID exato e nunca associa pelo nome", () => {
     expect(
-      taskBelongsToProjects(
+      deliveryBelongsToProjects(
         {
           ...project,
-          id: "task-with-id",
+          id: "delivery-with-id",
           projetoId: project.id,
           projeto: project.nome,
         },
@@ -25,10 +25,10 @@ describe("taskBelongsToProjects", () => {
     ).toBe(true);
 
     expect(
-      taskBelongsToProjects(
+      deliveryBelongsToProjects(
         {
           ...project,
-          id: "legacy-task",
+          id: "legacy-delivery",
           projetoId: "",
           projeto: project.nome,
         },

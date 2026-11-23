@@ -18,8 +18,8 @@ import { affectedRows, type Database } from "../db/database";
 import {
   agendaEntries,
   projects,
-  tasks,
-  taskSubtasks,
+  deliveries,
+  deliveryTasks,
   workspaces,
   type AgendaEntityKind,
 } from "../db/schema";
@@ -47,11 +47,11 @@ export class AgendaInvalidMovementError extends Error {
 }
 
 function kindForMode(mode: AgendaMode): AgendaEntityKind {
-  return mode === "projects" ? "project" : "task";
+  return mode === "projects" ? "project" : "delivery";
 }
 
 function entityId(row: typeof agendaEntries.$inferSelect): string {
-  const id = row.entityKind === "project" ? row.projectId : row.taskId;
+  const id = row.entityKind === "project" ? row.projectId : row.deliveryId;
   if (!id) throw new AgendaInvalidMovementError();
   return id;
 }
@@ -95,34 +95,34 @@ async function ensureAgendaEntries(
       ),
     )
     .orderBy(asc(projects.id));
-  const taskRows = await database
-    .select({ id: tasks.id, date: tasks.dueDate })
-    .from(tasks)
+  const deliveryRows = await database
+    .select({ id: deliveries.id, date: deliveries.dueDate })
+    .from(deliveries)
     .innerJoin(
       projects,
       and(
-        eq(projects.workspaceId, tasks.workspaceId),
-        eq(projects.id, tasks.projectId),
+        eq(projects.workspaceId, deliveries.workspaceId),
+        eq(projects.id, deliveries.projectId),
       ),
     )
     .where(
       and(
-        eq(tasks.workspaceId, workspaceId),
+        eq(deliveries.workspaceId, workspaceId),
         eq(projects.isActive, true),
-        isNull(tasks.archivedAt),
+        isNull(deliveries.archivedAt),
       ),
     )
-    .orderBy(asc(tasks.id));
-  const subtaskRows = await database
+    .orderBy(asc(deliveries.id));
+  const taskRows = await database
     .select({
-      taskId: taskSubtasks.taskId,
-      durationMinutes: taskSubtasks.durationMinutes,
+      deliveryId: deliveryTasks.deliveryId,
+      durationMinutes: deliveryTasks.durationMinutes,
     })
-    .from(taskSubtasks)
+    .from(deliveryTasks)
     .where(
       and(
-        eq(taskSubtasks.workspaceId, workspaceId),
-        isNull(taskSubtasks.archivedAt),
+        eq(deliveryTasks.workspaceId, workspaceId),
+        isNull(deliveryTasks.archivedAt),
       ),
     );
   const storedRows = await database
@@ -136,7 +136,7 @@ async function ensureAgendaEntries(
     );
 
   const projectDates = new Map(projectRows.map(({ id, date }) => [id, date]));
-  const taskDates = new Map(taskRows.map(({ id, date }) => [id, date]));
+  const deliveryDates = new Map(deliveryRows.map(({ id, date }) => [id, date]));
   const staleIds = storedRows
     .filter((row) => {
       if (row.entityKind === "project") {
@@ -147,9 +147,9 @@ async function ensureAgendaEntries(
         );
       }
       return (
-        !row.taskId ||
-        !taskDates.has(row.taskId) ||
-        row.scheduledDate !== taskDates.get(row.taskId)
+        !row.deliveryId ||
+        !deliveryDates.has(row.deliveryId) ||
+        row.scheduledDate !== deliveryDates.get(row.deliveryId)
       );
     })
     .map(({ id }) => id);
@@ -168,16 +168,16 @@ async function ensureAgendaEntries(
   const storedProjects = new Set(
     retained.flatMap((row) => (row.projectId ? [row.projectId] : [])),
   );
-  const storedTasks = new Set(
-    retained.flatMap((row) => (row.taskId ? [row.taskId] : [])),
+  const storedDeliveries = new Set(
+    retained.flatMap((row) => (row.deliveryId ? [row.deliveryId] : [])),
   );
-  const durationByTask = new Map<string, number>();
-  for (const subtask of subtaskRows) {
-    durationByTask.set(
-      subtask.taskId,
+  const durationByDelivery = new Map<string, number>();
+  for (const task of taskRows) {
+    durationByDelivery.set(
+      task.deliveryId,
       Math.min(
         10_080,
-        (durationByTask.get(subtask.taskId) ?? 0) + subtask.durationMinutes,
+        (durationByDelivery.get(task.deliveryId) ?? 0) + task.durationMinutes,
       ),
     );
   }
@@ -202,15 +202,15 @@ async function ensureAgendaEntries(
         position: nextPosition("project", project.date),
         durationMinutes: 60,
       })),
-    ...taskRows
-      .filter(({ id }) => !storedTasks.has(id))
-      .map((task) => ({
+    ...deliveryRows
+      .filter(({ id }) => !storedDeliveries.has(id))
+      .map((delivery) => ({
         workspaceId,
-        entityKind: "task" as const,
-        taskId: task.id,
-        scheduledDate: task.date,
-        position: nextPosition("task", task.date),
-        durationMinutes: Math.max(30, durationByTask.get(task.id) ?? 60),
+        entityKind: "delivery" as const,
+        deliveryId: delivery.id,
+        scheduledDate: delivery.date,
+        position: nextPosition("delivery", delivery.date),
+        durationMinutes: Math.max(30, durationByDelivery.get(delivery.id) ?? 60),
       })),
   ];
   if (values.length) await database.insert(agendaEntries).values(values);
@@ -235,8 +235,8 @@ async function readSnapshot(
     projects: rows
       .filter(({ entityKind }) => entityKind === "project")
       .map(placement),
-    tasks: rows
-      .filter(({ entityKind }) => entityKind === "task")
+    deliveries: rows
+      .filter(({ entityKind }) => entityKind === "delivery")
       .map(placement),
   };
 }
@@ -349,16 +349,16 @@ export async function moveWorkspaceAgenda(
     for (const item of input.items) {
       const row = rowByEntityId.get(item.id)!;
       if (row.scheduledDate !== item.date) {
-        if (kind === "task") {
+        if (kind === "delivery") {
           await transaction
-            .update(tasks)
+            .update(deliveries)
             .set({
               dueDate: item.date,
-              version: sql`${tasks.version} + 1`,
+              version: sql`${deliveries.version} + 1`,
               updatedAt: now,
             })
             .where(
-              and(eq(tasks.workspaceId, workspaceId), eq(tasks.id, item.id)),
+              and(eq(deliveries.workspaceId, workspaceId), eq(deliveries.id, item.id)),
             );
         } else {
           const [project] = await transaction

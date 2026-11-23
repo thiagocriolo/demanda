@@ -13,7 +13,7 @@ describe("URLs canônicas dos registros", () => {
     expect(recordPageHref("negocio", id)).toBe(`/clientes/negócios/${id}`);
     expect(recordPageHref("contrato", id)).toBe(`/clientes/contratos/${id}`);
     expect(recordPageHref("projeto", id)).toBe(`/clientes/projetos/${id}`);
-    expect(recordPageHref("tarefa", id)).toBe(`/clientes/tarefas/${id}`);
+    expect(recordPageHref("entrega", id)).toBe(`/clientes/entregas/${id}`);
   });
 
   it("alinha as chaves de persistência aos links de detalhe", () => {
@@ -30,7 +30,7 @@ describe("URLs canônicas dos registros", () => {
       recordPageHref("projeto", id),
     );
     expect(recordPageHrefForEntity("entregas", id)).toBe(
-      recordPageHref("tarefa", id),
+      recordPageHref("entrega", id),
     );
   });
 
@@ -39,7 +39,7 @@ describe("URLs canônicas dos registros", () => {
     expect(recordTabFromRoute("negócios")).toBe("negocios");
     expect(recordTabFromRoute("contratos")).toBe("contratos");
     expect(recordTabFromRoute("projetos")).toBe("projetos");
-    expect(recordTabFromRoute("tarefas")).toBe("tarefas");
+    expect(recordTabFromRoute("entregas")).toBe("entregas");
     expect(recordTabFromRoute("outro")).toBeUndefined();
   });
 });

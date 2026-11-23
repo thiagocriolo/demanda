@@ -7,6 +7,7 @@ import type { QueuedRecordCommand } from "./execution-queue";
 
 export type RecordCommand =
   | { kind: "contact"; name: string }
+  | { kind: "workspace"; name: string; description?: string }
   | {
       kind: "business";
       name: string;
@@ -21,11 +22,11 @@ export type RecordCommand =
       contractType?: "one_off" | "recurring";
     }
   | {
-      kind: "task";
+      kind: "delivery";
       name: string;
       projectName?: string;
       projectRef?: string;
-      subtasks?: Array<{ name: string; durationMinutes: number }>;
+      tasks?: Array<{ name: string; durationMinutes: number }>;
     }
   | {
       kind: "service_template";
@@ -38,7 +39,29 @@ export type RecordCommand =
       name: string;
       serviceTemplateRef?: string;
       briefing?: string;
-      subtasks?: Array<{ name: string; durationMinutes: number }>;
+      tasks?: Array<{ name: string; durationMinutes: number }>;
+    }
+  | { kind: "service"; name: string; description?: string }
+  | {
+      kind: "contract";
+      name: string;
+      businessName?: string;
+      businessRef?: string;
+      contractType: "one_off" | "recurring";
+      amountCents: number;
+      startDate?: string;
+      endDate?: string;
+      firstDueDate?: string;
+    }
+  | {
+      kind: "finance_entry";
+      name: string;
+      type: "revenue" | "expense";
+      amountCents: number;
+      dueDate: string;
+      category?: string;
+      mode?: "one_off" | "recurring";
+      recurrenceCount?: number;
     };
 
 export type ParseRecordCommandResult =
@@ -62,6 +85,17 @@ function cleanName(value: string): string {
     .trim();
 }
 
+function parseBrazilianMoneyToCents(value: string): number | undefined {
+  const normalized = value
+    .trim()
+    .replace(/^R\$\s*/iu, "")
+    .replace(/\./gu, "")
+    .replace(",", ".");
+  if (!/^\d+(?:\.\d{1,2})?$/u.test(normalized)) return undefined;
+  const cents = Math.round(Number(normalized) * 100);
+  return Number.isSafeInteger(cents) && cents >= 0 ? cents : undefined;
+}
+
 function capture(pattern: RegExp, text: string): string[] | null {
   const match = pattern.exec(text.trim());
   if (!match) return null;
@@ -81,13 +115,25 @@ export function parseRecordCommand(input: string): ParseRecordCommandResult {
 
   const contact = capture(
     new RegExp(
-      `^${action}\\s+${article}\\s*contato\\s+(?:chamad[oa]\\s+)?(.+?)$`,
+      `^${action}\\s+${article}\\s*(?:contato|pessoa)\\s+(?:chamad[oa]\\s+)?(.+?)$`,
       "iu",
     ),
     text,
   );
   if (contact)
     return { ok: true, command: { kind: "contact", name: contact[0]! } };
+
+  const workspace = capture(
+    new RegExp(`^${action}\\s+${article}\\s*workspace\\s+(?:chamad[oa]\\s+)?(.+?)$`, "iu"),
+    text,
+  );
+  if (workspace) return { ok: true, command: { kind: "workspace", name: workspace[0]! } };
+
+  const service = capture(
+    new RegExp(`^${action}\\s+${article}\\s*servi[cç]o\\s+(?:chamad[oa]\\s+)?(.+?)$`, "iu"),
+    text,
+  );
+  if (service) return { ok: true, command: { kind: "service", name: service[0]! } };
 
   const business = capture(
     new RegExp(
@@ -105,6 +151,38 @@ export function parseRecordCommand(input: string): ParseRecordCommandResult {
         contactName: business[1]!,
       },
     };
+  }
+
+  const contract = capture(
+    new RegExp(`^${action}\\s+${article}\\s*contrato\\s+(?:chamad[oa]\\s+)?(.+?)\\s+(?:para|do|da)\\s+(?:neg[oó]cio\\s+)?(.+?)$`, "iu"),
+    text,
+  );
+  if (contract) {
+    return { ok: true, command: { kind: "contract", name: contract[0]!, businessName: contract[1]!, contractType: "one_off", amountCents: 0 } };
+  }
+
+  const financial = new RegExp(
+    `^${action}\\s+${article}\\s*(receita|despesa)\\s+(?:chamad[oa]\\s+)?(.+?)\\s+(?:de|no valor de)\\s+(R?\\$?\\s*[0-9.,]+)\\s+(?:para|em)\\s+(\\d{4}-\\d{2}-\\d{2})$`,
+    "iu",
+  ).exec(text);
+  if (financial) {
+    const amountCents = parseBrazilianMoneyToCents(financial[3]!);
+    if (amountCents !== undefined) {
+      const normalizedType = financial[1]!
+        .normalize("NFD")
+        .replace(/\p{M}/gu, "")
+        .toLocaleLowerCase("pt-BR");
+      return {
+        ok: true,
+        command: {
+          kind: "finance_entry",
+          name: cleanName(financial[2]!),
+          type: normalizedType === "receita" ? "revenue" : "expense",
+          amountCents,
+          dueDate: financial[4]!,
+        },
+      };
+    }
   }
 
   const project = capture(
@@ -127,24 +205,24 @@ export function parseRecordCommand(input: string): ParseRecordCommandResult {
     };
   }
 
-  const task = capture(
+  const delivery = capture(
     new RegExp(
-      `^${action}\\s+${article}\\s*tarefa\\s+(?:chamad[oa]\\s+)?(.+?)\\s+(?:para|do|da|no|na)\\s+(?:projeto\\s+)?(.+?)$`,
+      `^${action}\\s+${article}\\s*(?:tarefa|entrega)\\s+(?:chamad[oa]\\s+)?(.+?)\\s+(?:para|do|da|no|na)\\s+(?:projeto\\s+)?(.+?)$`,
       "iu",
     ),
     text,
   );
-  if (task) {
+  if (delivery) {
     return {
       ok: true,
-      command: { kind: "task", name: task[0]!, projectName: task[1]! },
+      command: { kind: "delivery", name: delivery[0]!, projectName: delivery[1]! },
     };
   }
 
   return {
     ok: false,
     message:
-      "Por enquanto consigo registrar contatos, negócios, projetos e tarefas. Experimente: “Crie um negócio chamado Macajo para Caleb”.",
+      "Por enquanto consigo registrar contatos, negócios, projetos e entregas. Experimente: “Crie um negócio chamado Macajo para Caleb”.",
   };
 }
 
@@ -188,14 +266,14 @@ function parseCanonicalCommand(input: string): ParseRecordCommandResult | null {
     };
   }
 
-  const task = capture(
+  const delivery = capture(
     /^CRIE\s+TAREFA:\s*(.+?)\s*\|\s*PROJETO:\s*(.+?)$/iu,
     input,
   );
-  if (task) {
+  if (delivery) {
     return {
       ok: true,
-      command: { kind: "task", name: task[0]!, projectName: task[1]! },
+      command: { kind: "delivery", name: delivery[0]!, projectName: delivery[1]! },
     };
   }
   return null;
@@ -277,21 +355,21 @@ function projectContractType(
   );
 }
 
-function taskSubtasks(
+function deliveryTasks(
   command: AssistantCommand,
 ): Array<{ name: string; durationMinutes: number }> | undefined {
-  const value = command.data.subtasks;
+  const value = command.data.tasks;
   if (value === undefined) return undefined;
   if (!Array.isArray(value) || !value.length || value.length > 10) {
-    throw new Error("data.subtasks precisa conter entre 1 e 10 subtarefas.");
+    throw new Error("data.tasks precisa conter entre 1 e 10 tarefas.");
   }
-  return value.map((subtask, index) => {
-    if (!subtask || typeof subtask !== "object" || Array.isArray(subtask)) {
-      throw new Error(`data.subtasks[${index}] não é válida.`);
+  return value.map((task, index) => {
+    if (!task || typeof task !== "object" || Array.isArray(task)) {
+      throw new Error(`data.tasks[${index}] não é válida.`);
     }
-    const item = subtask as Record<string, unknown>;
+    const item = task as Record<string, unknown>;
     if (typeof item.name !== "string" || !item.name.trim()) {
-      throw new Error(`data.subtasks[${index}].name é obrigatório.`);
+      throw new Error(`data.tasks[${index}].name é obrigatório.`);
     }
     const durationMinutes = item.durationMinutes ?? 60;
     if (
@@ -302,11 +380,27 @@ function taskSubtasks(
       durationMinutes % 30 !== 0
     ) {
       throw new Error(
-        `data.subtasks[${index}].durationMinutes precisa ser múltiplo de 30.`,
+        `data.tasks[${index}].durationMinutes precisa ser múltiplo de 30.`,
       );
     }
     return { name: cleanName(item.name), durationMinutes };
   });
+}
+
+function requiredAmountCents(command: AssistantCommand, key = "amountCents"): number {
+  const value = command.data[key];
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`data.${key} precisa ser um valor inteiro em centavos.`);
+  }
+  return value;
+}
+
+function optionalDate(command: AssistantCommand, key: string): string | undefined {
+  const value = optionalText(command, key);
+  if (value && !/^\d{4}-\d{2}-\d{2}$/u.test(value)) {
+    throw new Error(`data.${key} precisa usar o formato AAAA-MM-DD.`);
+  }
+  return value;
 }
 
 function compileStructuredCommand(command: AssistantCommand): RecordCommand {
@@ -321,6 +415,14 @@ function compileStructuredCommand(command: AssistantCommand): RecordCommand {
   }
 
   switch (command.resource) {
+    case "workspace":
+      return {
+        kind: "workspace",
+        name: requiredText(command, "name"),
+        ...(optionalText(command, "description")
+          ? { description: optionalText(command, "description") }
+          : {}),
+      };
     case "contact":
       return { kind: "contact", name: requiredText(command, "name") };
     case "business": {
@@ -351,19 +453,19 @@ function compileStructuredCommand(command: AssistantCommand): RecordCommand {
         ...(contractType ? { contractType } : {}),
       };
     }
-    case "task": {
+    case "delivery": {
       const project = requiredTextOrReference(
         command,
         "projectName",
         "projectRef",
       );
-      const subtasks = taskSubtasks(command);
+      const tasks = deliveryTasks(command);
       return {
-        kind: "task",
+        kind: "delivery",
         name: requiredText(command, "name"),
         ...(project.name ? { projectName: project.name } : {}),
         ...(project.reference ? { projectRef: project.reference } : {}),
-        ...(subtasks ? { subtasks } : {}),
+        ...(tasks ? { tasks } : {}),
       };
     }
     case "service_template":
@@ -378,7 +480,7 @@ function compileStructuredCommand(command: AssistantCommand): RecordCommand {
           : {}),
       };
     case "delivery_template": {
-      const subtasks = taskSubtasks(command);
+      const tasks = deliveryTasks(command);
       return {
         kind: "delivery_template",
         name: requiredText(command, "name"),
@@ -388,7 +490,60 @@ function compileStructuredCommand(command: AssistantCommand): RecordCommand {
         ...(optionalText(command, "briefing")
           ? { briefing: optionalText(command, "briefing") }
           : {}),
-        ...(subtasks ? { subtasks } : {}),
+        ...(tasks ? { tasks } : {}),
+      };
+    }
+    case "service":
+      return {
+        kind: "service",
+        name: requiredText(command, "name"),
+        ...(optionalText(command, "description")
+          ? { description: optionalText(command, "description") }
+          : {}),
+      };
+    case "contract": {
+      const business = requiredTextOrReference(command, "businessName", "businessRef");
+      const type = projectContractType(command) ?? "one_off";
+      const amountCents = requiredAmountCents(command);
+      const firstDueDate = optionalDate(command, "firstDueDate");
+      if (type === "one_off" && amountCents > 0 && !firstDueDate) {
+        throw new Error("data.firstDueDate é obrigatória para um contrato pontual com valor.");
+      }
+      return {
+        kind: "contract",
+        name: requiredText(command, "name"),
+        ...(business.name ? { businessName: business.name } : {}),
+        ...(business.reference ? { businessRef: business.reference } : {}),
+        contractType: type,
+        amountCents,
+        ...(optionalDate(command, "startDate") ? { startDate: optionalDate(command, "startDate") } : {}),
+        ...(optionalDate(command, "endDate") ? { endDate: optionalDate(command, "endDate") } : {}),
+        ...(firstDueDate ? { firstDueDate } : {}),
+      };
+    }
+    case "finance_entry": {
+      const type = optionalText(command, "type")?.toLocaleLowerCase("pt-BR");
+      if (type !== "revenue" && type !== "expense" && type !== "receita" && type !== "despesa") {
+        throw new Error("data.type precisa ser receita/revenue ou despesa/expense.");
+      }
+      const mode = optionalText(command, "mode")?.toLocaleLowerCase("pt-BR");
+      if (mode && !["one_off", "recurring", "pontual", "recorrente"].includes(mode)) {
+        throw new Error("data.mode precisa ser pontual ou recorrente.");
+      }
+      const rawRecurrenceCount = command.data.recurrenceCount;
+      if (rawRecurrenceCount !== undefined && (typeof rawRecurrenceCount !== "number" || !Number.isInteger(rawRecurrenceCount) || rawRecurrenceCount < 1 || rawRecurrenceCount > 120)) {
+        throw new Error("data.recurrenceCount precisa ser um inteiro entre 1 e 120.");
+      }
+      const recurrenceCount = rawRecurrenceCount as number | undefined;
+      return {
+        kind: "finance_entry",
+        name: requiredText(command, "name"),
+        type: type === "receita" ? "revenue" : type === "despesa" ? "expense" : type,
+        amountCents: requiredAmountCents(command),
+        dueDate: optionalDate(command, "dueDate") ?? (() => { throw new Error("data.dueDate é obrigatória."); })(),
+        ...(optionalText(command, "category") ? { category: optionalText(command, "category") } : {}),
+        ...(mode ? { mode: mode === "recorrente" ? "recurring" : mode === "pontual" ? "one_off" : mode as "one_off" | "recurring" } : {}),
+        ...(recurrenceCount !== undefined ? { recurrenceCount } : {}),
       };
     }
     default:

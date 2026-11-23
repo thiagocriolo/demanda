@@ -44,7 +44,7 @@ export const cronogramaReorganizationSchema = z
       .array(
         z
           .object({
-            subtaskId: z.string().uuid(),
+            taskId: z.string().uuid(),
             date: isoDate,
             startMinutes: z.number().int().min(0).max(1_410).multipleOf(30),
             durationMinutes: z.number().int().min(30).max(480).multipleOf(30),
@@ -64,15 +64,15 @@ export const cronogramaReorganizationSchema = z
   .superRefine(({ blocks }, context) => {
     const seen = new Set<string>();
     for (const block of blocks) {
-      if (seen.has(block.subtaskId)) {
+      if (seen.has(block.taskId)) {
         context.addIssue({
           code: "custom",
-          message: "Uma subtarefa não pode aparecer duas vezes.",
+          message: "Uma tarefa não pode aparecer duas vezes.",
           path: ["blocks"],
         });
         return;
       }
-      seen.add(block.subtaskId);
+      seen.add(block.taskId);
     }
   })
   .transform((value): CronogramaReorganizationInput => value);

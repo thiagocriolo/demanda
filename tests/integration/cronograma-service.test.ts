@@ -14,9 +14,9 @@ import {
   businesses,
   cronogramaBlocks,
   projects,
-  taskResponsibles,
-  tasks,
-  taskSubtasks,
+  deliveryResponsibles,
+  deliveries,
+  deliveryTasks,
   users,
   workspaceMembers,
   workspaces,
@@ -145,80 +145,80 @@ async function fixture(database: Database, label = "BE11") {
     });
   const [project] = await database.select().from(projects).where(eq(projects.id, projectId));
   if (!project) throw new Error("Projeto não criado.");
-  const taskIds = [randomUUID(), randomUUID()];
-  await database.insert(tasks).values([
+  const deliveryIds = [randomUUID(), randomUUID()];
+  await database.insert(deliveries).values([
       {
-        id: taskIds[0],
+        id: deliveryIds[0],
         workspaceId: workspace.id,
         projectId: project.id,
         businessId: business.id,
         name: `${label} tarefa A`,
       },
       {
-        id: taskIds[1],
+        id: deliveryIds[1],
         workspaceId: workspace.id,
         projectId: project.id,
         businessId: business.id,
         name: `${label} tarefa B`,
       },
     ]);
-  const taskRows = await Promise.all(
-    taskIds.map(async (id) => {
-      const [task] = await database.select().from(tasks).where(eq(tasks.id, id));
-      if (!task) throw new Error("Task fixture was not created.");
-      return task;
+  const deliveryRows = await Promise.all(
+    deliveryIds.map(async (id) => {
+      const [delivery] = await database.select().from(deliveries).where(eq(deliveries.id, id));
+      if (!delivery) throw new Error("Delivery fixture was not created.");
+      return delivery;
     }),
   );
-  await database.insert(taskResponsibles).values(
-    taskRows.map((task) => ({
+  await database.insert(deliveryResponsibles).values(
+    deliveryRows.map((delivery) => ({
       workspaceId: workspace.id,
-      taskId: task.id,
+      deliveryId: delivery.id,
       userId: owner.id,
     })),
   );
-  const subtaskIds = [randomUUID(), randomUUID(), randomUUID()];
-  await database.insert(taskSubtasks).values([
+  const taskIds = [randomUUID(), randomUUID(), randomUUID()];
+  await database.insert(deliveryTasks).values([
       {
-        id: subtaskIds[0],
+        id: taskIds[0],
         workspaceId: workspace.id,
-        taskId: taskRows[0]!.id,
+        deliveryId: deliveryRows[0]!.id,
         name: "A1",
         durationMinutes: 60,
         sortOrder: 0,
       },
       {
-        id: subtaskIds[1],
+        id: taskIds[1],
         workspaceId: workspace.id,
-        taskId: taskRows[0]!.id,
+        deliveryId: deliveryRows[0]!.id,
         name: "A2",
         durationMinutes: 60,
         sortOrder: 1,
       },
       {
-        id: subtaskIds[2],
+        id: taskIds[2],
         workspaceId: workspace.id,
-        taskId: taskRows[1]!.id,
+        deliveryId: deliveryRows[1]!.id,
         name: "B1",
         durationMinutes: 60,
         sortOrder: 0,
       },
     ]);
-  const subtaskRows = await Promise.all(
-    subtaskIds.map(async (id) => {
-      const [subtask] = await database
+  const taskRows = await Promise.all(
+    taskIds.map(async (id) => {
+      const [task] = await database
         .select()
-        .from(taskSubtasks)
-        .where(eq(taskSubtasks.id, id));
-      if (!subtask) throw new Error("Subtask fixture was not created.");
-      return subtask;
+        .from(deliveryTasks)
+        .where(eq(deliveryTasks.id, id));
+      if (!task) throw new Error("Task fixture was not created.");
+      return task;
     }),
   );
   return {
     owner,
     observer,
     workspace,
+    deliveries: deliveryRows,
     tasks: taskRows,
-    subtasks: subtaskRows,
     ownerContext: context(owner, workspace, "owner"),
     observerContext: context(observer, workspace, "member"),
   };
@@ -263,13 +263,13 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
       const first = await saveCronogramaBlock(
         transaction,
         data.ownerContext,
-        data.subtasks[0]!.id,
+        data.tasks[0]!.id,
         placement(8 * 60),
       );
       const second = await saveCronogramaBlock(
         transaction,
         data.ownerContext,
-        data.subtasks[1]!.id,
+        data.tasks[1]!.id,
         placement(9 * 60),
       );
 
@@ -280,19 +280,19 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
           workspaceId: data.workspace.id,
           blocks: [
             {
-              subtaskId: data.subtasks[0]!.id,
+              taskId: data.tasks[0]!.id,
               date: "2026-07-15",
               startMinutes: 10 * 60,
               durationMinutes: 60,
               version: first.items[0]!.version,
             },
             {
-              subtaskId: data.subtasks[1]!.id,
+              taskId: data.tasks[1]!.id,
               date: "2026-07-15",
               startMinutes: 11 * 60,
               durationMinutes: 60,
               version: second.items.find(
-                ({ subtaskId }) => subtaskId === data.subtasks[1]!.id,
+                ({ taskId }) => taskId === data.tasks[1]!.id,
               )!.version,
             },
           ],
@@ -300,8 +300,8 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
       );
 
       expect(result.items).toMatchObject([
-        { subtaskId: data.subtasks[0]!.id, startMinutes: 600, version: 2 },
-        { subtaskId: data.subtasks[1]!.id, startMinutes: 660, version: 2 },
+        { taskId: data.tasks[0]!.id, startMinutes: 600, version: 2 },
+        { taskId: data.tasks[1]!.id, startMinutes: 660, version: 2 },
       ]);
     }));
 
@@ -312,7 +312,7 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
         saveCronogramaBlock(
           transaction,
           data.ownerContext,
-          data.subtasks[1]!.id,
+          data.tasks[1]!.id,
           placement(9 * 60),
         ),
       ).rejects.toBeInstanceOf(CronogramaRuleViolationError);
@@ -320,13 +320,13 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
       const first = await saveCronogramaBlock(
         transaction,
         data.ownerContext,
-        data.subtasks[0]!.id,
+        data.tasks[0]!.id,
         placement(8 * 60),
       );
       expect(first.items).toMatchObject([
         {
+          deliveryId: data.deliveries[0]!.id,
           taskId: data.tasks[0]!.id,
-          subtaskId: data.subtasks[0]!.id,
           responsibleUserIds: [data.owner.id],
           date: "2026-07-15",
           startMinutes: 480,
@@ -337,7 +337,7 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
       await saveCronogramaBlock(
         transaction,
         data.ownerContext,
-        data.subtasks[1]!.id,
+        data.tasks[1]!.id,
         placement(9 * 60),
       );
 
@@ -361,7 +361,7 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
         saveCronogramaBlock(
           transaction,
           data.observerContext,
-          data.subtasks[2]!.id,
+          data.tasks[2]!.id,
           placement(10 * 60),
         ),
       ).rejects.toBeInstanceOf(CronogramaRuleViolationError);
@@ -380,14 +380,14 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
       const first = await saveCronogramaBlock(
         transaction,
         data.ownerContext,
-        data.subtasks[0]!.id,
+        data.tasks[0]!.id,
         placement(8 * 60),
       );
       await expect(
         saveCronogramaBlock(
           transaction,
           data.ownerContext,
-          data.subtasks[2]!.id,
+          data.tasks[2]!.id,
           placement(8 * 60 + 30),
         ),
       ).rejects.toBeInstanceOf(CronogramaRuleViolationError);
@@ -395,14 +395,14 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
       const updated = await saveCronogramaBlock(
         transaction,
         data.ownerContext,
-        data.subtasks[0]!.id,
+        data.tasks[0]!.id,
         placement(9 * 60, firstVersion),
       );
       await expect(
         saveCronogramaBlock(
           transaction,
           data.ownerContext,
-          data.subtasks[0]!.id,
+          data.tasks[0]!.id,
           placement(10 * 60, firstVersion),
         ),
       ).rejects.toBeInstanceOf(CronogramaVersionConflictError);
@@ -410,14 +410,14 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
         deleteCronogramaBlock(
           transaction,
           data.ownerContext,
-          data.subtasks[0]!.id,
+          data.tasks[0]!.id,
           { version: firstVersion },
         ),
       ).rejects.toBeInstanceOf(CronogramaVersionConflictError);
       await deleteCronogramaBlock(
         transaction,
         data.ownerContext,
-        data.subtasks[0]!.id,
+        data.tasks[0]!.id,
         { version: updated.items[0]!.version },
       );
       expect(
@@ -431,13 +431,13 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
       const outsideWorkday = await saveCronogramaBlock(
         transaction,
         data.ownerContext,
-        data.subtasks[2]!.id,
+        data.tasks[2]!.id,
         placement(6 * 60),
       );
       const insideWorkday = await saveCronogramaBlock(
         transaction,
         data.ownerContext,
-        data.subtasks[0]!.id,
+        data.tasks[0]!.id,
         placement(8 * 60),
       );
 
@@ -448,12 +448,12 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
           workspaceId: data.workspace.id,
           blocks: [
             {
-              subtaskId: data.subtasks[0]!.id,
+              taskId: data.tasks[0]!.id,
               date: "2026-07-15",
               startMinutes: 9 * 60,
               durationMinutes: 60,
               version: insideWorkday.items.find(
-                ({ subtaskId }) => subtaskId === data.subtasks[0]!.id,
+                ({ taskId }) => taskId === data.tasks[0]!.id,
               )!.version,
             },
           ],
@@ -461,7 +461,7 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
       );
       expect(
         reorganized.items.find(
-          ({ subtaskId }) => subtaskId === data.subtasks[2]!.id,
+          ({ taskId }) => taskId === data.tasks[2]!.id,
         ),
       ).toMatchObject({ startMinutes: 6 * 60 });
 
@@ -470,12 +470,12 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
           workspaceId: data.workspace.id,
           blocks: [
             {
-              subtaskId: data.subtasks[2]!.id,
+              taskId: data.tasks[2]!.id,
               date: "2026-07-15",
               startMinutes: 6 * 60,
               durationMinutes: 60,
               version: outsideWorkday.items.find(
-                ({ subtaskId }) => subtaskId === data.subtasks[2]!.id,
+                ({ taskId }) => taskId === data.tasks[2]!.id,
               )!.version,
             },
           ],
@@ -493,25 +493,25 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
         role: "member",
       });
       await transaction
-        .delete(taskResponsibles)
-        .where(eq(taskResponsibles.taskId, second.tasks[0]!.id));
-      await transaction.insert(taskResponsibles).values({
+        .delete(deliveryResponsibles)
+        .where(eq(deliveryResponsibles.deliveryId, second.deliveries[0]!.id));
+      await transaction.insert(deliveryResponsibles).values({
         workspaceId: second.workspace.id,
-        taskId: second.tasks[0]!.id,
+        deliveryId: second.deliveries[0]!.id,
         userId: first.owner.id,
       });
 
       await saveCronogramaBlock(
         transaction,
         first.ownerContext,
-        first.subtasks[0]!.id,
+        first.tasks[0]!.id,
         placement(8 * 60),
       );
       await expect(
         saveCronogramaBlock(
           transaction,
           context(first.owner, second.workspace, "member"),
-          second.subtasks[0]!.id,
+          second.tasks[0]!.id,
           placement(8 * 60 + 30),
         ),
       ).rejects.toBeInstanceOf(CronogramaRuleViolationError);
@@ -524,13 +524,13 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
         saveCronogramaBlock(
           database,
           data.ownerContext,
-          data.subtasks[0]!.id,
+          data.tasks[0]!.id,
           placement(10 * 60),
         ),
         saveCronogramaBlock(
           database,
           data.ownerContext,
-          data.subtasks[2]!.id,
+          data.tasks[2]!.id,
           placement(10 * 60),
         ),
       ]);
@@ -558,8 +558,8 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
     try {
       await database.insert(cronogramaBlocks).values({
         workspaceId: data.workspace.id,
+        deliveryId: data.deliveries[0]!.id,
         taskId: data.tasks[0]!.id,
-        subtaskId: data.subtasks[0]!.id,
         scheduledDate: "2026-07-15",
         startMinutes: 480,
         durationMinutes: 60,
@@ -567,8 +567,8 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
       await expect(
         database.insert(cronogramaBlocks).values({
           workspaceId: data.workspace.id,
+          deliveryId: data.deliveries[0]!.id,
           taskId: data.tasks[0]!.id,
-          subtaskId: data.subtasks[0]!.id,
           scheduledDate: "2026-07-15",
           startMinutes: 510,
           durationMinutes: 60,
@@ -579,36 +579,36 @@ describe("BE-11: Cronograma persistente e regras de alocação", () => {
         }),
       });
       await database
-        .delete(taskResponsibles)
-        .where(eq(taskResponsibles.taskId, data.tasks[1]!.id));
-      await database.insert(taskResponsibles).values({
+        .delete(deliveryResponsibles)
+        .where(eq(deliveryResponsibles.deliveryId, data.deliveries[1]!.id));
+      await database.insert(deliveryResponsibles).values({
         workspaceId: data.workspace.id,
-        taskId: data.tasks[1]!.id,
+        deliveryId: data.deliveries[1]!.id,
         userId: data.observer.id,
       });
       await database.insert(cronogramaBlocks).values({
         workspaceId: data.workspace.id,
-        taskId: data.tasks[1]!.id,
-        subtaskId: data.subtasks[2]!.id,
+        deliveryId: data.deliveries[1]!.id,
+        taskId: data.tasks[2]!.id,
         scheduledDate: "2026-07-15",
         startMinutes: 510,
         durationMinutes: 60,
       });
       await database
-        .delete(taskResponsibles)
-        .where(eq(taskResponsibles.taskId, data.tasks[1]!.id));
+        .delete(deliveryResponsibles)
+        .where(eq(deliveryResponsibles.deliveryId, data.deliveries[1]!.id));
       await expect(
-        database.insert(taskResponsibles).values({
+        database.insert(deliveryResponsibles).values({
           workspaceId: data.workspace.id,
-          taskId: data.tasks[1]!.id,
+          deliveryId: data.deliveries[1]!.id,
           userId: data.owner.id,
         }),
       ).resolves.toBeDefined();
       await expect(
         database.insert(cronogramaBlocks).values({
           workspaceId: data.workspace.id,
-          taskId: data.tasks[0]!.id,
-          subtaskId: data.subtasks[1]!.id,
+          deliveryId: data.deliveries[0]!.id,
+          taskId: data.tasks[1]!.id,
           scheduledDate: "2026-07-15",
           startMinutes: 1_410,
           durationMinutes: 60,

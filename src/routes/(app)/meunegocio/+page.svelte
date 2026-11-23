@@ -106,8 +106,8 @@
     <DeliveryTemplatesEditor
       bind:templates={settings.deliveryTemplates}
       bind:services={settings.serviceTemplates}
-      categories={settings.taskCategories}
-      defaultDuration={settings.defaultTaskDuration}
+      categories={settings.deliveryCategories}
+      defaultDuration={settings.defaultDeliveryDuration}
       onchange={saveDeliveryTemplates}
     />
   {:else if activeTab === "status" && activeFilter === "contatos"}
@@ -155,7 +155,7 @@
       description="Os cinco níveis usados no fluxo das tarefas."
       allowOverflow
       ><LabelListEditor
-        bind:items={settings.taskStatuses}
+        bind:items={settings.deliveryStatuses}
         showHeader={false}
         fixed
         levelMode
@@ -181,7 +181,7 @@
       description="Categorias personalizadas com ícone e cor."
       allowOverflow
       ><LabelListEditor
-        bind:items={settings.taskCategories}
+        bind:items={settings.deliveryCategories}
         showHeader={false}
         max={30}
         lockedKey="outro"

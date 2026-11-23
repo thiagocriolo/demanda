@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "../../projects/types";
-import type { Task } from "../../tasks/types";
+import type { Delivery } from "../../deliveries/types";
 import { projectEntityAdapter } from "./project";
-import { taskEntityAdapter } from "./task";
+import { deliveryEntityAdapter } from "./delivery";
 
 const project: Project = {
   id: "project-1",
@@ -31,8 +31,8 @@ const project: Project = {
   updatedAt: "2026-08-18T00:00:00.000Z",
 };
 
-const task: Task = {
-  id: "task-1",
+const delivery: Delivery = {
+  id: "delivery-1",
   workspaceId: "workspace-1",
   project: {
     id: "project-1",
@@ -52,7 +52,7 @@ const task: Task = {
   boardOrder: {},
   tags: [],
   responsibles: [],
-  subtasks: [],
+  tasks: [],
   version: 7,
   completedAt: null,
   archivedAt: null,
@@ -102,56 +102,56 @@ describe("entity persistence adapter contracts", () => {
     });
   });
 
-  it("archives an open task with the version already present in its record", async () => {
+  it("archives an open delivery with the version already present in its record", async () => {
     const fetcher = vi.fn(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
-        jsonResponse(task),
+        jsonResponse(delivery),
     );
     vi.stubGlobal("fetch", fetcher);
 
-    await taskEntityAdapter.archive("task-1", {
-      id: "task-1",
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
+    await deliveryEntityAdapter.archive("delivery-1", {
+      id: "delivery-1",
+      createdAt: delivery.createdAt,
+      updatedAt: delivery.updatedAt,
       version: "7",
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/tasks/task-1?version=7");
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/deliveries/delivery-1?version=7");
     expect(fetcher.mock.calls[0]?.[1]?.method).toBe("PATCH");
   });
 
-  it("loads a card task before archiving so the action remains versioned", async () => {
+  it("loads a card delivery before archiving so the action remains versioned", async () => {
     const fetcher = vi.fn(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
-        jsonResponse(task),
+        jsonResponse(delivery),
     );
     vi.stubGlobal("fetch", fetcher);
 
-    await taskEntityAdapter.archive("task-1");
+    await deliveryEntityAdapter.archive("delivery-1");
 
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/tasks/task-1");
-    expect(fetcher.mock.calls[1]?.[0]).toBe("/api/tasks/task-1?version=7");
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/deliveries/delivery-1");
+    expect(fetcher.mock.calls[1]?.[0]).toBe("/api/deliveries/delivery-1?version=7");
     expect(fetcher.mock.calls[1]?.[1]?.method).toBe("PATCH");
   });
 
-  it("deletes a task permanently with its current version", async () => {
+  it("deletes a delivery permanently with its current version", async () => {
     const fetcher = vi.fn(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
         jsonResponse({ deleted: true }),
     );
     vi.stubGlobal("fetch", fetcher);
 
-    await taskEntityAdapter.delete("task-1", {
-      id: "task-1",
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
+    await deliveryEntityAdapter.delete("delivery-1", {
+      id: "delivery-1",
+      createdAt: delivery.createdAt,
+      updatedAt: delivery.updatedAt,
       version: "7",
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/tasks/task-1?version=7");
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/deliveries/delivery-1?version=7");
     expect(fetcher.mock.calls[0]?.[1]?.method).toBe("DELETE");
   });
 });

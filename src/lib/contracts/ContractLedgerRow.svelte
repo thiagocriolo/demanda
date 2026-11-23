@@ -2,7 +2,6 @@
   import {
     ArrowUpRight,
     BriefcaseBusiness,
-    CalendarDays,
     ChevronDown,
     FileText,
     FolderKanban,
@@ -114,32 +113,15 @@
 
     <div class="col-period col-period--start">
       {#if hasContractPeriod}
-        <span class="period-marker">
-          <CalendarDays size={12.5} strokeWidth={1.9} />
-          <span class="period-copy"
-            ><span class="period-label">Início</span><strong
-              >{periodStart || "A definir"}</strong
-            ></span
-          >
-        </span>
+        <strong class="period-value">{periodStart || "A definir"}</strong>
       {:else}
-        <span class="period-open"
-          ><CalendarDays size={13} strokeWidth={1.85} /><span
-            >Período em aberto</span
-          ></span
-        >
+        <span class="period-open">Período em aberto</span>
       {/if}
     </div>
 
     <div class="col-period col-period--end">
       {#if hasContractPeriod}
-        <span class="period-marker">
-          <span class="period-copy"
-            ><span class="period-label">Término</span><strong
-              >{periodEnd || "Em aberto"}</strong
-            ></span
-          >
-        </span>
+        <strong class="period-value">{periodEnd || "Em aberto"}</strong>
       {/if}
     </div>
 
@@ -297,11 +279,17 @@
     padding: 10px 20px;
   }
 
+  .ledger-row > div {
+    justify-self: stretch;
+    text-align: center;
+  }
+
   .col-agreement {
     display: flex;
     min-width: 0;
     align-items: center;
     gap: 12px;
+    justify-self: stretch !important;
   }
 
   .agreement-emblem {
@@ -456,29 +444,19 @@
     display: flex;
     min-width: 0;
     align-items: center;
+    justify-content: center;
+    text-align: center;
   }
 
-  .period-marker {
-    display: inline-flex;
-    position: relative;
-    align-items: center;
-    gap: 8px;
-    color: var(--brand-600);
+  .period-value {
+    color: var(--ink-800);
+    font-size: 12.5px;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+    white-space: nowrap;
   }
 
-  .period-marker :global(svg) {
-    flex: 0 0 auto;
-    align-self: flex-start;
-    margin-top: 2px;
-  }
-
-  .period-copy {
-    display: grid;
-    gap: 1px;
-    min-width: 0;
-  }
-  .period-label,
   .duration-label {
     color: var(--ink-400);
     font-size: 9.5px;
@@ -487,17 +465,8 @@
     line-height: 1.1;
     text-transform: uppercase;
   }
-  .period-copy strong {
-    color: var(--ink-800);
-    font-size: 12.5px;
-    font-weight: 600;
-    line-height: 1.2;
-    white-space: nowrap;
-  }
+
   .period-open {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
     color: var(--ink-500);
     font-size: 12.5px;
   }
@@ -554,9 +523,10 @@
 
   .col-amount {
     display: grid;
+    justify-self: stretch !important;
     justify-items: end;
     gap: 4px;
-    text-align: right;
+    text-align: right !important;
   }
 
   .amount-value {
@@ -618,8 +588,8 @@
 
   .col-actions {
     display: flex;
-    justify-content: flex-end;
-    padding-left: 16px;
+    justify-content: center;
+    padding-left: 0;
     border-left: 1px solid var(--border);
   }
 

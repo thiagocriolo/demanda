@@ -2,7 +2,7 @@ import { businessEntityAdapter } from "./business";
 import { contractEntityAdapter } from "./contract";
 import { contactEntityAdapter } from "./contact";
 import { projectEntityAdapter } from "./project";
-import { taskEntityAdapter } from "./task";
+import { deliveryEntityAdapter } from "./delivery";
 import type { EntityPersistenceAdapter, PersistedEntityKey } from "./types";
 
 export type {
@@ -17,7 +17,7 @@ const adapters: Record<PersistedEntityKey, EntityPersistenceAdapter> = {
   negocios: businessEntityAdapter,
   contratos: contractEntityAdapter,
   projetos: projectEntityAdapter,
-  entregas: taskEntityAdapter,
+  entregas: deliveryEntityAdapter,
 };
 
 export function getEntityPersistenceAdapter(

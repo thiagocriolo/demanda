@@ -4,8 +4,8 @@
   import PageHeader from "$lib/ui/PageHeader.svelte";
 
   const modules = [
+    { id: "deliveries", label: "Tarefas" },
     { id: "tasks", label: "Tarefas" },
-    { id: "subtasks", label: "Subtarefas" },
     { id: "cronograma", label: "Cronograma" },
     { id: "agenda", label: "Agenda" },
     { id: "projects", label: "Projetos" },
@@ -47,9 +47,9 @@
 
   function actionLabel(action: string): string {
     const labels: Record<string, string> = {
+      "delivery.status_changed": "Status da tarefa alterado",
       "task.status_changed": "Status da tarefa alterado",
-      "subtask.status_changed": "Status da subtarefa alterado",
-      "task.due_date_changed": "Data de entrega da tarefa alterada",
+      "delivery.due_date_changed": "Data de entrega da tarefa alterada",
       "project.due_date_changed": "Data de entrega do projeto alterada",
       "agenda.placement_changed": "Posicionamento na agenda alterado",
       "cronograma.block_created": "Bloco adicionado ao cronograma",

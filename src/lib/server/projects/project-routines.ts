@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
 import {
   requireActiveWorkspacePermission,
@@ -8,20 +8,21 @@ import {
 import type { Database } from "../db/database";
 import {
   deliveryTemplateResponsibles,
-  deliveryTemplateSubtasks,
+  deliveryTemplateTasks,
   deliveryTemplateTags,
   deliveryTemplates,
-  projectTaskRoutines,
+  contracts,
+  projectDeliveryRoutines,
   projects,
-  serviceTaskTemplates,
-  taskResponsibles,
-  tasks,
-  taskSubtasks,
-  taskTags,
+  serviceDeliveryTemplates,
+  deliveryResponsibles,
+  deliveries,
+  deliveryTasks,
+  deliveryTags,
 } from "../db/schema";
 
-type RoutineDatabase = Pick<Database, "select" | "insert">;
-type SnapshotSubtask = {
+type RoutineDatabase = Pick<Database, "select" | "insert" | "update">;
+type SnapshotTask = {
   name: string;
   durationMinutes: number;
   status: string;
@@ -35,6 +36,22 @@ function addDays(value: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+function daysBetween(start: string, end: string): number {
+  return Math.floor(
+    (Date.parse(`${end}T00:00:00.000Z`) -
+      Date.parse(`${start}T00:00:00.000Z`)) /
+      86_400_000,
+  );
+}
+
+function contractWeekStart(startDate: string, week: number): string {
+  return addDays(startDate, (week - 1) * 7);
+}
+
+function contractWeekNumber(startDate: string, date: string): number {
+  return Math.max(1, Math.floor(daysBetween(startDate, date) / 7) + 1);
+}
+
 function parseJson<T>(value: string, fallback: T): T {
   try {
     return JSON.parse(value) as T;
@@ -46,7 +63,7 @@ function parseJson<T>(value: string, fallback: T): T {
 function occurrences(
   start: string,
   end: string,
-  routine: typeof projectTaskRoutines.$inferSelect,
+  routine: typeof projectDeliveryRoutines.$inferSelect,
 ): string[] {
   const days = parseJson<number[]>(routine.recurrenceDays, []);
   if (routine.recurrenceType === "one_off") return [start];
@@ -85,11 +102,11 @@ export async function materializeProjectRoutinesInTransaction(
     project.endDate && project.endDate < through ? project.endDate : through;
   const routines = await database
     .select()
-    .from(projectTaskRoutines)
+    .from(projectDeliveryRoutines)
     .where(
       and(
-        eq(projectTaskRoutines.workspaceId, workspaceId),
-        eq(projectTaskRoutines.projectId, project.id),
+        eq(projectDeliveryRoutines.workspaceId, workspaceId),
+        eq(projectDeliveryRoutines.projectId, project.id),
       ),
     );
   const now = new Date();
@@ -100,20 +117,20 @@ export async function materializeProjectRoutinesInTransaction(
       routine,
     )) {
       const [existing] = await database
-        .select({ id: tasks.id })
-        .from(tasks)
+        .select({ id: deliveries.id })
+        .from(deliveries)
         .where(
           and(
-            eq(tasks.workspaceId, workspaceId),
-            eq(tasks.projectRoutineId, routine.id),
-            eq(tasks.routineOccurrenceDate, occurrenceDate),
+            eq(deliveries.workspaceId, workspaceId),
+            eq(deliveries.projectRoutineId, routine.id),
+            eq(deliveries.routineOccurrenceDate, occurrenceDate),
           ),
         )
         .limit(1);
       if (existing) continue;
-      const taskId = randomUUID();
-      await database.insert(tasks).values({
-        id: taskId,
+      const deliveryId = randomUUID();
+      await database.insert(deliveries).values({
+        id: deliveryId,
         workspaceId,
         projectId: project.id,
         businessId: project.businessId,
@@ -130,9 +147,9 @@ export async function materializeProjectRoutinesInTransaction(
         createdAt: now,
         updatedAt: now,
       });
-      const subtasks = parseJson<SnapshotSubtask[]>(routine.subtasks, []);
-      const effectiveSubtasks = subtasks.length
-        ? subtasks
+      const tasks = parseJson<SnapshotTask[]>(routine.tasks, []);
+      const effectiveTasks = tasks.length
+        ? tasks
         : [
             {
               name: "Concluir entrega",
@@ -140,13 +157,118 @@ export async function materializeProjectRoutinesInTransaction(
               status: "pendente",
             },
           ];
-      await database.insert(taskSubtasks).values(
-        effectiveSubtasks.map((subtask, sortOrder) => ({
+      await database.insert(deliveryTasks).values(
+        effectiveTasks.map((task, sortOrder) => ({
           workspaceId,
-          taskId,
-          name: subtask.name,
-          durationMinutes: subtask.durationMinutes,
-          statusKey: subtask.status,
+          deliveryId,
+          name: task.name,
+          durationMinutes: task.durationMinutes,
+          statusKey: task.status,
+          sortOrder,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      );
+      const tagIds = parseJson<string[]>(routine.tagIds, []);
+      if (tagIds.length)
+        await database.insert(deliveryTags).values(
+          tagIds.map((tagId, sortOrder) => ({
+            workspaceId,
+            deliveryId,
+            tagId,
+            sortOrder,
+          })),
+        );
+      await database.insert(deliveryResponsibles).values({
+        workspaceId,
+        deliveryId,
+        userId: routine.responsibleUserId,
+        sortOrder: 0,
+      });
+    }
+  }
+}
+
+/** Copia os modelos do serviço como uma fotografia do contrato/projeto. */
+/** Rolls institutional deliveries forward. A delivery is archived as history
+ * before a clean occurrence is made from its immutable routine snapshot. */
+async function rollInstitutionalProjectWeekInTransaction(
+  database: RoutineDatabase,
+  workspaceId: string,
+  project: {
+    id: string;
+    businessId: string;
+    startDate: string;
+    endDate: string | null;
+  },
+  today: string,
+): Promise<void> {
+  if (project.endDate && today > project.endDate) return;
+  const currentWeek = contractWeekNumber(project.startDate, today);
+  const routines = await database
+    .select()
+    .from(projectDeliveryRoutines)
+    .where(
+      and(
+        eq(projectDeliveryRoutines.workspaceId, workspaceId),
+        eq(projectDeliveryRoutines.projectId, project.id),
+      ),
+    );
+  const now = new Date();
+
+  for (const routine of routines) {
+    for (let week = 1; week <= currentWeek; week += 1) {
+      const occurrenceDate = contractWeekStart(project.startDate, week);
+      if (project.endDate && occurrenceDate > project.endDate) break;
+      const [existing] = await database
+        .select({ id: deliveries.id })
+        .from(deliveries)
+        .where(
+          and(
+            eq(deliveries.workspaceId, workspaceId),
+            eq(deliveries.projectRoutineId, routine.id),
+            eq(deliveries.routineOccurrenceDate, occurrenceDate),
+          ),
+        )
+        .limit(1);
+      if (existing) continue;
+
+      const deliveryId = randomUUID();
+      await database.insert(deliveries).values({
+        id: deliveryId,
+        workspaceId,
+        projectId: project.id,
+        businessId: project.businessId,
+        projectRoutineId: routine.id,
+        routineOccurrenceDate: occurrenceDate,
+        name: routine.name,
+        description: routine.description,
+        categoryKey: routine.categoryKey,
+        priorityKey: routine.priorityKey,
+        statusKey: routine.statusKey,
+        dueDate: occurrenceDate,
+        sortOrder: 0,
+        boardOrder: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+      const snapshots = parseJson<SnapshotTask[]>(routine.tasks, []);
+      const deliveryDeliveries = snapshots.length
+        ? snapshots
+        : [
+            {
+              name: "Concluir entrega",
+              durationMinutes: 60,
+              status: "pendente",
+            },
+          ];
+      await database.insert(deliveryTasks).values(
+        deliveryDeliveries.map((item, sortOrder) => ({
+          workspaceId,
+          deliveryId: deliveryId,
+          name: item.name,
+          durationMinutes: item.durationMinutes,
+          statusKey: item.status,
           sortOrder,
           createdAt: now,
           updatedAt: now,
@@ -155,28 +277,71 @@ export async function materializeProjectRoutinesInTransaction(
       const tagIds = parseJson<string[]>(routine.tagIds, []);
       if (tagIds.length)
         await database
-          .insert(taskTags)
+          .insert(deliveryTags)
           .values(
             tagIds.map((tagId, sortOrder) => ({
               workspaceId,
-              taskId,
+              deliveryId: deliveryId,
               tagId,
               sortOrder,
             })),
           );
       await database
-        .insert(taskResponsibles)
+        .insert(deliveryResponsibles)
         .values({
           workspaceId,
-          taskId,
+          deliveryId: deliveryId,
           userId: routine.responsibleUserId,
           sortOrder: 0,
         });
     }
+
+    const previousWeekStart = contractWeekStart(project.startDate, currentWeek);
+    const expired = await database
+      .select({ id: deliveries.id, occurrenceDate: deliveries.routineOccurrenceDate })
+      .from(deliveries)
+      .where(
+        and(
+          eq(deliveries.workspaceId, workspaceId),
+          eq(deliveries.projectRoutineId, routine.id),
+          lt(deliveries.routineOccurrenceDate, previousWeekStart),
+          isNull(deliveries.archivedAt),
+        ),
+      );
+    for (const delivery of expired) {
+      if (!delivery.occurrenceDate) continue;
+      const week = contractWeekNumber(
+        project.startDate,
+        delivery.occurrenceDate,
+      );
+      await database
+        .update(deliveries)
+        .set({
+          name: `${routine.name} - Semana ${String(week).padStart(2, "0")}`,
+          archivedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(deliveries.workspaceId, workspaceId),
+            eq(deliveries.id, delivery.id),
+            isNull(deliveries.archivedAt),
+          ),
+        );
+      await database
+        .update(deliveryTasks)
+        .set({ archivedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(deliveryTasks.workspaceId, workspaceId),
+            eq(deliveryTasks.deliveryId, delivery.id),
+            isNull(deliveryTasks.archivedAt),
+          ),
+        );
+    }
   }
 }
 
-/** Copia os modelos do serviço como uma fotografia do contrato/projeto. */
 export async function createProjectRoutinesFromServices(
   database: RoutineDatabase,
   workspaceId: string,
@@ -191,14 +356,14 @@ export async function createProjectRoutinesFromServices(
 ): Promise<void> {
   const links = await database
     .select()
-    .from(serviceTaskTemplates)
+    .from(serviceDeliveryTemplates)
     .where(
       and(
-        eq(serviceTaskTemplates.workspaceId, workspaceId),
-        inArray(serviceTaskTemplates.serviceId, serviceIds),
+        eq(serviceDeliveryTemplates.workspaceId, workspaceId),
+        inArray(serviceDeliveryTemplates.serviceId, serviceIds),
       ),
     )
-    .orderBy(asc(serviceTaskTemplates.sortOrder), asc(serviceTaskTemplates.id));
+    .orderBy(asc(serviceDeliveryTemplates.sortOrder), asc(serviceDeliveryTemplates.id));
   if (!links.length) return;
   const deliveryIds = [
     ...new Set(links.map((link) => link.deliveryTemplateId)),
@@ -216,17 +381,17 @@ export async function createProjectRoutinesFromServices(
   const byDelivery = new Map(
     deliveries.map((delivery) => [delivery.id, delivery]),
   );
-  const [subtasks, tagLinks, responsibleLinks] = await Promise.all([
+  const [tasks, tagLinks, responsibleLinks] = await Promise.all([
     database
       .select()
-      .from(deliveryTemplateSubtasks)
+      .from(deliveryTemplateTasks)
       .where(
         and(
-          eq(deliveryTemplateSubtasks.workspaceId, workspaceId),
-          inArray(deliveryTemplateSubtasks.deliveryTemplateId, deliveryIds),
+          eq(deliveryTemplateTasks.workspaceId, workspaceId),
+          inArray(deliveryTemplateTasks.deliveryTemplateId, deliveryIds),
         ),
       )
-      .orderBy(asc(deliveryTemplateSubtasks.sortOrder)),
+      .orderBy(asc(deliveryTemplateTasks.sortOrder)),
     database
       .select()
       .from(deliveryTemplateTags)
@@ -256,7 +421,7 @@ export async function createProjectRoutinesFromServices(
     const owner =
       responsibleLinks.find((row) => row.deliveryTemplateId === delivery.id)
         ?.userId ?? fallbackResponsibleUserId;
-    const taskSubtasksSnapshot = subtasks
+    const deliveryTasksSnapshot = tasks
       .filter((row) => row.deliveryTemplateId === delivery.id)
       .map((row) => ({
         name: row.name,
@@ -266,11 +431,11 @@ export async function createProjectRoutinesFromServices(
     const tagIds = tagLinks
       .filter((row) => row.deliveryTemplateId === delivery.id)
       .map((row) => row.tagId);
-    await database.insert(projectTaskRoutines).values({
+    await database.insert(projectDeliveryRoutines).values({
       id: routineId,
       workspaceId,
       projectId: project.id,
-      sourceServiceTaskTemplateId: link.id,
+      sourceServiceDeliveryTemplateId: link.id,
       name: link.name,
       description: delivery.description,
       categoryKey: delivery.categoryKey,
@@ -278,7 +443,7 @@ export async function createProjectRoutinesFromServices(
       statusKey: delivery.defaultStatusKey,
       responsibleUserId: owner,
       tagIds: JSON.stringify(tagIds),
-      subtasks: JSON.stringify(taskSubtasksSnapshot),
+      tasks: JSON.stringify(deliveryTasksSnapshot),
       recurrenceType: link.recurrenceType,
       recurrenceUnit: link.recurrenceUnit,
       recurrenceDays: link.recurrenceDays,
@@ -310,6 +475,7 @@ export async function materializeWorkspaceProjectRoutines(
       .select({
         id: projects.id,
         businessId: projects.businessId,
+        isInstitutional: projects.isInstitutional,
         startDate: projects.startDate,
         endDate: projects.endDate,
       })
@@ -322,12 +488,48 @@ export async function materializeWorkspaceProjectRoutines(
         ),
       );
     for (const project of activeProjects) {
-      if (!project.startDate) continue;
+      // Institutional projects are managed by the contract-week rollover below;
+      // they must never receive the generic 90-day pre-materialization.
+      if (!project.startDate || project.isInstitutional) continue;
       await materializeProjectRoutinesInTransaction(
         transaction,
         workspaceId,
         { ...project, startDate: project.startDate },
         addDays(today, HORIZON_DAYS),
+      );
+    }
+    const recurringInstitutionalProjects = await transaction
+      .select({
+        id: projects.id,
+        businessId: projects.businessId,
+        startDate: contracts.startDate,
+        endDate: contracts.endDate,
+      })
+      .from(projects)
+      .innerJoin(
+        contracts,
+        and(
+          eq(contracts.workspaceId, projects.workspaceId),
+          eq(contracts.id, projects.contractId),
+        ),
+      )
+      .where(
+        and(
+          eq(projects.workspaceId, workspaceId),
+          eq(projects.isInstitutional, true),
+          eq(contracts.contractType, "recurring"),
+          isNull(projects.archivedAt),
+          isNull(contracts.archivedAt),
+          isNotNull(contracts.startDate),
+        ),
+      );
+    for (const project of recurringInstitutionalProjects) {
+      if (!project.startDate) continue;
+      await rollInstitutionalProjectWeekInTransaction(
+        transaction,
+        workspaceId,
+        { ...project, startDate: project.startDate },
+        today,
       );
     }
   });

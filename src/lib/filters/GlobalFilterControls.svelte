@@ -12,7 +12,7 @@
   import { parseAvatarProfileUrl } from "$lib/avatar/avatar-options";
   import { useGlobalFilters } from "./global-filters.svelte";
 
-  type FilterMenu = "responsible" | "business" | "task";
+  type FilterMenu = "responsible" | "business" | "delivery";
 
   const filters = useGlobalFilters();
   let expanded = $state(false);
@@ -212,21 +212,21 @@
 
     <div class="filter-control">
       <button
-        class:active={filters.taskCategoryKeys.length > 0}
+        class:active={filters.deliveryCategoryKeys.length > 0}
         class="filter-option-button"
         type="button"
-        aria-expanded={activeMenu === "task"}
-        aria-controls="task-filter-menu"
+        aria-expanded={activeMenu === "delivery"}
+        aria-controls="delivery-filter-menu"
         aria-label="Filtrar por categoria de tarefa"
         title="Tarefas"
         tabindex={expanded ? 0 : -1}
-        onclick={() => toggleMenu("task")}
+        onclick={() => toggleMenu("delivery")}
       >
         <ListTodo size={15} />
       </button>
-      {#if activeMenu === "task"}
+      {#if activeMenu === "delivery"}
         <div
-          id="task-filter-menu"
+          id="delivery-filter-menu"
           class="filter-popover"
           role="group"
           aria-label="Filtrar por categoria de tarefa"
@@ -236,14 +236,14 @@
             <span>Selecione uma ou mais</span>
           </div>
           <div class="popover-options">
-            {#each filters.taskCategories as category (category.key)}
+            {#each filters.deliveryCategories as category (category.key)}
               <label class="filter-choice compact-choice">
                 <input
                   type="checkbox"
-                  checked={filters.taskCategoryKeys.includes(category.key)}
+                  checked={filters.deliveryCategoryKeys.includes(category.key)}
                   onchange={() =>
-                    (filters.taskCategoryKeys = toggleValue(
-                      filters.taskCategoryKeys,
+                    (filters.deliveryCategoryKeys = toggleValue(
+                      filters.deliveryCategoryKeys,
                       category.key,
                     ))}
                 />

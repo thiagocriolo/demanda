@@ -3,7 +3,7 @@ import type { RecordsTabConfig } from "../types";
 import { businessRecordsDomain } from "./businesses";
 import { contactRecordsDomain } from "./contacts";
 import { projectRecordsDomain } from "./projects";
-import { taskRecordsDomain } from "./tasks";
+import { deliveryRecordsDomain } from "./deliveries";
 
 const baseRecord = {
   id: "record-1",
@@ -27,7 +27,7 @@ function tabConfig(
 const peopleConfig = tabConfig("pessoa", "tipo", "contato");
 const businessConfig = tabConfig("negocio", "etapa", "negócio");
 const projectConfig = tabConfig("projeto", "status", "projeto");
-const taskConfig = tabConfig("tarefa", "status", "tarefa");
+const deliveryConfig = tabConfig("entrega", "status", "entrega");
 
 describe("records domain cards", () => {
   it("maps contact details without leaking client DTOs to the page", () => {
@@ -83,22 +83,22 @@ describe("records domain cards", () => {
     });
   });
 
-  it("maps task progress while tolerating malformed subtasks", () => {
-    const completed = taskRecordsDomain.toCard(
-      taskConfig,
+  it("maps delivery progress while tolerating malformed tasks", () => {
+    const completed = deliveryRecordsDomain.toCard(
+      deliveryConfig,
       {
         ...baseRecord,
         nome: "Entrega",
-        subtarefas: JSON.stringify([
+        entregas: JSON.stringify([
           { status: "concluida" },
           { status: "pendente" },
         ]),
       },
       [],
     );
-    const malformed = taskRecordsDomain.toCard(
-      taskConfig,
-      { ...baseRecord, nome: "Entrega", subtarefas: "{" },
+    const malformed = deliveryRecordsDomain.toCard(
+      deliveryConfig,
+      { ...baseRecord, nome: "Entrega", entregas: "{" },
       [],
     );
 

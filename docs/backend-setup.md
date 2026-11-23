@@ -45,7 +45,7 @@ npm run db:verify   # verifica seed e invariants de usuário/workspace/owner
 npm run test:integration # testa serviços e schema no banco MySQL configurado
 npm run verify:http:businesses # testa a API de negócios em um servidor local ativo
 npm run verify:http:projects # testa projetos, modelos, rollback e isolamento via HTTP
-npm run verify:http:tasks # testa tarefas, estados, concorrência e isolamento via HTTP
+npm run verify:http:deliveries # testa tarefas, estados, concorrência e isolamento via HTTP
 npm run media:cleanup # limpa temporários e relata órfãos; exclusão de órfãos é opt-in
 npm run media:migrate-legacy # processa legado mantendo o objeto antigo como backup
 npm test            # executa os testes unitários
@@ -149,7 +149,7 @@ outro:
 $env:LIVE_BASE_URL = "http://localhost:5190"
 npm run verify:http:businesses
 npm run verify:http:projects
-npm run verify:http:tasks
+npm run verify:http:deliveries
 ```
 
 Os verificadores aceitam somente `localhost`, criam contas e workspaces
@@ -165,7 +165,7 @@ transacional.
 
 - Serviços são os modelos compartilhados usados para iniciar projetos. Seus
   CRUDs autenticados ficam em `/api/services` e `/api/services/[serviceId]`;
-  ordem, versão, catálogos e modelos de entrega/subtarefa são administrados
+  ordem, versão, catálogos e modelos de entrega/tarefa são administrados
   pelas APIs de configurações da BE-09.
 - Projetos usam `/api/projects` e `/api/projects/[projectId]`. As opções
   relacionais vêm de `/api/projects/options`, e
@@ -211,32 +211,32 @@ servidor valida o lote completo e os projetos de destino antes de iniciar a
 transação; cada identificador de origem fica registrado, portanto repetir a
 mesma importação não duplica tarefas.
 
-## Tarefas e subtarefas
+## Tarefas e tarefas
 
-- O agregado é persistido em `tasks`, `task_subtasks`, `task_responsibles` e
-  `task_tags`. A tarefa aponta para um projeto e herda seu negócio; chaves
+- O agregado é persistido em `deliveries`, `delivery_tasks`, `delivery_responsibles` e
+  `delivery_tags`. A tarefa aponta para um projeto e herda seu negócio; chaves
   compostas garantem que projeto, negócio, responsáveis, tags e filhos sejam do
-  mesmo workspace. Cada subtarefa aceita entre 30 e 10.080 minutos, sempre em
+  mesmo workspace. Cada tarefa aceita entre 30 e 10.080 minutos, sempre em
   múltiplos de 30; valores válidos, inclusive o limite superior, são preservados
   sem truncamento.
-- `/api/tasks` aceita `GET` para listar e `POST` para criar tarefas.
-  `/api/tasks/[taskId]` aceita `GET` para ler, `PUT` para editar e `DELETE` para
+- `/api/deliveries` aceita `GET` para listar e `POST` para criar tarefas.
+  `/api/deliveries/[deliveryId]` aceita `GET` para ler, `PUT` para editar e `DELETE` para
   arquivar, com a versão no corpo das edições e em `?version=` no arquivamento.
-  O `PUT` agregado salva conteúdo, status, relações e subtarefas na mesma
+  O `PUT` agregado salva conteúdo, status, relações e tarefas na mesma
   transação; qualquer falha desfaz o conjunto inteiro.
-- `PUT` em `/api/tasks/[taskId]/state` e em
-  `/api/tasks/[taskId]/subtasks/[subtaskId]/state` oferece transições focadas e
+- `PUT` em `/api/deliveries/[deliveryId]/state` e em
+  `/api/deliveries/[deliveryId]/tasks/[taskId]/state` oferece transições focadas e
   idempotentes. A listagem oferece paginação, busca, filtros, facets e ordenação.
-- `PUT /api/tasks/board` recebe um lote versionado para reordenar as visões por
+- `PUT /api/deliveries/board` recebe um lote versionado para reordenar as visões por
   status, prioridade, negócio ou projeto. O servidor bloqueia e valida o lote
   completo antes de gravar; uma versão obsoleta ou relação inválida causa
   rollback e nenhuma tarefa do lote é alterada.
 - Cada alteração de uma tarefa existente usa sua `version` como
   compare-and-swap dentro de uma transação. Versões obsoletas retornam `409`;
-  alterações de subtarefa também incrementam a versão do agregado. Repetir um
+  alterações de tarefa também incrementam a versão do agregado. Repetir um
   estado já atingido e arquivar novamente são operações idempotentes.
-- Uma tarefa só chega a `conclusao` quando todas as subtarefas ativas estão
-  `concluida`. Para reabrir uma subtarefa, reabra primeiro a tarefa. O
+- Uma tarefa só chega a `conclusao` quando todas as tarefas ativas estão
+  `concluida`. Para reabrir uma tarefa, reabra primeiro a tarefa. O
   arquivamento é separado do status e torna a tarefa imutável.
 - Uma tarefa cujo projeto ou negócio já vinculado foi arquivado continua
   visível e pode ser editada mantendo esses pais. Novos vínculos com projeto ou

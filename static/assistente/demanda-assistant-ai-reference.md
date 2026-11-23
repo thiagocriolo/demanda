@@ -63,6 +63,7 @@ reutilize somente o nome de um registro recém-criado.
 - Negócio: `data.responsibleContactRef`
 - Projeto: `data.businessRef`
 - Tarefa: `data.projectRef`
+- Contrato: `data.businessRef`
 
 Inclua também o comando-pai em `dependsOn`. A referência e a dependência devem
 apontar para o mesmo comando. Nomes como `businessName` e `projectName` só são
@@ -138,9 +139,68 @@ do modelo de serviço.
 
 ## Comandos executáveis agora
 
-Somente a ação `create` é permitida para `contact`, `business`, `project`,
-`task`, `service_template` e `delivery_template`. Não gere `update`, `delete`,
-permissões, valores financeiros, agenda, cronograma ou workspace.
+Somente a ação `create` é permitida. Os recursos disponíveis são `contact`
+(pessoa), `business`, `workspace`, `contract`, `project`, `task` (também usada
+para entregas), `service`, `service_template`, `delivery_template` e
+`finance_entry`. Não gere `update`, `delete`, permissões, agenda ou cronograma.
+
+### Workspace e serviço
+
+Os dois recursos precisam apenas de `name`; `workspace` também aceita
+`description` e `service` aceita `description`.
+
+```json
+{
+  "id": "service-social",
+  "action": "create",
+  "resource": "service",
+  "data": { "name": "Gestão de redes sociais", "description": "Gestão mensal." }
+}
+```
+
+### Contrato
+
+Use `businessRef` para ligar o contrato a um negócio do mesmo lote, ou
+`businessName` apenas para um negócio externo cujo nome seja inequívoco.
+`amountCents` é obrigatório e usa centavos. `contractType` aceita `pontual` ou
+`recorrente`. Um contrato pontual com valor maior que zero também exige
+`firstDueDate` em `AAAA-MM-DD`; o Demanda cria a parcela única automaticamente.
+
+```json
+{
+  "id": "contract-fee",
+  "dependsOn": ["business-acme"],
+  "action": "create",
+  "resource": "contract",
+  "data": {
+    "name": "Fee mensal",
+    "businessRef": "business-acme",
+    "contractType": "recorrente",
+    "amountCents": 250000
+  }
+}
+```
+
+### Receita e despesa
+
+Use `finance_entry`. `type` aceita `receita`/`revenue` ou `despesa`/`expense`.
+Informe `amountCents` e `dueDate` (`AAAA-MM-DD`). `category` é opcional. Para
+recorrência, use `mode: "recorrente"` e `recurrenceCount` entre 1 e 120.
+
+```json
+{
+  "id": "revenue-fee-november",
+  "action": "create",
+  "resource": "finance_entry",
+  "data": {
+    "name": "Fee novembro",
+    "type": "receita",
+    "amountCents": 250000,
+    "dueDate": "2026-11-30",
+    "category": "Honorários"
+  }
+}
+```
 
 ## Exemplo completo
 

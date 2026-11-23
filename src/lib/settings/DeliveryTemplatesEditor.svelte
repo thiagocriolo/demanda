@@ -9,7 +9,7 @@
     DeliveryTemplate,
     ServiceTemplate,
     StyledChoice,
-    TemplateTask,
+    TemplateDelivery,
   } from "./types";
 
   let {
@@ -43,8 +43,8 @@
       ? services.reduce(
           (total: number, service: ServiceTemplate) =>
             total +
-            service.tasks.filter(
-              (task: TemplateTask) => task.templateId === deletingTemplate?.id,
+            service.deliveries.filter(
+              (delivery: TemplateDelivery) => delivery.templateId === deletingTemplate?.id,
             ).length,
           0,
         )
@@ -62,12 +62,12 @@
       statusColor: category?.color ?? "#64748b",
       primary: category?.label ?? "Sem categoria",
       secondary:
-        template.subtasks.length === 1
-          ? "1 subtarefa"
-          : `${template.subtasks.length} subtarefas`,
+        template.tasks.length === 1
+          ? "1 tarefa"
+          : `${template.tasks.length} tarefas`,
       description: template.briefing || "Briefing a definir",
-      metric: template.subtasks.length,
-      metricLabel: template.subtasks.length === 1 ? "subtarefa" : "subtarefas",
+      metric: template.tasks.length,
+      metricLabel: template.tasks.length === 1 ? "tarefa" : "tarefas",
       auxiliary: template.duration
         ? `${template.duration} h`
         : "Sem estimativa",
@@ -114,7 +114,7 @@
       name: "",
       category: "",
       briefing: "",
-      subtasks: [],
+      tasks: [],
       status: "planejamento",
       priority: "normal",
       tags: "",
@@ -127,7 +127,7 @@
       category: values.category,
       briefing: values.briefing.trim(),
       duration: values.duration,
-      subtasks: JSON.parse(values.subtasks),
+      tasks: JSON.parse(values.tasks),
     };
 
     templates = editingTemplate
@@ -166,8 +166,8 @@
     const templateId = deletingTemplate.id;
     services = services.map((service: ServiceTemplate) => ({
       ...service,
-      tasks: service.tasks.filter(
-        (task: TemplateTask) => task.templateId !== templateId,
+      deliveries: service.deliveries.filter(
+        (delivery: TemplateDelivery) => delivery.templateId !== templateId,
       ),
     }));
     templates = templates.filter(
@@ -185,7 +185,7 @@
     <div>
       <p>Modelos de tarefa</p>
       <h2 id="delivery-templates-title">Entregas</h2>
-      <span>Padronize nome, categoria, briefing e subtarefas recorrentes.</span>
+      <span>Padronize nome, categoria, briefing e tarefas recorrentes.</span>
     </div>
     <strong>{templates.length} de 100 modelos</strong>
   </header>

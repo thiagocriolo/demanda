@@ -22,7 +22,7 @@ vi.mock("$lib/projects/client", () => ({
   getProjectOptions: vi.fn(),
   listProjects: vi.fn(async () => ({ items: fixtures.projects })),
 }));
-vi.mock("$lib/tasks/client", () => ({ createTask: vi.fn() }));
+vi.mock("$lib/deliveries/client", () => ({ createDelivery: vi.fn() }));
 vi.mock("$lib/workspaces/workspace-storage", () => ({
   CURRENT_USER: { id: "user-1" },
 }));
@@ -84,9 +84,9 @@ describe("ações de modelos do assistente", () => {
     const { preflightRecordCommandQueue } = await import("./record-actions");
     const issues = await preflightRecordCommandQueue([
       {
-        id: "task-institucional",
+        id: "delivery-institucional",
         command: {
-          kind: "task",
+          kind: "delivery",
           name: "Campanha de Natal",
           projectName: "Institucional",
         },
@@ -96,7 +96,7 @@ describe("ações de modelos do assistente", () => {
 
     expect(issues).toEqual([
       expect.objectContaining({
-        commandId: "task-institucional",
+        commandId: "delivery-institucional",
         message: expect.stringContaining("Institucional"),
       }),
     ]);
@@ -115,9 +115,9 @@ describe("ações de modelos do assistente", () => {
         dependsOn: ["business"],
       },
       {
-        id: "task",
+        id: "delivery",
         command: {
-          kind: "task",
+          kind: "delivery",
           name: "Campanha de Natal",
           projectRef: "project",
         },

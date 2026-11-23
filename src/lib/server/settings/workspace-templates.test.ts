@@ -8,7 +8,7 @@ const collaborators = vi.hoisted(() => ({
   loadWorkspaceMemberIndex: vi.fn(),
   synchronizeServiceTemplates: vi.fn(),
   synchronizeDeliveryTemplates: vi.fn(),
-  synchronizeServiceTaskTemplates: vi.fn(),
+  synchronizeServiceDeliveryTemplates: vi.fn(),
 }));
 
 vi.mock("./workspace-template-members", () => ({
@@ -21,8 +21,8 @@ vi.mock("./workspace-service-template-sync", () => ({
 
 vi.mock("./workspace-delivery-template-sync", () => ({
   synchronizeDeliveryTemplates: collaborators.synchronizeDeliveryTemplates,
-  synchronizeServiceTaskTemplates:
-    collaborators.synchronizeServiceTaskTemplates,
+  synchronizeServiceDeliveryTemplates:
+    collaborators.synchronizeServiceDeliveryTemplates,
 }));
 
 describe("workspace templates facade", () => {
@@ -58,7 +58,7 @@ describe("workspace templates facade", () => {
     collaborators.loadWorkspaceMemberIndex.mockResolvedValue(members);
     collaborators.synchronizeServiceTemplates.mockResolvedValue(serviceIds);
     collaborators.synchronizeDeliveryTemplates.mockResolvedValue(deliveryIds);
-    collaborators.synchronizeServiceTaskTemplates.mockResolvedValue(undefined);
+    collaborators.synchronizeServiceDeliveryTemplates.mockResolvedValue(undefined);
 
     await templates.synchronizeWorkspaceTemplates(
       database,
@@ -91,7 +91,7 @@ describe("workspace templates facade", () => {
       members,
       now,
     );
-    expect(collaborators.synchronizeServiceTaskTemplates).toHaveBeenCalledWith(
+    expect(collaborators.synchronizeServiceDeliveryTemplates).toHaveBeenCalledWith(
       database,
       workspaceId,
       settings,
@@ -112,7 +112,7 @@ describe("workspace templates facade", () => {
     expect(
       collaborators.synchronizeDeliveryTemplates.mock.invocationCallOrder[0],
     ).toBeLessThan(
-      collaborators.synchronizeServiceTaskTemplates.mock
+      collaborators.synchronizeServiceDeliveryTemplates.mock
         .invocationCallOrder[0]!,
     );
   });

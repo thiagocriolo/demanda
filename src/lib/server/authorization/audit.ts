@@ -23,7 +23,7 @@ export type AdministrativeAuditEntry = {
  */
 export type DataChangeAuditEntry = {
   action: string;
-  targetType: "task" | "subtask" | "project" | "agenda" | "cronograma";
+  targetType: "delivery" | "task" | "project" | "agenda" | "cronograma";
   targetId: string;
   changes: Array<{ field: string; before: unknown; after: unknown }>;
   metadata?: Record<string, unknown>;

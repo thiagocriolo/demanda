@@ -10,11 +10,11 @@ import {
 import { createDatabasePool } from "../../src/lib/server/db/pool";
 import { users } from "../../src/lib/server/db/schema";
 import {
-  createPersonalTask,
-  deletePersonalTask,
-  listPersonalTasks,
-  updatePersonalTask,
-} from "../../src/lib/server/personal-tasks/service";
+  createPersonalDelivery,
+  deletePersonalDelivery,
+  listPersonalDeliveries,
+  updatePersonalDelivery,
+} from "../../src/lib/server/personal-deliveries/service";
 
 const pool = createDatabasePool(parseServerEnvironment(process.env));
 const database = createDatabase(pool);
@@ -54,19 +54,19 @@ describe("tarefas pessoais do Dashboard", () => {
 
   it("persiste, ordena e isola as tarefas por usuário", async () => {
     await withRollback(async (database) => {
-      const owner = await insertUser(database, "PersonalTaskOwner");
-      const other = await insertUser(database, "PersonalTaskOther");
+      const owner = await insertUser(database, "PersonalDeliveryOwner");
+      const other = await insertUser(database, "PersonalDeliveryOther");
 
-      const first = await createPersonalTask(database, owner.id, "Primeira");
-      const second = await createPersonalTask(database, owner.id, "Segunda");
+      const first = await createPersonalDelivery(database, owner.id, "Primeira");
+      const second = await createPersonalDelivery(database, owner.id, "Segunda");
 
-      expect(await listPersonalTasks(database, owner.id)).toEqual([
+      expect(await listPersonalDeliveries(database, owner.id)).toEqual([
         first,
         second,
       ]);
-      expect(await listPersonalTasks(database, other.id)).toEqual([]);
+      expect(await listPersonalDeliveries(database, other.id)).toEqual([]);
 
-      const completed = await updatePersonalTask(
+      const completed = await updatePersonalDelivery(
         database,
         owner.id,
         first.id,
@@ -74,16 +74,16 @@ describe("tarefas pessoais do Dashboard", () => {
       );
       expect(completed).toMatchObject({ id: first.id, done: true });
       expect(
-        await updatePersonalTask(database, other.id, first.id, true),
+        await updatePersonalDelivery(database, other.id, first.id, true),
       ).toBeNull();
 
-      expect(await deletePersonalTask(database, other.id, second.id)).toBe(
+      expect(await deletePersonalDelivery(database, other.id, second.id)).toBe(
         false,
       );
-      expect(await deletePersonalTask(database, owner.id, second.id)).toBe(
+      expect(await deletePersonalDelivery(database, owner.id, second.id)).toBe(
         true,
       );
-      expect(await listPersonalTasks(database, owner.id)).toEqual([completed]);
+      expect(await listPersonalDeliveries(database, owner.id)).toEqual([completed]);
     });
   });
 });

@@ -34,7 +34,7 @@ import {
   businessResponsibles,
   businesses,
   projects,
-  tasks,
+  deliveries,
   workspaces,
 } from "../db/schema";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
@@ -383,8 +383,8 @@ export type ContactOperationalDashboard = {
   metrics: {
     activeBusinesses: number;
     activeProjects: number;
-    openTasks: number;
-    overdueTasks: number;
+    openDeliveries: number;
+    overdueDeliveries: number;
     dueThisWeek: number;
   };
   nextAction:
@@ -402,7 +402,7 @@ export type ContactOperationalDashboard = {
     status: string;
     endDate: string | null;
   }>;
-  tasks: Array<{
+  deliveries: Array<{
     id: string;
     name: string;
     projectName: string;
@@ -421,7 +421,7 @@ function dashboardDay(offset = 0): string {
  * Derives the contact's active operation from persisted relationships. It
  * deliberately does not infer an activity history that the database does not
  * store: every number and action below originates from a business, project or
- * task currently linked to the contact.
+ * delivery currently linked to the contact.
  */
 export async function getContactOperationalDashboard(
   database: Database,
@@ -460,14 +460,14 @@ export async function getContactOperationalDashboard(
       metrics: {
         activeBusinesses: 0,
         activeProjects: 0,
-        openTasks: 0,
-        overdueTasks: 0,
+        openDeliveries: 0,
+        overdueDeliveries: 0,
         dueThisWeek: 0,
       },
       nextAction: undefined,
       businesses: [],
       projects: [],
-      tasks: [],
+      deliveries: [],
     };
   }
 
@@ -494,74 +494,74 @@ export async function getContactOperationalDashboard(
       desc(projects.id),
     );
 
-  const taskConditions = and(
-    eq(tasks.workspaceId, contact.workspaceId),
-    inArray(tasks.businessId, businessIds),
-    isNull(tasks.archivedAt),
-    isNull(tasks.completedAt),
+  const deliveryConditions = and(
+    eq(deliveries.workspaceId, contact.workspaceId),
+    inArray(deliveries.businessId, businessIds),
+    isNull(deliveries.archivedAt),
+    isNull(deliveries.completedAt),
   );
   const today = dashboardDay();
   const weekEnd = dashboardDay(7);
-  const [openTaskTotal] = await database
+  const [openDeliveryTotal] = await database
     .select({ value: count() })
-    .from(tasks)
-    .where(taskConditions);
+    .from(deliveries)
+    .where(deliveryConditions);
   const [overdueTotal] = await database
     .select({ value: count() })
-    .from(tasks)
+    .from(deliveries)
     .where(
-      and(taskConditions, isNotNull(tasks.dueDate), lt(tasks.dueDate, today)),
+      and(deliveryConditions, isNotNull(deliveries.dueDate), lt(deliveries.dueDate, today)),
     );
   const [dueThisWeekTotal] = await database
     .select({ value: count() })
-    .from(tasks)
+    .from(deliveries)
     .where(
       and(
-        taskConditions,
-        isNotNull(tasks.dueDate),
-        gte(tasks.dueDate, today),
-        lte(tasks.dueDate, weekEnd),
+        deliveryConditions,
+        isNotNull(deliveries.dueDate),
+        gte(deliveries.dueDate, today),
+        lte(deliveries.dueDate, weekEnd),
       ),
     );
-  const openTasks = await database
+  const openDeliveries = await database
     .select({
-      id: tasks.id,
-      name: tasks.name,
-      dueDate: tasks.dueDate,
-      priority: tasks.priorityKey,
+      id: deliveries.id,
+      name: deliveries.name,
+      dueDate: deliveries.dueDate,
+      priority: deliveries.priorityKey,
       projectName: projects.name,
     })
-    .from(tasks)
+    .from(deliveries)
     .innerJoin(
       projects,
       and(
-        eq(projects.workspaceId, tasks.workspaceId),
-        eq(projects.id, tasks.projectId),
+        eq(projects.workspaceId, deliveries.workspaceId),
+        eq(projects.id, deliveries.projectId),
       ),
     )
-    .where(taskConditions)
+    .where(deliveryConditions)
     .orderBy(
-      asc(sql`case when ${tasks.dueDate} is null then 1 else 0 end`),
-      asc(tasks.dueDate),
-      desc(tasks.updatedAt),
-      desc(tasks.id),
+      asc(sql`case when ${deliveries.dueDate} is null then 1 else 0 end`),
+      asc(deliveries.dueDate),
+      desc(deliveries.updatedAt),
+      desc(deliveries.id),
     )
     .limit(6);
 
-  const overdue = openTasks.find(({ dueDate }) =>
+  const overdue = openDeliveries.find(({ dueDate }) =>
     Boolean(dueDate && dueDate < today),
   );
-  const upcoming = openTasks.find(({ dueDate }) =>
+  const upcoming = openDeliveries.find(({ dueDate }) =>
     Boolean(dueDate && dueDate >= today),
   );
-  const nextTask = overdue ?? upcoming;
-  const nextAction = nextTask
+  const nextDelivery = overdue ?? upcoming;
+  const nextAction = nextDelivery
     ? {
-        title: nextTask.name,
+        title: nextDelivery.name,
         description: overdue
-          ? `Tarefa vencida em ${nextTask.dueDate}. Priorize esta ação.`
-          : `Próximo prazo: ${nextTask.dueDate}.`,
-        href: `/clientes/tarefas/${nextTask.id}`,
+          ? `Tarefa vencida em ${nextDelivery.dueDate}. Priorize esta ação.`
+          : `Próximo prazo: ${nextDelivery.dueDate}.`,
+        href: `/clientes/entregas/${nextDelivery.id}`,
         tone: overdue ? ("urgent" as const) : ("upcoming" as const),
       }
     : undefined;
@@ -570,8 +570,8 @@ export async function getContactOperationalDashboard(
     metrics: {
       activeBusinesses: activeBusinesses.length,
       activeProjects: activeProjects.length,
-      openTasks: Number(openTaskTotal?.value ?? 0),
-      overdueTasks: Number(overdueTotal?.value ?? 0),
+      openDeliveries: Number(openDeliveryTotal?.value ?? 0),
+      overdueDeliveries: Number(overdueTotal?.value ?? 0),
       dueThisWeek: Number(dueThisWeekTotal?.value ?? 0),
     },
     nextAction,
@@ -588,7 +588,7 @@ export async function getContactOperationalDashboard(
         status,
         endDate,
       })),
-    tasks: openTasks,
+    deliveries: openDeliveries,
   };
 }
 

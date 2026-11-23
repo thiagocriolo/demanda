@@ -64,9 +64,9 @@ describe("BE-11: validacao do Cronograma", () => {
     });
   });
 
-  it("valida reorganizações atômicas sem subtarefas duplicadas", () => {
+  it("valida reorganizações atômicas sem tarefas duplicadas", () => {
     const block = {
-      subtaskId: "34a880a0-d3b4-467b-b8bd-026af1019505",
+      taskId: "34a880a0-d3b4-467b-b8bd-026af1019505",
       date: "2026-07-15",
       startMinutes: 8 * 60,
       durationMinutes: 60,

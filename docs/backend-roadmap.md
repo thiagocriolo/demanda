@@ -30,7 +30,7 @@ marcada como concluída depois que seus critérios de aceite forem verificados.
 | BE-05 | Pessoas e contatos                       | Concluída           |
 | BE-06 | Negócios                                 | Concluída           |
 | BE-07 | Projetos, serviços e vínculos            | Concluída           |
-| BE-08 | Tarefas e subtarefas                     | Concluída           |
+| BE-08 | Tarefas e tarefas                     | Concluída           |
 | BE-09 | Configurações, catálogos e modelos       | Concluída           |
 | BE-10 | Agenda                                   | Concluída           |
 | BE-11 | Cronograma e conflitos                   | Concluída           |
@@ -57,7 +57,7 @@ A BE-15 é a próxima e única tarefa liberada para implementação neste moment
 - [x] **BE-05 — Pessoas e contatos**
 - [x] **BE-06 — Negócios**
 - [x] **BE-07 — Projetos, serviços e vínculos**
-- [x] **BE-08 — Tarefas e subtarefas**
+- [x] **BE-08 — Tarefas e tarefas**
 - [x] **BE-09 — Configurações, catálogos e modelos**
 - [x] **BE-10 — Agenda**
 - [x] **BE-11 — Cronograma e conflitos**
@@ -321,12 +321,12 @@ Verificação em 14/07/2026:
   autenticação, snapshot do modelo, filtros, edição, arquivamento idempotente,
   anti-IDOR, vínculos entre tenants e rollback com limpeza dos dados de prova.
 
-## BE-08 — Tarefas e subtarefas
+## BE-08 — Tarefas e tarefas
 
 Objetivo: criar a fonte de verdade usada por registros, pauta, agenda e
 cronograma.
 
-- [x] Modelar tarefas, subtarefas, ordem, duração, prioridade e status.
+- [x] Modelar tarefas, tarefas, ordem, duração, prioridade e status.
 - [x] Relacionar tarefas a projeto, negócio, responsáveis e tags.
 - [x] Implementar CRUD e mudanças de estado idempotentes.
 - [x] Definir regras para conclusão, reabertura e arquivamento.
@@ -338,37 +338,37 @@ alteração nunca sobrescreve silenciosamente uma versão mais recente.
 
 Verificação em 14/07/2026:
 
-- migration `0011_tasks` modela o agregado nas tabelas `tasks`,
-  `task_subtasks`, `task_responsibles` e `task_tags`, com ordem geral e por
-  quadro, prioridade, estado e timestamps. A duração de cada subtarefa vai de
+- migration `0011_deliveries` modela o agregado nas tabelas `deliveries`,
+  `delivery_tasks`, `delivery_responsibles` e `delivery_tags`, com ordem geral e por
+  quadro, prioridade, estado e timestamps. A duração de cada tarefa vai de
   30 a 10.080 minutos em múltiplos de 30; valores válidos são preservados sem
   truncamento e valores fora do contrato são rejeitados;
 - a chave estrangeira composta `workspace + projeto + negócio` garante que o
   negócio da tarefa seja o mesmo do projeto. Relações compostas também impedem
-  subtarefas, responsáveis e tags de outro workspace. Tarefas já vinculadas a
+  tarefas, responsáveis e tags de outro workspace. Tarefas já vinculadas a
   projeto ou negócio arquivado continuam visíveis e editáveis, mas não é
   permitido criar um novo vínculo com esses pais arquivados;
-- `GET/POST /api/tasks` implementa listagem paginada, busca, filtros, facets e
-  criação. `GET/PUT/DELETE /api/tasks/[taskId]` implementa leitura, edição e
-  arquivamento. O `PUT` agregado salva conteúdo, status, relações e subtarefas
+- `GET/POST /api/deliveries` implementa listagem paginada, busca, filtros, facets e
+  criação. `GET/PUT/DELETE /api/deliveries/[deliveryId]` implementa leitura, edição e
+  arquivamento. O `PUT` agregado salva conteúdo, status, relações e tarefas
   na mesma transação, de modo que uma falha tardia desfaz toda a edição;
 - rotas `PUT` próprias oferecem transições idempotentes de estado da tarefa e de
-  cada subtarefa. `PUT /api/tasks/board` reordena em lote as visões por status,
+  cada tarefa. `PUT /api/deliveries/board` reordena em lote as visões por status,
   prioridade, negócio ou projeto;
 - toda alteração de uma tarefa existente usa a `version` do agregado, bloqueio
   transacional e compare-and-swap. Uma versão obsoleta retorna `409`, sem
-  sobrescrever uma alteração mais recente; mudanças em subtarefas também
+  sobrescrever uma alteração mais recente; mudanças em tarefas também
   incrementam a versão da tarefa;
 - a reordenação da Pauta bloqueia e valida todas as tarefas e versões antes de
   aplicar o lote. Se qualquer item falhar, a transação inteira sofre rollback e
   nenhuma posição, coluna ou relação é alterada;
-- somente `PUT /api/tasks/board` atribui posições por quadro. Mudanças de status,
+- somente `PUT /api/deliveries/board` atribui posições por quadro. Mudanças de status,
   prioridade, projeto ou negócio removem a posição obsoleta da dimensão; trocar
   o negócio de um projeto também atualiza e versiona, na mesma transação, todas
   as suas tarefas vinculadas, inclusive arquivadas;
 - repetir uma transição cujo estado-alvo já foi atingido ou arquivar novamente
-  é idempotente. Concluir uma tarefa exige todas as subtarefas concluídas;
-  reabrir uma subtarefa exige reabrir primeiro a tarefa, e tarefas arquivadas
+  é idempotente. Concluir uma tarefa exige todas as tarefas concluídas;
+  reabrir uma tarefa exige reabrir primeiro a tarefa, e tarefas arquivadas
   não podem ser alteradas;
 - Registros, Pauta e o formulário global editam pela API. Ao mover um card, a
   Pauta reindexa as colunas ativas completas de origem e destino, inclusive as
@@ -384,7 +384,7 @@ Verificação em 14/07/2026:
 - testes focados de validação, cliente, schema e serviço cobrem o agregado,
   limites de duração sem truncamento, pais arquivados já vinculados, isolamento,
   regras de estado, idempotência, reordenação em lote, rollback e concorrência;
-- `npm run verify:http:tasks` aprovado contra servidor local real, cobrindo
+- `npm run verify:http:deliveries` aprovado contra servidor local real, cobrindo
   autenticação, CRUD e filtros, edição atômica de conteúdo e status,
   versionamento, lote atômico da Pauta com rollback, idempotência, regras de
   conclusão e reabertura, conflitos `409`, anti-IDOR, arquivamento e limpeza dos
@@ -396,7 +396,7 @@ Objetivo: separar preferências do usuário das configurações compartilhadas.
 
 - [x] Classificar cada configuração atual como local, do usuário ou do workspace.
 - [x] Modelar catálogos de status, categorias, tags e prioridades.
-- [x] Modelar modelos de projeto, entrega e subtarefa.
+- [x] Modelar modelos de projeto, entrega e tarefa.
 - [x] Implementar versionamento e validação dos modelos.
 - [x] Manter localmente apenas preferências específicas do dispositivo.
 - [x] Substituir importação/exportação irrestrita do armazenamento do navegador.
@@ -412,7 +412,7 @@ Verificação em 14/07/2026:
   validação estrita e compare-and-swap por versão;
 - catálogos compartilhados persistidos em `workspace_catalog_entries`, tags e
   modelos de projeto reutilizando `tags` e `services`, e modelos de entrega e
-  subtarefa persistidos em tabelas relacionais próprias;
+  tarefa persistidos em tabelas relacionais próprias;
 - configurações compartilhadas versionadas como um agregado por workspace.
   Apenas `owner` e `admin` podem alterá-las; membros podem ler a mesma fonte;
 - APIs `/api/preferences`, `/api/workspace-settings` e `/api/settings` substituem
@@ -479,16 +479,16 @@ Verificação em 14/07/2026:
 
 - a migration `0015_careless_grey_gargoyle` criou `cronograma_blocks` com data
   civil, início e duração em múltiplos de 30 minutos, versão, limite diário e
-  chaves compostas para tarefa e subtarefa do mesmo workspace;
+  chaves compostas para tarefa e tarefa do mesmo workspace;
 - `GET /api/cronograma` lê todos os blocos ou filtra por intervalo e responsável.
-  `PUT` e `DELETE` em `/api/cronograma/[subtaskId]` usam compare-and-swap;
+  `PUT` e `DELETE` em `/api/cronograma/[taskId]` usam compare-and-swap;
 - toda escrita bloqueia o workspace e valida o estado final completo antes de
-  gravar. Sequência de subtarefas, sobreposição por responsável, dias úteis e
+  gravar. Sequência de tarefas, sobreposição por responsável, dias úteis e
   turnos pessoais são regras autoritativas do servidor;
 - Cronograma e Dashboard consomem a API. A chave legada
   `demanda:cronograma:schedule:v2` não é mais lida nem escrita e foi preservada
   intacta para a importação explícita da BE-15;
-- o teste concorrente agenda duas subtarefas distintas do mesmo responsável no
+- o teste concorrente agenda duas tarefas distintas do mesmo responsável no
   mesmo horário: apenas uma transação vence e a outra recebe conflito `409`.
 - 143 testes unitários e 85 testes PostgreSQL aprovados, além de
   `svelte-check`, build de produção, migrations e diagnósticos do banco.
@@ -579,7 +579,7 @@ Verificação em 14/07/2026:
   doze atividades mais recentes. A resposta informa intervalo e `queryMs`;
 - o histórico combina ações append-only de `audit_logs` com os eventos
   persistidos `contact.created`, `business.created`, `project.created`,
-  `task.created` e `task.completed`, sempre derivados de linhas do workspace;
+  `delivery.created` e `delivery.completed`, sempre derivados de linhas do workspace;
 - `GET /api/search` pesquisa Contatos, Negócios, Projetos e Tarefas, aceita
   escopo, página e tamanho, ordena correspondências exatas e prefixos primeiro
   e devolve links de destino. A BE-14 não altera o cabeçalho nem adiciona uma

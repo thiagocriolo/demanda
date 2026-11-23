@@ -50,7 +50,7 @@ export async function loadAgendaSnapshot(
     return {
       workspaceId: GLOBAL_WORKSPACE_SCOPE_ID,
       projects: snapshots.flatMap(({ projects }) => projects),
-      tasks: snapshots.flatMap(({ tasks }) => tasks),
+      deliveries: snapshots.flatMap(({ deliveries }) => deliveries),
     };
   }
   const params = new URLSearchParams();
@@ -76,7 +76,7 @@ export function saveAgendaOrder(
   };
   return request(fetcher, jsonRequest("PUT", input)).then((snapshot) => {
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("demanda:tasks-changed"));
+      window.dispatchEvent(new CustomEvent("demanda:deliveries-changed"));
     }
     return snapshot;
   });

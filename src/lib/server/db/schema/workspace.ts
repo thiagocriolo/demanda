@@ -454,7 +454,7 @@ export const workspaceCatalogEntries = applicationSchema.table(
     ),
     check(
       "workspace_catalog_entries_kind_allowed",
-      sql`${table.kind} in ('person_status', 'business_status', 'project_status', 'task_status', 'business_category', 'task_category', 'task_priority', 'revenue_category', 'expense_category')`,
+      sql`${table.kind} in ('person_status', 'business_status', 'project_status', 'delivery_status', 'business_category', 'delivery_category', 'delivery_priority', 'revenue_category', 'expense_category')`,
     ),
     check(
       "workspace_catalog_entries_key_normalized",

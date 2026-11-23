@@ -79,13 +79,13 @@
     }
     return {
       nome: source?.nome ?? "",
-      workspaceId:
-        source?.contractWorkspaceId ?? source?.workspaceId ?? "",
+      workspaceId: source?.contractWorkspaceId ?? source?.workspaceId ?? "",
       negocioId: source?.negocioId ?? "",
       contractType,
       valor,
       dataInicio: source?.dataInicio ?? "",
       dataFim: source?.dataFim ?? "",
+      duracao: "1",
       primeiroVencimento,
       paymentMethod: source?.paymentMethod ?? "",
       condicoes: source?.condicoes ?? "",
@@ -143,10 +143,7 @@
       : isoDate;
   }
 
-  function updateDateField(
-    event: Event,
-    update: (date: string) => void,
-  ): void {
+  function updateDateField(event: Event, update: (date: string) => void): void {
     const input = event.currentTarget as HTMLInputElement;
     input.value = formatDateDraft(input.value);
     const parsed = parseDateField(input.value);
@@ -172,6 +169,40 @@
 
   function openDatePicker(event: MouseEvent): void {
     (event.currentTarget as HTMLInputElement).showPicker?.();
+  }
+
+  function endDateForDuration(startDate: string, duration: string): string {
+    if (!startDate) return "";
+
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(startDate);
+    if (!match) return "";
+
+    const [, year, month, day] = match;
+    const months = Math.max(1, Number.parseInt(duration, 10) || 1);
+    const targetYear = Number(year);
+    const targetMonth = Number(month) - 1 + months;
+    const lastDayOfTargetMonth = new Date(
+      Date.UTC(targetYear, targetMonth + 1, 0),
+    ).getUTCDate();
+    const endDate = new Date(
+      Date.UTC(
+        targetYear,
+        targetMonth,
+        Math.min(Number(day), lastDayOfTargetMonth) - 1,
+      ),
+    );
+    return endDate.toISOString().slice(0, 10);
+  }
+
+  function updateStartDate(value: string): void {
+    form.dataInicio = value;
+    form.dataFim = endDateForDuration(value, form.duracao);
+  }
+
+  function updateDuration(value: string): void {
+    const duration = Math.max(1, Number.parseInt(value, 10) || 1);
+    form.duracao = String(duration);
+    form.dataFim = endDateForDuration(form.dataInicio, form.duracao);
   }
 
   function updateInstallmentCount(value: string): void {
@@ -268,12 +299,7 @@
 
   function submit(event: SubmitEvent): void {
     event.preventDefault();
-    if (
-      viewOnly ||
-      !form.nome.trim() ||
-      !form.negocioId ||
-      !form.workspaceId
-    )
+    if (viewOnly || !form.nome.trim() || !form.negocioId || !form.workspaceId)
       return;
     onsave({
       nome: form.nome.trim(),
@@ -344,44 +370,44 @@
 
             <div class="two-column-grid full">
               <div class="control">
-              <span class="control-icon" aria-hidden="true">
-                <BriefcaseBusiness size={16} strokeWidth={1.8} />
-              </span>
-              <select
-                bind:value={form.workspaceId}
-                disabled={viewOnly || mode === "edit"}
-                required
-                aria-label="Workspace do contrato"
-              >
-                <option value="" disabled>Selecione o workspace *</option>
-                {#each workspaces as workspace (workspace.id)}
-                  <option value={workspace.id}>{workspace.name}</option>
-                {/each}
-              </select>
-            </div>
+                <span class="control-icon" aria-hidden="true">
+                  <BriefcaseBusiness size={16} strokeWidth={1.8} />
+                </span>
+                <select
+                  bind:value={form.workspaceId}
+                  disabled={viewOnly || mode === "edit"}
+                  required
+                  aria-label="Workspace do contrato"
+                >
+                  <option value="" disabled>Selecione o workspace *</option>
+                  {#each workspaces as workspace (workspace.id)}
+                    <option value={workspace.id}>{workspace.name}</option>
+                  {/each}
+                </select>
+              </div>
 
-            {#if workspaceError}
-              <p class="catalog-state catalog-state--error" role="alert">
-                {workspaceError}
-              </p>
-            {/if}
+              {#if workspaceError}
+                <p class="catalog-state catalog-state--error" role="alert">
+                  {workspaceError}
+                </p>
+              {/if}
 
               <div class="control business-control">
-              <span class="control-icon" aria-hidden="true">
-                <BriefcaseBusiness size={16} strokeWidth={1.8} />
-              </span>
-              <select
-                bind:value={form.negocioId}
-                disabled={viewOnly || loadingBusinesses}
-                required
-                aria-label="Negócio vinculado"
-              >
-                <option value="" disabled>Selecione o negócio *</option>
-                {#each businesses as business (business.id)}
-                  <option value={business.id}>{business.name}</option>
-                {/each}
-              </select>
-            </div>
+                <span class="control-icon" aria-hidden="true">
+                  <BriefcaseBusiness size={16} strokeWidth={1.8} />
+                </span>
+                <select
+                  bind:value={form.negocioId}
+                  disabled={viewOnly || loadingBusinesses}
+                  required
+                  aria-label="Negócio vinculado"
+                >
+                  <option value="" disabled>Selecione o negócio *</option>
+                  {#each businesses as business (business.id)}
+                    <option value={business.id}>{business.name}</option>
+                  {/each}
+                </select>
+              </div>
             </div>
 
             {#if loadingBusinesses}
@@ -395,64 +421,6 @@
                 Cadastre um negócio antes de criar um contrato.
               </p>
             {/if}
-
-            <div class="two-column-grid full">
-              <div class="control date-control">
-                <span class="control-icon" aria-hidden="true">
-                  <CalendarDays size={16} strokeWidth={1.8} />
-                </span>
-                <input
-                  class="date-picker"
-                  type="date"
-                  onclick={openDatePicker}
-                  disabled={viewOnly}
-                  value={form.dataInicio}
-                  aria-label="Abrir calendário para a data de início"
-                  onchange={(event) =>
-                    updateDateFromPicker(event, (date) => (form.dataInicio = date))}
-                />
-                <input
-                  disabled={viewOnly}
-                  type="text"
-                  inputmode="numeric"
-                  autocomplete="off"
-                  maxlength="10"
-                  placeholder="DD/MM/AAAA"
-                  value={formatDateForField(form.dataInicio)}
-                  aria-label="Data de início (DD/MM/AAAA)"
-                  oninput={(event) =>
-                    updateDateField(event, (date) => (form.dataInicio = date))}
-                />
-              </div>
-              <div class="control date-control">
-                <span class="control-icon" aria-hidden="true">
-                  <CalendarDays size={16} strokeWidth={1.8} />
-                </span>
-                <input
-                  class="date-picker"
-                  type="date"
-                  onclick={openDatePicker}
-                  disabled={viewOnly}
-                  value={form.dataFim}
-                  min={form.dataInicio || undefined}
-                  aria-label="Abrir calendário para a data de fim"
-                  onchange={(event) =>
-                    updateDateFromPicker(event, (date) => (form.dataFim = date))}
-                />
-                <input
-                  disabled={viewOnly}
-                  type="text"
-                  inputmode="numeric"
-                  autocomplete="off"
-                  maxlength="10"
-                  placeholder="DD/MM/AAAA"
-                  value={formatDateForField(form.dataFim)}
-                  aria-label="Data de fim (DD/MM/AAAA)"
-                  oninput={(event) =>
-                    updateDateField(event, (date) => (form.dataFim = date))}
-                />
-              </div>
-            </div>
 
             <div class="two-column-grid full">
               <div class="control">
@@ -485,9 +453,64 @@
                   oninput={(event) => updateAmount(event.currentTarget.value)}
                 />
               </div>
-
             </div>
+          </div>
+        </section>
 
+        <section class="form-section">
+          <h3>Vigência</h3>
+          <div class="three-column-grid full">
+            <div class="control date-control">
+              <span class="control-icon" aria-hidden="true">
+                <CalendarDays size={16} strokeWidth={1.8} />
+              </span>
+              <input
+                class="date-picker"
+                type="date"
+                onclick={openDatePicker}
+                disabled={viewOnly}
+                value={form.dataInicio}
+                aria-label="Abrir calendário para a data de início"
+                onchange={(event) =>
+                  updateDateFromPicker(event, updateStartDate)}
+              />
+              <input
+                disabled={viewOnly}
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                maxlength="10"
+                placeholder="Início"
+                value={formatDateForField(form.dataInicio)}
+                aria-label="Data de início (DD/MM/AAAA)"
+                oninput={(event) => updateDateField(event, updateStartDate)}
+              />
+            </div>
+            <div class="control date-control">
+              <span class="control-icon" aria-hidden="true">
+                <CalendarDays size={16} strokeWidth={1.8} />
+              </span>
+              <input
+                disabled
+                type="text"
+                placeholder="Fim"
+                value={formatDateForField(form.dataFim)}
+                aria-label="Data de fim calculada"
+              />
+            </div>
+            <div class="control duration-control">
+              <input
+                type="number"
+                min="1"
+                step="1"
+                inputmode="numeric"
+                disabled={viewOnly}
+                value={form.duracao}
+                aria-label="Duração em meses"
+                oninput={(event) => updateDuration(event.currentTarget.value)}
+              />
+              <span class="duration-suffix">/mês</span>
+            </div>
           </div>
         </section>
 
@@ -527,50 +550,60 @@
               <div class="installment-list full">
                 {#each form.installments as installment, index (installment.number)}
                   <div class="installment-row">
-                    <div
-                      class="installment-index"
-                      aria-label={`Parcela ${installment.number}`}
-                    >
-                      <span class="installment-hash" aria-hidden="true">#</span>
-                      <span>{String(installment.number).padStart(2, "0")}</span>
-                    </div>
-                    <div class="control date-control">
-                      <span class="control-icon" aria-hidden="true">
-                        <CalendarDays size={16} strokeWidth={1.8} />
-                      </span>
-                      <input
-                        class="date-picker"
-                        type="date"
-                        onclick={openDatePicker}
-                        disabled={viewOnly}
-                        value={installment.dueDate}
-                        aria-label={`Abrir calendário para o vencimento da parcela ${installment.number}`}
-                        onchange={(event) => {
-                          if (index === 0) {
-                            updateDateFromPicker(event, updateFirstDueDate);
-                          } else {
-                            updateDateFromPicker(event, (date) => (installment.dueDate = date));
-                          }
-                        }}
-                      />
-                      <input
-                        disabled={viewOnly}
-                        type="text"
-                        inputmode="numeric"
-                        autocomplete="off"
-                        maxlength="10"
-                        placeholder="DD/MM/AAAA"
-                        required={index === 0 && moneyToCents(form.valor) > 0}
-                        value={formatDateForField(installment.dueDate)}
-                        aria-label={`Vencimento da parcela ${installment.number} (DD/MM/AAAA)`}
-                        oninput={(event) => updateDateField(event, (date) => {
-                          if (index === 0) {
-                            updateFirstDueDate(date);
-                          } else {
-                            installment.dueDate = date;
-                          }
-                        })}
-                      />
+                    <div class="installment-date-group">
+                      <div
+                        class="installment-index"
+                        aria-label={`Parcela ${installment.number}`}
+                      >
+                        <span class="installment-hash" aria-hidden="true"
+                          >#</span
+                        >
+                        <span
+                          >{String(installment.number).padStart(2, "0")}</span
+                        >
+                      </div>
+                      <div class="control date-control">
+                        <span class="control-icon" aria-hidden="true">
+                          <CalendarDays size={16} strokeWidth={1.8} />
+                        </span>
+                        <input
+                          class="date-picker"
+                          type="date"
+                          onclick={openDatePicker}
+                          disabled={viewOnly}
+                          value={installment.dueDate}
+                          aria-label={`Abrir calendário para o vencimento da parcela ${installment.number}`}
+                          onchange={(event) => {
+                            if (index === 0) {
+                              updateDateFromPicker(event, updateFirstDueDate);
+                            } else {
+                              updateDateFromPicker(
+                                event,
+                                (date) => (installment.dueDate = date),
+                              );
+                            }
+                          }}
+                        />
+                        <input
+                          disabled={viewOnly}
+                          type="text"
+                          inputmode="numeric"
+                          autocomplete="off"
+                          maxlength="10"
+                          placeholder="DD/MM/AAAA"
+                          required={index === 0 && moneyToCents(form.valor) > 0}
+                          value={formatDateForField(installment.dueDate)}
+                          aria-label={`Vencimento da parcela ${installment.number} (DD/MM/AAAA)`}
+                          oninput={(event) =>
+                            updateDateField(event, (date) => {
+                              if (index === 0) {
+                                updateFirstDueDate(date);
+                              } else {
+                                installment.dueDate = date;
+                              }
+                            })}
+                        />
+                      </div>
                     </div>
                     <div class="control installment-amount">
                       <span class="control-icon" aria-hidden="true">R$</span>
@@ -581,7 +614,10 @@
                         bind:value={installment.amount}
                         aria-label={`Valor da parcela ${installment.number}`}
                         onchange={(event) =>
-                          rebalanceInstallments(index, event.currentTarget.value)}
+                          rebalanceInstallments(
+                            index,
+                            event.currentTarget.value,
+                          )}
                       />
                     </div>
                   </div>
@@ -675,7 +711,9 @@
               <button
                 class="success"
                 type="submit"
-                disabled={loadingBusinesses || !businesses.length || !form.workspaceId}
+                disabled={loadingBusinesses ||
+                  !businesses.length ||
+                  !form.workspaceId}
               >
                 <Save size={16} strokeWidth={2} />
                 <span>Salvar</span>
@@ -690,7 +728,9 @@
               <button
                 class="success"
                 type="submit"
-                disabled={loadingBusinesses || !businesses.length || !form.workspaceId}
+                disabled={loadingBusinesses ||
+                  !businesses.length ||
+                  !form.workspaceId}
               >
                 <Save size={16} strokeWidth={2} />
                 <span>Criar contrato</span>
@@ -818,20 +858,33 @@
     gap: 10px;
   }
 
+  .three-column-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
   .payment-grid {
     display: grid;
-    grid-template-columns: 58px repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
   }
 
   .payment-method {
-    grid-column: 1 / 3;
+    grid-column: auto;
   }
 
   .installment-row {
     display: grid;
-    grid-template-columns: 58px repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+  }
+
+  .installment-date-group {
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 10px;
+    min-width: 0;
   }
 
   .installment-index {
@@ -918,6 +971,16 @@
 
   .control.installment-count {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .duration-control {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .duration-suffix {
+    color: var(--muted);
+    font-size: var(--text-sm);
+    white-space: nowrap;
   }
 
   .control-label {
@@ -1117,7 +1180,11 @@
     }
 
     .installment-row {
-      grid-template-columns: 52px repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .installment-date-group {
+      grid-template-columns: 52px minmax(0, 1fr);
     }
 
     .installment-index {
@@ -1152,6 +1219,10 @@
       grid-template-columns: minmax(0, 1fr);
     }
 
+    .three-column-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
     .payment-grid {
       grid-template-columns: minmax(0, 1fr);
     }
@@ -1161,11 +1232,11 @@
     }
 
     .installment-row {
-      grid-template-columns: 52px minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .installment-amount {
-      grid-column: 1 / -1;
+      grid-column: auto;
     }
   }
 </style>

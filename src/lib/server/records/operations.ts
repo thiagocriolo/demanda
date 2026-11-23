@@ -1,11 +1,11 @@
 import { and, asc, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import type { Business } from "$lib/businesses/types";
 import type { Project } from "$lib/projects/types";
-import type { Task } from "$lib/tasks/types";
+import type { Delivery } from "$lib/deliveries/types";
 import type { Database } from "$lib/server/db/database";
-import { projects, tasks } from "$lib/server/db/schema";
+import { projects, deliveries } from "$lib/server/db/schema";
 
-export type OperationalTask = {
+export type OperationalDelivery = {
   id: string;
   name: string;
   projectId: string;
@@ -21,29 +21,29 @@ export type OperationalProject = {
   name: string;
   status: string;
   endDate: string | null;
-  openTasks: number;
-  completedTasks: number;
+  openDeliveries: number;
+  completedDeliveries: number;
 };
 
 export type BusinessOperations = {
   metrics: {
     projects: number;
-    openTasks: number;
-    completedTasks: number;
-    overdueTasks: number;
+    openDeliveries: number;
+    completedDeliveries: number;
+    overdueDeliveries: number;
   };
   projects: OperationalProject[];
-  tasks: OperationalTask[];
+  deliveries: OperationalDelivery[];
 };
 
 export type ProjectOperations = {
   business: { id: string; name: string };
   metrics: {
-    openTasks: number;
-    completedTasks: number;
-    overdueTasks: number;
+    openDeliveries: number;
+    completedDeliveries: number;
+    overdueDeliveries: number;
   };
-  tasks: OperationalTask[];
+  deliveries: OperationalDelivery[];
 };
 
 export type ContractOperations = {
@@ -51,20 +51,20 @@ export type ContractOperations = {
   metrics: {
     projects: number;
     activeProjects: number;
-    openTasks: number;
-    overdueTasks: number;
+    openDeliveries: number;
+    overdueDeliveries: number;
   };
   projects: OperationalProject[];
-  tasks: OperationalTask[];
+  deliveries: OperationalDelivery[];
   firstPaymentOverdue: boolean;
 };
 
-export type TaskOperations = {
+export type DeliveryOperations = {
   project: { id: string; name: string };
   metrics: {
-    subtasks: number;
-    completedSubtasks: number;
-    remainingSubtasks: number;
+    tasks: number;
+    completedTasks: number;
+    remainingTasks: number;
   };
   nextAction: {
     title: string;
@@ -77,36 +77,36 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-async function tasksFor(
+async function deliveriesFor(
   database: Database,
   conditions: ReturnType<typeof and>,
   activeOnly = true,
-): Promise<OperationalTask[]> {
+): Promise<OperationalDelivery[]> {
   const rows = await database
     .select({
-      id: tasks.id,
-      name: tasks.name,
-      projectId: tasks.projectId,
+      id: deliveries.id,
+      name: deliveries.name,
+      projectId: deliveries.projectId,
       projectName: projects.name,
-      status: tasks.statusKey,
-      priority: tasks.priorityKey,
-      dueDate: tasks.dueDate,
-      completedAt: tasks.completedAt,
+      status: deliveries.statusKey,
+      priority: deliveries.priorityKey,
+      dueDate: deliveries.dueDate,
+      completedAt: deliveries.completedAt,
     })
-    .from(tasks)
+    .from(deliveries)
     .innerJoin(
       projects,
       and(
-        eq(projects.workspaceId, tasks.workspaceId),
-        eq(projects.id, tasks.projectId),
+        eq(projects.workspaceId, deliveries.workspaceId),
+        eq(projects.id, deliveries.projectId),
         ...(activeOnly ? [eq(projects.isActive, true)] : []),
       ),
     )
     .where(conditions)
     .orderBy(
-      asc(sql`case when ${tasks.dueDate} is null then 1 else 0 end`),
-      asc(tasks.dueDate),
-      desc(tasks.updatedAt),
+      asc(sql`case when ${deliveries.dueDate} is null then 1 else 0 end`),
+      asc(deliveries.dueDate),
+      desc(deliveries.updatedAt),
     )
     .limit(40);
 
@@ -116,12 +116,12 @@ async function tasksFor(
   }));
 }
 
-function metrics(tasks: OperationalTask[]) {
+function metrics(deliveries: OperationalDelivery[]) {
   const currentDay = today();
   return {
-    openTasks: tasks.filter(({ completed }) => !completed).length,
-    completedTasks: tasks.filter(({ completed }) => completed).length,
-    overdueTasks: tasks.filter(
+    openDeliveries: deliveries.filter(({ completed }) => !completed).length,
+    completedDeliveries: deliveries.filter(({ completed }) => completed).length,
+    overdueDeliveries: deliveries.filter(
       ({ completed, dueDate }) =>
         !completed && Boolean(dueDate && dueDate < currentDay),
     ).length,
@@ -154,34 +154,34 @@ export async function getBusinessOperations(
       desc(projects.updatedAt),
     )
     .limit(30);
-  const taskRows = await tasksFor(
+  const deliveryRows = await deliveriesFor(
     database,
     and(
-      eq(tasks.workspaceId, business.workspaceId),
-      eq(tasks.businessId, business.id),
-      isNull(tasks.archivedAt),
+      eq(deliveries.workspaceId, business.workspaceId),
+      eq(deliveries.businessId, business.id),
+      isNull(deliveries.archivedAt),
     ),
   );
   const byProject = new Map<string, { open: number; completed: number }>();
-  for (const task of taskRows) {
-    const current = byProject.get(task.projectId) ?? { open: 0, completed: 0 };
-    if (task.completed) current.completed += 1;
+  for (const delivery of deliveryRows) {
+    const current = byProject.get(delivery.projectId) ?? { open: 0, completed: 0 };
+    if (delivery.completed) current.completed += 1;
     else current.open += 1;
-    byProject.set(task.projectId, current);
+    byProject.set(delivery.projectId, current);
   }
-  const taskMetrics = metrics(taskRows);
+  const deliveryMetrics = metrics(deliveryRows);
 
   return {
-    metrics: { projects: projectRows.length, ...taskMetrics },
+    metrics: { projects: projectRows.length, ...deliveryMetrics },
     projects: projectRows.map((project) => {
       const counts = byProject.get(project.id) ?? { open: 0, completed: 0 };
       return {
         ...project,
-        openTasks: counts.open,
-        completedTasks: counts.completed,
+        openDeliveries: counts.open,
+        completedDeliveries: counts.completed,
       };
     }),
-    tasks: taskRows,
+    deliveries: deliveryRows,
   };
 }
 
@@ -189,19 +189,19 @@ export async function getProjectOperations(
   database: Database,
   project: Project,
 ): Promise<ProjectOperations> {
-  const taskRows = await tasksFor(
+  const deliveryRows = await deliveriesFor(
     database,
     and(
-      eq(tasks.workspaceId, project.workspaceId),
-      eq(tasks.projectId, project.id),
-      isNull(tasks.archivedAt),
+      eq(deliveries.workspaceId, project.workspaceId),
+      eq(deliveries.projectId, project.id),
+      isNull(deliveries.archivedAt),
     ),
     false,
   );
   return {
     business: { id: project.business.id, name: project.business.name },
-    metrics: metrics(taskRows),
-    tasks: taskRows,
+    metrics: metrics(deliveryRows),
+    deliveries: deliveryRows,
   };
 }
 
@@ -242,63 +242,63 @@ export async function getContractOperations(
       desc(projects.updatedAt),
     )
     .limit(30);
-  const taskRows = await tasksFor(
+  const deliveryRows = await deliveriesFor(
     database,
     and(
-      eq(tasks.workspaceId, contract.workspaceId),
+      eq(deliveries.workspaceId, contract.workspaceId),
       eq(projects.contractId, contract.id),
-      isNull(tasks.archivedAt),
+      isNull(deliveries.archivedAt),
     ),
     false,
   );
   const byProject = new Map<string, { open: number; completed: number }>();
-  for (const task of taskRows) {
-    const current = byProject.get(task.projectId) ?? { open: 0, completed: 0 };
-    if (task.completed) current.completed += 1;
+  for (const delivery of deliveryRows) {
+    const current = byProject.get(delivery.projectId) ?? { open: 0, completed: 0 };
+    if (delivery.completed) current.completed += 1;
     else current.open += 1;
-    byProject.set(task.projectId, current);
+    byProject.set(delivery.projectId, current);
   }
-  const taskMetrics = metrics(taskRows);
+  const deliveryMetrics = metrics(deliveryRows);
 
   return {
     business: { id: contract.businessId, name: contract.businessName },
     metrics: {
       projects: projectRows.length,
       activeProjects: projectRows.filter(({ isActive }) => isActive).length,
-      openTasks: taskMetrics.openTasks,
-      overdueTasks: taskMetrics.overdueTasks,
+      openDeliveries: deliveryMetrics.openDeliveries,
+      overdueDeliveries: deliveryMetrics.overdueDeliveries,
     },
     projects: projectRows.map(({ isActive: _isActive, ...project }) => {
       const counts = byProject.get(project.id) ?? { open: 0, completed: 0 };
       return {
         ...project,
-        openTasks: counts.open,
-        completedTasks: counts.completed,
+        openDeliveries: counts.open,
+        completedDeliveries: counts.completed,
       };
     }),
-    tasks: taskRows,
+    deliveries: deliveryRows,
     firstPaymentOverdue: Boolean(
       contract.firstDueDate && contract.firstDueDate < today(),
     ),
   };
 }
 
-export function getTaskOperations(task: Task): TaskOperations {
-  const total = task.subtasks.length;
-  const completed = task.subtasks.filter(
-    (subtask) => subtask.status === "concluida",
+export function getDeliveryOperations(delivery: Delivery): DeliveryOperations {
+  const total = delivery.tasks.length;
+  const completed = delivery.tasks.filter(
+    (task) => task.status === "concluida",
   ).length;
   const remaining = total - completed;
   const currentDay = today();
 
-  if (task.completedAt) {
+  if (delivery.completedAt) {
     return {
       metrics: {
-        subtasks: total,
-        completedSubtasks: completed,
-        remainingSubtasks: remaining,
+        tasks: total,
+        completedTasks: completed,
+        remainingTasks: remaining,
       },
-      project: { id: task.project.id, name: task.project.name },
+      project: { id: delivery.project.id, name: delivery.project.name },
       nextAction: {
         tone: "complete",
         title: "Entrega concluída",
@@ -307,14 +307,14 @@ export function getTaskOperations(task: Task): TaskOperations {
       },
     };
   }
-  if (task.dueDate && task.dueDate < currentDay) {
+  if (delivery.dueDate && delivery.dueDate < currentDay) {
     return {
       metrics: {
-        subtasks: total,
-        completedSubtasks: completed,
-        remainingSubtasks: remaining,
+        tasks: total,
+        completedTasks: completed,
+        remainingTasks: remaining,
       },
-      project: { id: task.project.id, name: task.project.name },
+      project: { id: delivery.project.id, name: delivery.project.name },
       nextAction: {
         tone: "urgent",
         title: "Prazo vencido",
@@ -323,14 +323,14 @@ export function getTaskOperations(task: Task): TaskOperations {
       },
     };
   }
-  if (task.dueDate === currentDay) {
+  if (delivery.dueDate === currentDay) {
     return {
       metrics: {
-        subtasks: total,
-        completedSubtasks: completed,
-        remainingSubtasks: remaining,
+        tasks: total,
+        completedTasks: completed,
+        remainingTasks: remaining,
       },
-      project: { id: task.project.id, name: task.project.name },
+      project: { id: delivery.project.id, name: delivery.project.name },
       nextAction: {
         tone: "attention",
         title: "Entrega para hoje",
@@ -341,11 +341,11 @@ export function getTaskOperations(task: Task): TaskOperations {
   if (remaining > 0) {
     return {
       metrics: {
-        subtasks: total,
-        completedSubtasks: completed,
-        remainingSubtasks: remaining,
+        tasks: total,
+        completedTasks: completed,
+        remainingTasks: remaining,
       },
-      project: { id: task.project.id, name: task.project.name },
+      project: { id: delivery.project.id, name: delivery.project.name },
       nextAction: {
         tone: "ready",
         title: `${remaining} etapa${remaining === 1 ? "" : "s"} pendente${remaining === 1 ? "" : "s"}`,
@@ -356,11 +356,11 @@ export function getTaskOperations(task: Task): TaskOperations {
   }
   return {
     metrics: {
-      subtasks: total,
-      completedSubtasks: completed,
-      remainingSubtasks: remaining,
+      tasks: total,
+      completedTasks: completed,
+      remainingTasks: remaining,
     },
-    project: { id: task.project.id, name: task.project.name },
+    project: { id: delivery.project.id, name: delivery.project.name },
     nextAction: {
       tone: "ready",
       title: "Defina o próximo avanço",

@@ -1,8 +1,8 @@
 import type { EntityRecord } from "$lib/entities/types";
 import type { ScheduleEntry, ScheduleTask } from "$lib/cronograma/types";
 
-export type ScheduledDashboardTask = {
-  task: ScheduleTask;
+export type ScheduledDashboardDelivery = {
+  delivery: ScheduleTask;
   entry: ScheduleEntry;
 };
 
@@ -24,10 +24,10 @@ export function weekBounds(date: Date): [string, string] {
 
 export function recordDate(
   record: EntityRecord,
-  kind: "task" | "project",
+  kind: "delivery" | "project",
 ): string {
   const candidates =
-    kind === "task"
+    kind === "delivery"
       ? [
           record.dataEntrega,
           record.data_entrega,
@@ -55,7 +55,7 @@ export function isScheduleComplete(task: ScheduleTask): boolean {
 
 export function scheduledIn(
   records: EntityRecord[],
-  kind: "task" | "project",
+  kind: "delivery" | "project",
   start: string,
   end = start,
 ): number {
@@ -80,19 +80,19 @@ export function timeFromMinutes(minutes: number): string {
 }
 
 export function buildSchedulePreview(
-  scheduledTasks: ScheduledDashboardTask[],
+  scheduledDeliveries: ScheduledDashboardDelivery[],
   nowMinutes: number,
 ) {
   const currentSlotStart = Math.floor(nowMinutes / 30) * 30;
   return Array.from({ length: 5 }, (_, index) => {
     const startMinutes = currentSlotStart + (index - 2) * 30;
     const endMinutes = startMinutes + 30;
-    const item = scheduledTasks.find(
-        ({ entry }) =>
-          startMinutes >= entry.startMinutes &&
-          startMinutes < entry.startMinutes + entry.durationSlots * 30,
-      );
-    const complete = item ? isScheduleComplete(item.task) : false;
+    const item = scheduledDeliveries.find(
+      ({ entry }) =>
+        startMinutes >= entry.startMinutes &&
+        startMinutes < entry.startMinutes + entry.durationSlots * 30,
+    );
+    const complete = item ? isScheduleComplete(item.delivery) : false;
     const current = index === 2;
     const state = complete
       ? "done"
@@ -105,13 +105,15 @@ export function buildSchedulePreview(
         : "free";
 
     return {
-      id: `${startMinutes}-${item?.task.id ?? "free"}`,
+      id: `${startMinutes}-${item?.delivery.id ?? "free"}`,
       time: `${timeFromMinutes((startMinutes + 1440) % 1440)}–${timeFromMinutes((endMinutes + 1440) % 1440)}`,
       current,
       state,
-      title: item?.task.nome ?? "Livre",
+      title: item?.delivery.nome ?? "Livre",
       description: item
-        ? [item.task.taskNome, item.task.projeto].filter(Boolean).join(" · ")
+        ? [item.delivery.deliveryNome, item.delivery.projeto]
+            .filter(Boolean)
+            .join(" · ")
         : "",
     };
   });

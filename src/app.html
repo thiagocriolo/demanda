@@ -52,6 +52,20 @@
         pointer-events: none;
       }
 
+      /* This CSS-only fallback prevents a client-side startup failure from
+         permanently covering a fully rendered route with the loading layer. */
+      #app-loading-screen {
+        animation: app-loading-failsafe 8s step-end forwards;
+      }
+
+      @keyframes app-loading-failsafe {
+        to {
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+        }
+      }
+
       .app-loading-content {
         width: min(100%, 320px);
       }
@@ -151,7 +165,7 @@
         const finish = () => {
           window.clearInterval(timer);
           setProgress(100);
-          window.setTimeout(() => screen.setAttribute("data-complete", "true"), 160);
+          screen.setAttribute("data-complete", "true");
         };
 
         if (document.readyState === "complete") finish();

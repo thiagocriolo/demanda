@@ -15,11 +15,11 @@ describe("BE-14 dashboard validation", () => {
     expect(
       globalSearchQuerySchema.parse({
         q: "  projeto ",
-        scope: "task",
+        scope: "delivery",
         page: "2",
         pageSize: "10",
       }),
-    ).toEqual({ q: "projeto", scope: "task", page: 2, pageSize: 10 });
+    ).toEqual({ q: "projeto", scope: "delivery", page: 2, pageSize: 10 });
     expect(globalSearchQuerySchema.safeParse({ q: "a" }).success).toBe(false);
     expect(
       globalSearchQuerySchema.safeParse({ q: "válido", scope: "workspace" })

@@ -44,7 +44,7 @@
     {
       id: 0,
       role: "assistant",
-      text: "Posso registrar contatos, negócios, projetos e tarefas. Diga o que você quer criar.",
+      text: "Posso registrar pessoas, negócios, workspaces, contratos, projetos, entregas, serviços e lançamentos financeiros. Diga o que você quer criar.",
     },
   ]);
 
@@ -169,9 +169,13 @@
       contact: "Contato",
       business: "Negócio",
       project: "Projeto",
-      task: "Tarefa",
+      delivery: "Entrega",
       service_template: "Modelo de serviço",
       delivery_template: "Modelo de entrega",
+      workspace: "Workspace",
+      service: "Serviço",
+      contract: "Contrato",
+      finance_entry: "Lançamento financeiro",
     } as const;
     return `${labels[entry.command.kind]}: ${entry.command.name}`;
   }

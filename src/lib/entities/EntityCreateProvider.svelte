@@ -9,7 +9,7 @@
   import ContractForm from "./ContractForm.svelte";
   import EntityForm from "./EntityForm.svelte";
   import ProjectForm from "./ProjectForm.svelte";
-  import TaskForm from "./TaskForm.svelte";
+  import DeliveryForm from "./DeliveryForm.svelte";
   import {
     archiveEntityRecord,
     createRecord,
@@ -45,7 +45,7 @@
     negocio: "negocios",
     contrato: "contratos",
     projeto: "projetos",
-    tarefa: "entregas",
+    entrega: "entregas",
   };
 
   const createContext: EntityCreateContext = {
@@ -196,7 +196,7 @@
     reset();
   }
 
-  async function saveProjectAndOpenTask(
+  async function saveProjectAndOpenDelivery(
     values: Record<string, string>,
   ): Promise<void> {
     if (activeConfig?.key !== "projetos" || !formMode) return;
@@ -301,13 +301,13 @@
 
   function deleteWarningFor(config: EntityConfig): string | undefined {
     if (config.key === "negocios") {
-      return "Projetos, tarefas e lançamentos financeiros vinculados também serão removidos.";
+      return "Projetos, entregas e lançamentos financeiros vinculados também serão removidos.";
     }
     if (config.key === "projetos") {
-      return "Tarefas vinculadas também serão removidas.";
+      return "Entregas vinculadas também serão removidas.";
     }
     if (config.key === "entregas") {
-      return "Subtarefas e blocos do cronograma vinculados também serão removidos.";
+      return "Entregas e blocos do cronograma vinculados também serão removidos.";
     }
     return undefined;
   }
@@ -328,7 +328,7 @@
 
 {#if activeConfig && formMode}
   {#if activeConfig.key === "entregas"}
-    <TaskForm
+    <DeliveryForm
       config={activeConfig}
       record={activeRecord}
       mode={formMode}
@@ -356,7 +356,7 @@
       onedit={() => (formMode = "edit")}
       onarchive={archiveActive}
       ondelete={() => (deleting = true)}
-      onaddtask={saveProjectAndOpenTask}
+      onadddelivery={saveProjectAndOpenDelivery}
     />
   {:else}
     <EntityForm

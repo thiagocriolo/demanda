@@ -3,7 +3,7 @@ export type EntityCardKind =
   | "negocio"
   | "contrato"
   | "projeto"
-  | "tarefa";
+  | "entrega";
 
 export type EntityCardAction = "view" | "edit" | "copy" | "archive" | "delete";
 

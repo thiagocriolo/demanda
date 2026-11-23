@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Save, X } from "@lucide/svelte";
   import { untrack } from "svelte";
-  import type { Task } from "$lib/tasks/types";
+  import type { Delivery } from "$lib/deliveries/types";
   import { createToolUse, ToolApiError, updateToolUse } from "./client";
   import { findToolResource } from "./catalog";
   import ToolUseContentFields from "./editors/ToolUseContentFields.svelte";
@@ -15,23 +15,23 @@
 
   let {
     models,
-    tasks,
+    deliveries,
     initialModel,
-    initialTaskId = null,
+    initialDeliveryId = null,
     use,
     onclose,
     onsaved,
   } = $props<{
     models: ToolModel[];
-    tasks: Task[];
+    deliveries: Delivery[];
     initialModel?: ToolModel;
-    initialTaskId?: string | null;
+    initialDeliveryId?: string | null;
     use?: ToolUse;
     onclose: () => void;
     onsaved: (use: ToolUse) => void;
   }>();
 
-  const seed = untrack(() => ({ models, use, initialModel, initialTaskId }));
+  const seed = untrack(() => ({ models, use, initialModel, initialDeliveryId }));
   const availableModels: ToolModel[] = seed.models.filter(
     ({ id, archivedAt }: ToolModel) => !archivedAt || id === seed.use?.modelId,
   );
@@ -39,7 +39,7 @@
     seed.use?.modelId ?? seed.initialModel?.id ?? availableModels[0]?.id ?? "",
   );
   let name = $state(seed.use?.name ?? "");
-  let taskId = $state<string | null>(seed.use?.taskId ?? seed.initialTaskId);
+  let deliveryId = $state<string | null>(seed.use?.deliveryId ?? seed.initialDeliveryId);
   let content = $state<ToolUseContent>(
     seed.use
       ? structuredClone(seed.use.content)
@@ -56,11 +56,11 @@
   let resource = $derived(
     selectedModel ? findToolResource(selectedModel.toolKey) : null,
   );
-  let availableTasks = $derived(
+  let availableDeliveries = $derived(
     selectedModel
-      ? tasks.filter(
-          (task: Task) =>
-            task.workspaceId === selectedModel?.workspaceId && !task.archivedAt,
+      ? deliveries.filter(
+          (delivery: Delivery) =>
+            delivery.workspaceId === selectedModel?.workspaceId && !delivery.archivedAt,
         )
       : [],
   );
@@ -71,21 +71,21 @@
     const model = models.find(({ id }: ToolModel) => id === nextId);
     if (!model) return;
     content = emptyToolUseContent(model.toolKey);
-    taskId = tasks.some(
-      ({ id, workspaceId }: Task) =>
-        id === taskId && workspaceId === model.workspaceId,
+    deliveryId = deliveries.some(
+      ({ id, workspaceId }: Delivery) =>
+        id === deliveryId && workspaceId === model.workspaceId,
     )
-      ? taskId
+      ? deliveryId
       : null;
     if (!name.trim()) name = model.name;
   }
 
-  function selectTask(nextId: string): void {
-    taskId = nextId || null;
+  function selectDelivery(nextId: string): void {
+    deliveryId = nextId || null;
     if (use || !selectedModel || name.trim() !== selectedModel.name) return;
-    const task = tasks.find(({ id }: Task) => id === nextId);
-    if (task)
-      name = `${selectedModel.name} — ${task.project.name}`.slice(0, 140);
+    const delivery = deliveries.find(({ id }: Delivery) => id === nextId);
+    if (delivery)
+      name = `${selectedModel.name} — ${delivery.project.name}`.slice(0, 140);
   }
 
   async function save(event: SubmitEvent): Promise<void> {
@@ -101,7 +101,7 @@
       const saved = use
         ? await updateToolUse(use.id, {
             name: name.trim(),
-            taskId,
+            deliveryId,
             content,
             status,
             version: use.version,
@@ -110,7 +110,7 @@
             workspaceId: selectedModel.workspaceId,
             modelId: selectedModel.id,
             name: name.trim(),
-            taskId,
+            deliveryId,
             content,
             status: status === "draft" ? "draft" : "open",
           });
@@ -184,7 +184,7 @@
             <span>2</span>
             <div>
               <strong>Contexto</strong><small
-                >Associe a tarefa sem duplicar Cliente ou Projeto</small
+                >Associe a entrega sem duplicar Cliente ou Projeto</small
               >
             </div>
           </div>
@@ -198,12 +198,12 @@
               /></label
             >
             <label class="tool-field"
-              ><span>Tarefa associada</span><select
-                value={taskId ?? ""}
-                onchange={(event) => selectTask(event.currentTarget.value)}
-                ><option value="">Sem tarefa por enquanto</option
-                >{#each availableTasks as task (task.id)}<option value={task.id}
-                    >{task.project.name} · {task.name}</option
+              ><span>Entrega associada</span><select
+                value={deliveryId ?? ""}
+                onchange={(event) => selectDelivery(event.currentTarget.value)}
+                ><option value="">Sem entrega por enquanto</option
+                >{#each availableDeliveries as delivery (delivery.id)}<option value={delivery.id}
+                    >{delivery.project.name} · {delivery.name}</option
                   >{/each}</select
               ></label
             >

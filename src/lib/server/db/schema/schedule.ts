@@ -20,7 +20,7 @@ import { applicationSchema, check, createdAt, timestamp, updatedAt, uuid } from 
 
 import type { AgendaEntityKind } from "./enums";
 import { projects } from "./projects";
-import { taskSubtasks, tasks } from "./tasks";
+import { deliveryTasks, deliveries } from "./deliveries";
 import { workspaces } from "./workspace";
 
 export const cronogramaBlocks = applicationSchema.table(
@@ -30,8 +30,8 @@ export const cronogramaBlocks = applicationSchema.table(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
+    deliveryId: uuid("delivery_id").notNull(),
     taskId: uuid("task_id").notNull(),
-    subtaskId: uuid("subtask_id").notNull(),
     scheduledDate: date("scheduled_date", { mode: "string" }).notNull(),
     startMinutes: integer("start_minutes").notNull(),
     durationMinutes: integer("duration_minutes").notNull(),
@@ -44,22 +44,22 @@ export const cronogramaBlocks = applicationSchema.table(
       table.workspaceId,
       table.id,
     ),
-    unique("cronograma_blocks_workspace_subtask_unique").on(
+    unique("cronograma_blocks_workspace_task_unique").on(
       table.workspaceId,
-      table.subtaskId,
+      table.taskId,
     ),
     foreignKey({
-      name: "cronograma_blocks_workspace_task_foreign_key",
-      columns: [table.workspaceId, table.taskId],
-      foreignColumns: [tasks.workspaceId, tasks.id],
+      name: "cronograma_blocks_workspace_delivery_foreign_key",
+      columns: [table.workspaceId, table.deliveryId],
+      foreignColumns: [deliveries.workspaceId, deliveries.id],
     }).onDelete("cascade"),
     foreignKey({
-      name: "cronograma_blocks_workspace_subtask_foreign_key",
-      columns: [table.workspaceId, table.subtaskId, table.taskId],
+      name: "cronograma_blocks_workspace_task_foreign_key",
+      columns: [table.workspaceId, table.taskId, table.deliveryId],
       foreignColumns: [
-        taskSubtasks.workspaceId,
-        taskSubtasks.id,
-        taskSubtasks.taskId,
+        deliveryTasks.workspaceId,
+        deliveryTasks.id,
+        deliveryTasks.deliveryId,
       ],
     }).onDelete("cascade"),
     index("cronograma_blocks_workspace_date_start_index").on(
@@ -68,9 +68,9 @@ export const cronogramaBlocks = applicationSchema.table(
       table.startMinutes,
       table.id,
     ),
-    index("cronograma_blocks_workspace_task_date_index").on(
+    index("cronograma_blocks_workspace_delivery_date_index").on(
       table.workspaceId,
-      table.taskId,
+      table.deliveryId,
       table.scheduledDate,
       table.startMinutes,
     ),
@@ -109,7 +109,7 @@ export const agendaEntries = applicationSchema.table(
       .$type<AgendaEntityKind>()
       .notNull(),
     projectId: uuid("project_id"),
-    taskId: uuid("task_id"),
+    deliveryId: uuid("delivery_id"),
     scheduledDate: date("scheduled_date", { mode: "string" }),
     position: integer("position").default(0).notNull(),
     durationMinutes: integer("duration_minutes").default(60).notNull(),
@@ -126,9 +126,9 @@ export const agendaEntries = applicationSchema.table(
       table.workspaceId,
       table.projectId,
     ),
-    unique("agenda_entries_workspace_task_unique").on(
+    unique("agenda_entries_workspace_delivery_unique").on(
       table.workspaceId,
-      table.taskId,
+      table.deliveryId,
     ),
     unique("agenda_entries_workspace_kind_date_position_unique")
       .on(
@@ -144,9 +144,9 @@ export const agendaEntries = applicationSchema.table(
       foreignColumns: [projects.workspaceId, projects.id],
     }).onDelete("cascade"),
     foreignKey({
-      name: "agenda_entries_workspace_task_foreign_key",
-      columns: [table.workspaceId, table.taskId],
-      foreignColumns: [tasks.workspaceId, tasks.id],
+      name: "agenda_entries_workspace_delivery_foreign_key",
+      columns: [table.workspaceId, table.deliveryId],
+      foreignColumns: [deliveries.workspaceId, deliveries.id],
     }).onDelete("cascade"),
     index("agenda_entries_workspace_kind_date_position_index").on(
       table.workspaceId,
@@ -157,12 +157,12 @@ export const agendaEntries = applicationSchema.table(
     ),
     check(
       "agenda_entries_entity_kind_allowed",
-      sql`${table.entityKind} in ('project', 'task')`,
+      sql`${table.entityKind} in ('project', 'delivery')`,
     ),
     check(
       "agenda_entries_entity_consistent",
-      sql`(${table.entityKind} = 'project' and ${table.projectId} is not null and ${table.taskId} is null)
-        or (${table.entityKind} = 'task' and ${table.taskId} is not null and ${table.projectId} is null)`,
+      sql`(${table.entityKind} = 'project' and ${table.projectId} is not null and ${table.deliveryId} is null)
+        or (${table.entityKind} = 'delivery' and ${table.deliveryId} is not null and ${table.projectId} is null)`,
     ),
     check("agenda_entries_position_non_negative", sql`${table.position} >= 0`),
     check(

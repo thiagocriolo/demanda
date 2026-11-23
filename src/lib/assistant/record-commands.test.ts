@@ -9,6 +9,27 @@ describe("parseRecordCommand", () => {
     });
   });
 
+  it("interpreta pessoa, workspace, serviço e lançamento financeiro", () => {
+    expect(parseRecordCommand("Crie uma pessoa chamada Ana.")).toEqual({
+      ok: true,
+      command: { kind: "contact", name: "Ana" },
+    });
+    expect(parseRecordCommand("Crie um workspace chamado Estúdio.")).toEqual({
+      ok: true,
+      command: { kind: "workspace", name: "Estúdio" },
+    });
+    expect(parseRecordCommand("Crie um serviço chamado Gestão social.")).toEqual({
+      ok: true,
+      command: { kind: "service", name: "Gestão social" },
+    });
+    expect(
+      parseRecordCommand("Registre uma receita Fee de R$ 2.500,00 para 2026-11-30"),
+    ).toEqual({
+      ok: true,
+      command: { kind: "finance_entry", name: "Fee", type: "revenue", amountCents: 250000, dueDate: "2026-11-30" },
+    });
+  });
+
   it("interpreta negócio e responsável", () => {
     expect(
       parseRecordCommand("Crie um negócio chamado Macajo do Caleb"),
@@ -29,7 +50,7 @@ describe("parseRecordCommand", () => {
       parseRecordCommand("Adicionar tarefa Wireframe para projeto Site"),
     ).toEqual({
       ok: true,
-      command: { kind: "task", name: "Wireframe", projectName: "Site" },
+      command: { kind: "delivery", name: "Wireframe", projectName: "Site" },
     });
   });
 
@@ -45,7 +66,7 @@ CRIE TAREFA: Wireframe | PROJETO: Site`),
         { kind: "contact", name: "Caleb" },
         { kind: "business", name: "Macajo", contactName: "Caleb" },
         { kind: "project", name: "Site", businessName: "Macajo" },
-        { kind: "task", name: "Wireframe", projectName: "Site" },
+        { kind: "delivery", name: "Wireframe", projectName: "Site" },
       ],
     });
   });
@@ -97,7 +118,7 @@ CRIE TAREFA: Wireframe | PROJETO: Site`),
     });
   });
 
-  it("aceita referências de comandos e subtarefas no protocolo v2", () => {
+  it("aceita referências de comandos e tarefas no protocolo v2", () => {
     expect(
       parseRecordCommands(`{
   "protocol": "demanda.commands/v2",
@@ -109,14 +130,14 @@ CRIE TAREFA: Wireframe | PROJETO: Site`),
       "data": { "name": "Site", "businessRef": "business-acme" }
     },
     {
-      "id": "task-home",
+      "id": "delivery-home",
       "dependsOn": ["project-site"],
       "action": "create",
-      "resource": "task",
+      "resource": "delivery",
       "data": {
         "name": "Atualizar home",
         "projectRef": "project-site",
-        "subtasks": [{ "name": "Atualizar layout" }]
+        "tasks": [{ "name": "Atualizar layout" }]
       }
     }
   ]
@@ -133,12 +154,12 @@ CRIE TAREFA: Wireframe | PROJETO: Site`),
           },
         },
         {
-          id: "task-home",
+          id: "delivery-home",
           command: {
-            kind: "task",
+            kind: "delivery",
             name: "Atualizar home",
             projectRef: "project-site",
-            subtasks: [{ name: "Atualizar layout", durationMinutes: 60 }],
+            tasks: [{ name: "Atualizar layout", durationMinutes: 60 }],
           },
         },
       ],
@@ -224,6 +245,28 @@ CRIE TAREFA: Wireframe | PROJETO: Site`),
             serviceTemplateRef: "service-social",
           },
         },
+      ],
+    });
+  });
+
+  it("aceita workspace, contrato, serviço e lançamento financeiro", () => {
+    expect(
+      parseRecordCommands(`{
+  "protocol": "demanda.commands/v2",
+  "commands": [
+    { "id": "workspace", "action": "create", "resource": "workspace", "data": { "name": "Acme" } },
+    { "id": "service", "action": "create", "resource": "service", "data": { "name": "Gestão social" } },
+    { "id": "contract", "action": "create", "resource": "contract", "data": { "name": "Mensal", "businessRef": "business", "contractType": "recorrente", "amountCents": 250000 } },
+    { "id": "revenue", "action": "create", "resource": "finance_entry", "data": { "name": "Fee novembro", "type": "receita", "amountCents": 250000, "dueDate": "2026-11-30" } }
+  ]
+}`),
+    ).toMatchObject({
+      ok: true,
+      commands: [
+        { kind: "workspace", name: "Acme" },
+        { kind: "service", name: "Gestão social" },
+        { kind: "contract", name: "Mensal", businessRef: "business", contractType: "recurring", amountCents: 250000 },
+        { kind: "finance_entry", name: "Fee novembro", type: "revenue", amountCents: 250000, dueDate: "2026-11-30" },
       ],
     });
   });

@@ -13,16 +13,16 @@ import { agendaEntries } from "../schedule";
 import { communities, socialPostBlocks } from "../social";
 import {
   deliveryTemplateResponsibles,
-  deliveryTemplateSubtasks,
+  deliveryTemplateTasks,
   deliveryTemplateTags,
   deliveryTemplates,
   serviceResponsibles,
   serviceTags,
-  serviceTaskTemplates,
+  serviceDeliveryTemplates,
   services,
   tags,
 } from "../services";
-import { taskResponsibles, taskSubtasks, taskTags, tasks } from "../tasks";
+import { deliveryResponsibles, deliveryTasks, deliveryTags, deliveries } from "../deliveries";
 import { toolModels, toolResponses, toolUses } from "../tools";
 import { financialEntries, projectInstallments } from "../finance";
 import {
@@ -70,8 +70,8 @@ export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
   serviceTags: many(serviceTags),
   serviceResponsibles: many(serviceResponsibles),
   deliveryTemplates: many(deliveryTemplates),
-  serviceTaskTemplates: many(serviceTaskTemplates),
-  deliveryTemplateSubtasks: many(deliveryTemplateSubtasks),
+  serviceDeliveryTemplates: many(serviceDeliveryTemplates),
+  deliveryTemplateTasks: many(deliveryTemplateTasks),
   deliveryTemplateTags: many(deliveryTemplateTags),
   deliveryTemplateResponsibles: many(deliveryTemplateResponsibles),
   toolModels: many(toolModels),
@@ -82,10 +82,10 @@ export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
   projectTags: many(projectTags),
   projectResponsibles: many(projectResponsibles),
   projectInstallments: many(projectInstallments),
-  tasks: many(tasks),
-  taskSubtasks: many(taskSubtasks),
-  taskResponsibles: many(taskResponsibles),
-  taskTags: many(taskTags),
+  deliveries: many(deliveries),
+  deliveryTasks: many(deliveryTasks),
+  deliveryResponsibles: many(deliveryResponsibles),
+  deliveryTags: many(deliveryTags),
   agendaEntries: many(agendaEntries),
 }));
 
@@ -149,7 +149,7 @@ export const workspaceMembersRelations = relations(
     serviceResponsibilities: many(serviceResponsibles),
     deliveryTemplateResponsibilities: many(deliveryTemplateResponsibles),
     projectResponsibilities: many(projectResponsibles),
-    taskResponsibilities: many(taskResponsibles),
+    deliveryResponsibilities: many(deliveryResponsibles),
   }),
 );
 

@@ -2,11 +2,14 @@ import { createBusiness, listBusinesses } from "$lib/businesses/client";
 import { createContact, listContacts } from "$lib/contacts/client";
 import {
   createProject,
+  createService,
   getProjectOptions,
   listProjects,
 } from "$lib/projects/client";
-import { createTask } from "$lib/tasks/client";
-import { CURRENT_USER } from "$lib/workspaces/workspace-storage";
+import { createDelivery } from "$lib/deliveries/client";
+import { createContract } from "$lib/contracts/client";
+import { createFinanceEntry } from "$lib/finance/client";
+import { createWorkspace, CURRENT_USER } from "$lib/workspaces/workspace-storage";
 import { currentSettings, saveWorkspaceSettings } from "$lib/settings/client";
 import type { RecordCommand } from "./record-commands";
 import type { CompiledQueueCommand } from "./execution-queue";
@@ -18,18 +21,27 @@ export type RecordActionResult = {
       | "contato"
       | "negócio"
       | "projeto"
-      | "tarefa"
+      | "entrega"
       | "modelo de serviço"
-      | "modelo de entrega";
+      | "modelo de entrega"
+      | "workspace"
+      | "serviço"
+      | "contrato"
+      | "receita"
+      | "despesa";
     name: string;
   }>;
   output?: {
     contactId?: string;
     businessId?: string;
     projectId?: string;
-    taskId?: string;
+    deliveryId?: string;
     serviceTemplateId?: string;
     deliveryTemplateId?: string;
+    workspaceId?: string;
+    serviceId?: string;
+    contractId?: string;
+    financeEntryId?: string;
   };
 };
 
@@ -117,7 +129,7 @@ export async function preflightRecordCommandQueue(
       const { command } = item;
       try {
         if (
-          command.kind === "project" &&
+          (command.kind === "project" || command.kind === "contract") &&
           command.businessName &&
           !command.businessRef &&
           !hasParentCommand(queue, item, "business")
@@ -134,7 +146,7 @@ export async function preflightRecordCommandQueue(
           }
         }
         if (
-          command.kind === "task" &&
+          command.kind === "delivery" &&
           command.projectName &&
           !command.projectRef &&
           !hasParentCommand(queue, item, "project")
@@ -258,6 +270,20 @@ export async function executeRecordCommand(
   command: RecordCommand,
   context?: RecordCommandExecutionContext,
 ): Promise<RecordActionResult> {
+  if (command.kind === "workspace") {
+    const workspace = await createWorkspace({
+      name: command.name,
+      description: command.description ?? "",
+      icon: "briefcase",
+      color: "blue",
+    });
+    return {
+      message: `Criei o workspace ${workspace.name}.`,
+      created: [{ type: "workspace", name: workspace.name }],
+      output: { workspaceId: workspace.id },
+    };
+  }
+
   if (command.kind === "contact") {
     const result = await findOrCreateContact(command.name);
     return result.created
@@ -283,7 +309,7 @@ export async function executeRecordCommand(
     const business = await createBusiness({
       name: command.name,
       category: "geral",
-      stage: "novo",
+      stage: "negociacao",
       responsibleContactIds: [contact.id],
       responsibleUserIds: [],
       notes: [],
@@ -373,7 +399,7 @@ export async function executeRecordCommand(
           paymentMethod: "",
           paymentTerms: "",
           financeNotes: "",
-          tasks: [],
+          deliveries: [],
         },
       ];
     });
@@ -387,6 +413,87 @@ export async function executeRecordCommand(
           "modelo de serviço",
         ),
       },
+    };
+  }
+
+  if (command.kind === "service") {
+    const service = await createService({
+      name: command.name,
+      description: command.description ?? "",
+      icon: "package",
+      color: "blue",
+      defaultStatus: "planejamento",
+      defaultDurationDays: null,
+      defaultBriefing: "",
+      tagLabels: [],
+      responsibleUserIds: [],
+      defaultContractType: "one_off",
+      defaultAmountCents: 0,
+      defaultInstallmentCount: 1,
+      defaultPaymentMethod: "",
+      defaultPaymentTerms: "",
+      defaultFinanceNotes: "",
+    });
+    return {
+      message: `Criei o serviço ${service.name}.`,
+      created: [{ type: "serviço", name: service.name }],
+      output: { serviceId: service.id },
+    };
+  }
+
+  if (command.kind === "contract") {
+    let businessId: string;
+    let businessName: string;
+    if (command.businessRef) {
+      businessId = referencedId(context, command.businessRef, "businessId");
+      businessName = command.businessName ?? "negócio vinculado";
+    } else {
+      const businesses = await listBusinesses({ query: command.businessName!, pageSize: 100 });
+      const business = exactOne(businesses.items, command.businessName!, "negócio");
+      if (!business) throw new RecordDependencyMissingError("negócio", command.businessName!);
+      businessId = business.id;
+      businessName = business.name;
+    }
+    const contract = await createContract({
+      name: command.name,
+      businessId,
+      contractType: command.contractType,
+      amountCents: command.amountCents,
+      startDate: command.startDate ?? null,
+      endDate: command.endDate ?? null,
+      firstDueDate: command.firstDueDate ?? null,
+      paymentMethod: "",
+      paymentTerms: "",
+      financeNotes: "",
+      installments:
+        command.contractType === "one_off" && command.amountCents > 0
+          ? [{ number: 1, dueDate: command.firstDueDate!, amountCents: command.amountCents, status: "pending" }]
+          : [],
+    });
+    return {
+      message: `Criei o contrato ${contract.name} para o negócio ${businessName}.`,
+      created: [{ type: "contrato", name: contract.name }],
+      output: { contractId: contract.id },
+    };
+  }
+
+  if (command.kind === "finance_entry") {
+    const snapshot = await createFinanceEntry({
+      title: command.name,
+      type: command.type === "revenue" ? "receita" : "despesa",
+      amount: command.amountCents / 100,
+      date: command.dueDate,
+      competenceDate: command.dueDate,
+      mode: command.mode === "recurring" ? "fixa" : "pontual",
+      category: command.category ?? "",
+      notes: "",
+      ...(command.mode === "recurring" ? { recurrenceMonths: command.recurrenceCount ?? 12 } : {}),
+    });
+    const entry = snapshot.entries.find((item) => item.title === command.name && item.dueDate === command.dueDate);
+    return {
+      message: `Criei a ${command.type === "revenue" ? "receita" : "despesa"} ${command.name}.`,
+      created: [{ type: command.type === "revenue" ? "receita" : "despesa", name: command.name }],
+      output: entry ? { financeEntryId: entry.id } : undefined,
     };
   }
 
@@ -404,10 +511,10 @@ export async function executeRecordCommand(
           name: command.name,
           category: "",
           briefing: command.briefing ?? "",
-          subtasks: (command.subtasks ?? []).map((subtask) => ({
+          tasks: (command.tasks ?? []).map((task) => ({
             id: templateId(),
-            nome: subtask.name,
-            duracao: String(subtask.durationMinutes / 60),
+            nome: task.name,
+            duracao: String(task.durationMinutes / 60),
             status: "pendente",
           })),
           status: "planejamento",
@@ -423,8 +530,8 @@ export async function executeRecordCommand(
           template.id === serviceTemplateId
             ? {
                 ...template,
-                tasks: [
-                  ...template.tasks,
+                deliveries: [
+                  ...template.deliveries,
                   { id: templateId(), templateId: id, name: command.name },
                 ],
               }
@@ -462,9 +569,9 @@ export async function executeRecordCommand(
     projectId = project.id;
     projectName = project.name;
   }
-  const subtasks = command.subtasks?.length
-    ? command.subtasks.map((subtask) => ({
-        ...subtask,
+  const tasks = command.tasks?.length
+    ? command.tasks.map((task) => ({
+        ...task,
         status: "pendente" as const,
       }))
     : [
@@ -474,7 +581,7 @@ export async function executeRecordCommand(
           status: "pendente" as const,
         },
       ];
-  const task = await createTask({
+  const delivery = await createDelivery({
     name: command.name,
     projectId,
     category: "",
@@ -486,12 +593,12 @@ export async function executeRecordCommand(
     tagLabels: [],
     responsibleUserIds: [await currentResponsibleUserId()],
     status: "planejamento",
-    subtasks,
+    tasks,
   });
   return {
-    message: `Criei a tarefa ${task.name} no projeto ${projectName}.`,
-    created: [{ type: "tarefa", name: task.name }],
-    output: { taskId: task.id },
+    message: `Criei a entrega ${delivery.name} no projeto ${projectName}.`,
+    created: [{ type: "entrega", name: delivery.name }],
+    output: { deliveryId: delivery.id },
   };
 }
 

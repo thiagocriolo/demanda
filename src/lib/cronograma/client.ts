@@ -63,24 +63,24 @@ export async function loadCronogramaSnapshot(
 }
 
 export function saveCronogramaEntry(
-  subtaskId: string,
+  taskId: string,
   input: CronogramaBlockInput,
   fetcher: FetchLike = fetch,
 ): Promise<CronogramaSnapshot> {
   return request(
-    `/api/cronograma/${encodeURIComponent(subtaskId)}`,
+    `/api/cronograma/${encodeURIComponent(taskId)}`,
     jsonRequest("PUT", input),
     fetcher,
   );
 }
 
 export function deleteCronogramaEntry(
-  subtaskId: string,
+  taskId: string,
   version: number,
   fetcher: FetchLike = fetch,
 ): Promise<CronogramaSnapshot> {
   return request(
-    `/api/cronograma/${encodeURIComponent(subtaskId)}`,
+    `/api/cronograma/${encodeURIComponent(taskId)}`,
     jsonRequest("DELETE", { version }),
     fetcher,
   );
@@ -102,7 +102,7 @@ export function scheduleMapFromSnapshot(
 ): ScheduleMap {
   return Object.fromEntries(
     snapshot.items.map((item) => [
-      item.subtaskId,
+      item.taskId,
       {
         date: item.date,
         startMinutes: item.startMinutes,

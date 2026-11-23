@@ -166,7 +166,7 @@ export type ToolModel = {
 };
 
 export type ToolUseContext = {
-  task: { id: string; name: string };
+  delivery: { id: string; name: string };
   project: { id: string; name: string };
   business: { id: string; name: string };
 };
@@ -180,7 +180,7 @@ export type ToolUse = {
   name: string;
   configSnapshot: ToolConfig;
   content: ToolUseContent;
-  taskId: string | null;
+  deliveryId: string | null;
   context: ToolUseContext | null;
   status: ToolUseStatus;
   responseCount: number;
@@ -233,14 +233,14 @@ export type ToolUseInput = {
   workspaceId?: string;
   modelId: string;
   name: string;
-  taskId: string | null;
+  deliveryId: string | null;
   content: ToolUseContent;
   status: "draft" | "open";
 };
 
 export type ToolUseUpdateInput = {
   name: string;
-  taskId: string | null;
+  deliveryId: string | null;
   content: ToolUseContent;
   status: ToolUseStatus;
   version: number;

@@ -24,7 +24,7 @@
   import type {
     DeliveryTemplate,
     ServiceTemplate,
-    TemplateTask,
+    TemplateDelivery,
   } from "./types";
   import "./template-modal.css";
 
@@ -46,17 +46,17 @@
   let duration = $state(initialRecord?.duration ?? "");
   let contractType = $state(normalizeContractType(initialRecord?.contractType));
   let amount = $state(initialRecord?.amount ?? "");
-  let selectedTasks = $state<TemplateTask[]>(initialTasks());
-  let openFrequencyTaskId = $state<string | null>(null);
+  let selectedDeliveries = $state<TemplateDelivery[]>(initialDeliveries());
+  let openFrequencyDeliveryId = $state<string | null>(null);
   let deliveryItems = $derived(
     deliveries.map((delivery: DeliveryTemplate) => ({
       id: delivery.id,
       label: delivery.name,
       description: delivery.briefing || undefined,
       actionLabel:
-        selectedTasks.length >= 100 ? "Limite atingido" : "Adicionar",
+        selectedDeliveries.length >= 100 ? "Limite atingido" : "Adicionar",
       actionIcon: Plus,
-      actionDisabled: selectedTasks.length >= 100,
+      actionDisabled: selectedDeliveries.length >= 100,
     })),
   );
 
@@ -80,13 +80,13 @@
       : "Pontual";
   }
 
-  function initialTasks(): TemplateTask[] {
+  function initialDeliveries(): TemplateDelivery[] {
     if (!initialRecord) return [];
-    if (initialRecord.tasks.length) {
-      return structuredClone(initialRecord.tasks).map((task: TemplateTask) => ({
-        ...task,
-        frequency: task.frequency ?? "one_off",
-        recurrenceDays: task.recurrenceDays ?? [],
+    if (initialRecord.deliveries.length) {
+      return structuredClone(initialRecord.deliveries).map((delivery: TemplateDelivery) => ({
+        ...delivery,
+        frequency: delivery.frequency ?? "one_off",
+        recurrenceDays: delivery.recurrenceDays ?? [],
       }));
     }
     return deliveries
@@ -106,28 +106,28 @@
       }));
   }
 
-  function addTask(item: GlobalSelectorItem): void {
-    if (selectedTasks.length >= 100) return;
-    const task: TemplateTask = {
+  function addDelivery(item: GlobalSelectorItem): void {
+    if (selectedDeliveries.length >= 100) return;
+    const delivery: TemplateDelivery = {
       id: crypto.randomUUID(),
       templateId: item.id,
       name: item.label,
       frequency: "one_off",
       recurrenceDays: [],
     };
-    selectedTasks = [...selectedTasks, task];
+    selectedDeliveries = [...selectedDeliveries, delivery];
     void tick().then(() =>
       formNode
-        ?.querySelector<HTMLInputElement>(`[data-task-id="${task.id}"] input`)
+        ?.querySelector<HTMLInputElement>(`[data-delivery-id="${delivery.id}"] input`)
         ?.focus(),
     );
   }
 
-  function removeTask(id: string): void {
-    selectedTasks = selectedTasks.filter((task) => task.id !== id);
+  function removeDelivery(id: string): void {
+    selectedDeliveries = selectedDeliveries.filter((delivery) => delivery.id !== id);
   }
 
-  function taskTemplateName(templateId: string): string {
+  function deliveryTemplateName(templateId: string): string {
     return (
       deliveries.find(
         (delivery: DeliveryTemplate) => delivery.id === templateId,
@@ -135,32 +135,32 @@
     );
   }
 
-  function setTaskFrequency(task: TemplateTask): void {
-    if (task.frequency === "weekly") {
-      task.recurrenceDays = [0];
-      task.customUnit = undefined;
-    } else if (task.frequency === "monthly") {
-      task.recurrenceDays = [1];
-      task.customUnit = undefined;
-    } else if (task.frequency === "custom") {
-      task.customUnit ??= "week";
-      task.recurrenceDays ??= [];
+  function setDeliveryFrequency(delivery: TemplateDelivery): void {
+    if (delivery.frequency === "weekly") {
+      delivery.recurrenceDays = [0];
+      delivery.customUnit = undefined;
+    } else if (delivery.frequency === "monthly") {
+      delivery.recurrenceDays = [1];
+      delivery.customUnit = undefined;
+    } else if (delivery.frequency === "custom") {
+      delivery.customUnit ??= "week";
+      delivery.recurrenceDays ??= [];
     } else {
-      task.customUnit = undefined;
-      task.recurrenceDays = [];
+      delivery.customUnit = undefined;
+      delivery.recurrenceDays = [];
     }
-    selectedTasks = [...selectedTasks];
+    selectedDeliveries = [...selectedDeliveries];
   }
 
-  function toggleDay(task: TemplateTask, day: number): void {
-    const current = task.recurrenceDays ?? [];
-    task.recurrenceDays = current.includes(day)
+  function toggleDay(delivery: TemplateDelivery, day: number): void {
+    const current = delivery.recurrenceDays ?? [];
+    delivery.recurrenceDays = current.includes(day)
       ? current.filter((value) => value !== day)
       : [...current, day].sort((left, right) => left - right);
-    selectedTasks = [...selectedTasks];
+    selectedDeliveries = [...selectedDeliveries];
   }
 
-  function frequencyLabel(frequency?: TemplateTask["frequency"]): string {
+  function frequencyLabel(frequency?: TemplateDelivery["frequency"]): string {
     return (
       {
         one_off: "Uma vez",
@@ -172,12 +172,12 @@
   }
 
   function chooseFrequency(
-    task: TemplateTask,
-    frequency: NonNullable<TemplateTask["frequency"]>,
+    delivery: TemplateDelivery,
+    frequency: NonNullable<TemplateDelivery["frequency"]>,
   ): void {
-    task.frequency = frequency;
-    setTaskFrequency(task);
-    openFrequencyTaskId = null;
+    delivery.frequency = frequency;
+    setDeliveryFrequency(delivery);
+    openFrequencyDeliveryId = null;
   }
 
   onMount(() => {
@@ -203,21 +203,21 @@
       duration,
       contractType,
       amount: amount.trim(),
-      tasks: JSON.stringify(
-        selectedTasks.map((task) => ({
-          ...task,
+      deliveries: JSON.stringify(
+        selectedDeliveries.map((delivery) => ({
+          ...delivery,
           frequency:
             contractType === "Rotina"
-              ? (task.frequency ?? "one_off")
+              ? (delivery.frequency ?? "one_off")
               : "one_off",
-          customUnit: task.frequency === "custom" ? task.customUnit : undefined,
+          customUnit: delivery.frequency === "custom" ? delivery.customUnit : undefined,
           recurrenceDays:
-            task.frequency === "weekly"
+            delivery.frequency === "weekly"
               ? [0]
-              : task.frequency === "monthly"
+              : delivery.frequency === "monthly"
                 ? [1]
-                : (task.recurrenceDays ?? []),
-          name: task.name.trim(),
+                : (delivery.recurrenceDays ?? []),
+          name: delivery.name.trim(),
         })),
       ),
     });
@@ -358,8 +358,8 @@
             </h3>
             <span
               class="template-modal-count"
-              aria-label={`${selectedTasks.length} tarefas adicionadas`}
-              >{selectedTasks.length}</span
+              aria-label={`${selectedDeliveries.length} tarefas adicionadas`}
+              >{selectedDeliveries.length}</span
             >
           </div>
           {#if deliveryItems.length}
@@ -372,22 +372,22 @@
               emptyMessage="Nenhuma entrega disponível."
               icon={ListChecks}
               controlIcon={ListChecks}
-              onitemaction={addTask}
+              onitemaction={addDelivery}
             />
-            {#if selectedTasks.length}
-              <div class="template-modal-tasks">
-                {#each selectedTasks as task (task.id)}
-                  <div class="template-modal-task" data-task-id={task.id}>
-                    <span class="template-modal-task-icon" aria-hidden="true">
+            {#if selectedDeliveries.length}
+              <div class="template-modal-deliveries">
+                {#each selectedDeliveries as delivery (delivery.id)}
+                  <div class="template-modal-delivery" data-delivery-id={delivery.id}>
+                    <span class="template-modal-delivery-icon" aria-hidden="true">
                       <ListChecks size={17} />
                     </span>
                     <label>
-                      <span>{taskTemplateName(task.templateId)}</span>
+                      <span>{deliveryTemplateName(delivery.templateId)}</span>
                       <input
-                        bind:value={task.name}
+                        bind:value={delivery.name}
                         maxlength="140"
                         required
-                        aria-label={`Nome da tarefa baseada em ${taskTemplateName(task.templateId)}`}
+                        aria-label={`Nome da tarefa baseada em ${deliveryTemplateName(delivery.templateId)}`}
                       />
                     </label>
                     {#if contractType === "Rotina"}
@@ -396,27 +396,27 @@
                           class="routine-frequency-trigger"
                           type="button"
                           aria-haspopup="menu"
-                          aria-expanded={openFrequencyTaskId === task.id}
+                          aria-expanded={openFrequencyDeliveryId === delivery.id}
                           onclick={() =>
-                            (openFrequencyTaskId =
-                              openFrequencyTaskId === task.id ? null : task.id)}
+                            (openFrequencyDeliveryId =
+                              openFrequencyDeliveryId === delivery.id ? null : delivery.id)}
                         >
                           <Repeat2 size={15} aria-hidden="true" />
-                          <span>{frequencyLabel(task.frequency)}</span>
+                          <span>{frequencyLabel(delivery.frequency)}</span>
                           <ChevronDown size={14} aria-hidden="true" />
                         </button>
-                        {#if openFrequencyTaskId === task.id}
+                        {#if openFrequencyDeliveryId === delivery.id}
                           <div class="routine-frequency-menu" role="menu">
                             {#each [["one_off", "Uma vez", "Não se repete no projeto"], ["weekly", "Semanal", "Cria uma tarefa todo domingo"], ["monthly", "Mensal", "Cria uma tarefa no dia 1"], ["custom", "Personalizada", "Escolha os dias desejados"]] as [value, label, description]}
                               <button
                                 type="button"
                                 role="menuitemradio"
-                                aria-checked={task.frequency === value}
+                                aria-checked={delivery.frequency === value}
                                 onclick={() =>
                                   chooseFrequency(
-                                    task,
+                                    delivery,
                                     value as NonNullable<
-                                      TemplateTask["frequency"]
+                                      TemplateDelivery["frequency"]
                                     >,
                                   )}
                               >
@@ -425,7 +425,7 @@
                                     >{description}</small
                                   ></span
                                 >
-                                {#if task.frequency === value}<Check
+                                {#if delivery.frequency === value}<Check
                                     class="routine-frequency-check"
                                     size={15}
                                     aria-hidden="true"
@@ -439,12 +439,12 @@
                           {#each [["one_off", "Uma vez"], ["weekly", "Semanal"], ["monthly", "Mensal"], ["custom", "Personalizada"]] as [value, label]}
                             <button
                               type="button"
-                              class:active={task.frequency === value}
-                              aria-pressed={task.frequency === value}
+                              class:active={delivery.frequency === value}
+                              aria-pressed={delivery.frequency === value}
                               onclick={() => {
-                                task.frequency =
-                                  value as TemplateTask["frequency"];
-                                setTaskFrequency(task);
+                                delivery.frequency =
+                                  value as TemplateDelivery["frequency"];
+                                setDeliveryFrequency(delivery);
                               }}>{label}</button
                             >
                           {/each}
@@ -454,13 +454,13 @@
                     <button
                       class="template-modal-remove"
                       type="button"
-                      aria-label={`Remover ${task.name || "tarefa"}`}
-                      onclick={() => removeTask(task.id)}
+                      aria-label={`Remover ${delivery.name || "tarefa"}`}
+                      onclick={() => removeDelivery(delivery.id)}
                     >
                       <Trash2 size={17} />
                     </button>
                   </div>
-                  {#if contractType === "Rotina" && task.frequency === "custom"}
+                  {#if contractType === "Rotina" && delivery.frequency === "custom"}
                     <div
                       class="routine-custom"
                       aria-label="Configuração da frequência personalizada"
@@ -468,10 +468,10 @@
                       <label>
                         Repetir por
                         <select
-                          bind:value={task.customUnit}
+                          bind:value={delivery.customUnit}
                           onchange={() => {
-                            task.recurrenceDays = [];
-                            selectedTasks = [...selectedTasks];
+                            delivery.recurrenceDays = [];
+                            selectedDeliveries = [...selectedDeliveries];
                           }}
                         >
                           <option value="week">semana</option>
@@ -479,17 +479,17 @@
                         </select>
                       </label>
                       <div class="routine-days">
-                        {#each task.customUnit === "month" ? Array.from({ length: 31 }, (_, index) => index + 1) : [0, 1, 2, 3, 4, 5, 6] as day}
+                        {#each delivery.customUnit === "month" ? Array.from({ length: 31 }, (_, index) => index + 1) : [0, 1, 2, 3, 4, 5, 6] as day}
                           <button
                             type="button"
-                            class:active={(task.recurrenceDays ?? []).includes(
+                            class:active={(delivery.recurrenceDays ?? []).includes(
                               day,
                             )}
-                            aria-pressed={(task.recurrenceDays ?? []).includes(
+                            aria-pressed={(delivery.recurrenceDays ?? []).includes(
                               day,
                             )}
-                            onclick={() => toggleDay(task, day)}
-                            >{task.customUnit === "month"
+                            onclick={() => toggleDay(delivery, day)}
+                            >{delivery.customUnit === "month"
                               ? day
                               : [
                                   "Dom",
@@ -508,7 +508,7 @@
                 {/each}
               </div>
             {/if}
-            <p class="template-modal-task-helper">
+            <p class="template-modal-delivery-helper">
               O mesmo modelo pode ser adicionado mais de uma vez. Renomeie cada
               tarefa conforme necessário.
             </p>
@@ -635,15 +635,15 @@
     color: var(--primary);
   }
 
-  .template-modal-task {
+  .template-modal-delivery {
     grid-template-columns: 46px minmax(0, 1fr) auto 58px;
     padding: 8px;
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
     background: var(--surface-soft);
   }
-  .template-modal-task-icon,
-  .template-modal-task label,
+  .template-modal-delivery-icon,
+  .template-modal-delivery label,
   .template-modal-remove {
     background: var(--surface);
   }
@@ -767,7 +767,7 @@
     .service-mode-options {
       width: 100%;
     }
-    .template-modal-task {
+    .template-modal-delivery {
       grid-template-columns: 46px minmax(0, 1fr) 52px;
     }
     .routine-frequency {

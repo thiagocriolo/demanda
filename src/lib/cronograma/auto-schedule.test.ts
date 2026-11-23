@@ -2,20 +2,20 @@ import { describe, expect, it } from "vitest";
 import { autoScheduleScore, autoScheduleWeek } from "./auto-schedule";
 import type { ScheduleTask } from "./types";
 
-function task(id: string, overrides: Partial<ScheduleTask> = {}): ScheduleTask {
+function delivery(id: string, overrides: Partial<ScheduleTask> = {}): ScheduleTask {
   return {
     id,
-    taskId: overrides.taskId ?? id,
-    subtaskId: id,
-    taskNome: overrides.taskNome ?? `Tarefa ${id}`,
-    nome: overrides.nome ?? `Subtarefa ${id}`,
+    deliveryId: overrides.deliveryId ?? id,
+    taskId: id,
+    deliveryNome: overrides.deliveryNome ?? `Tarefa ${id}`,
+    nome: overrides.nome ?? `Tarefa ${id}`,
     sequence: overrides.sequence ?? 0,
-    subtaskCount: overrides.subtaskCount ?? 1,
+    taskCount: overrides.taskCount ?? 1,
     duracao: overrides.duracao ?? "1",
     createdAt: overrides.createdAt ?? "2026-08-01T10:00:00.000Z",
     updatedAt: overrides.updatedAt ?? "2026-08-01T10:00:00.000Z",
     status: overrides.status ?? "pendente",
-    taskStatus: overrides.taskStatus ?? "fila",
+    deliveryStatus: overrides.deliveryStatus ?? "fila",
     priority: overrides.priority ?? "normal",
     responsibleUserIds: overrides.responsibleUserIds ?? '["user-1"]',
     ...overrides,
@@ -32,13 +32,13 @@ const week = [
 
 describe("autoScheduleWeek", () => {
   it("prioriza prazo, status, prioridade e antiguidade de forma explicável", () => {
-    const overdue = task("overdue", {
+    const overdue = delivery("overdue", {
       dueDate: "2026-08-16",
       priority: "baixa",
-      taskStatus: "planejamento",
+      deliveryStatus: "planejamento",
     });
-    const urgent = task("urgent", { priority: "urgente" });
-    const normal = task("normal");
+    const urgent = delivery("urgent", { priority: "urgente" });
+    const normal = delivery("normal");
 
     expect(autoScheduleScore(overdue, week[0]!)).toBeGreaterThan(
       autoScheduleScore(urgent, week[0]!),
@@ -48,25 +48,25 @@ describe("autoScheduleWeek", () => {
     );
   });
 
-  it("agenda subtarefas em sequência e ocupa primeiro os cards mais críticos", () => {
-    const first = task("a-1", {
-      taskId: "a",
+  it("agenda tarefas em sequência e ocupa primeiro os cards mais críticos", () => {
+    const first = delivery("a-1", {
+      deliveryId: "a",
       sequence: 0,
-      subtaskCount: 2,
+      taskCount: 2,
       priority: "urgente",
       dueDate: "2026-08-18",
     });
-    const second = task("a-2", {
-      taskId: "a",
+    const second = delivery("a-2", {
+      deliveryId: "a",
       sequence: 1,
-      subtaskCount: 2,
+      taskCount: 2,
       priority: "urgente",
       dueDate: "2026-08-18",
     });
-    const low = task("b-1", { priority: "baixa" });
+    const low = delivery("b-1", { priority: "baixa" });
     const result = autoScheduleWeek({
-      tasks: [low, second, first],
-      candidateTaskIds: [low.id, second.id, first.id],
+      deliveries: [low, second, first],
+      candidateDeliveryIds: [low.id, second.id, first.id],
       schedules: {},
       days: week,
       shifts: [{ start: "08:00", end: "12:00" }],
@@ -85,11 +85,11 @@ describe("autoScheduleWeek", () => {
   });
 
   it("respeita intervalos, conflitos fixos e não agenda no passado", () => {
-    const fixed = task("fixed");
-    const candidate = task("candidate", { duracao: "2" });
+    const fixed = delivery("fixed");
+    const candidate = delivery("candidate", { duracao: "2" });
     const result = autoScheduleWeek({
-      tasks: [fixed, candidate],
-      candidateTaskIds: [candidate.id],
+      deliveries: [fixed, candidate],
+      candidateDeliveryIds: [candidate.id],
       schedules: {
         [fixed.id]: {
           date: week[0]!,

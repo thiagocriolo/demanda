@@ -6,11 +6,11 @@ import type {
 } from "../../settings/types";
 import {
   deliveryTemplateResponsibles,
-  deliveryTemplateSubtasks,
+  deliveryTemplateTasks,
   deliveryTemplates,
   deliveryTemplateTags,
   serviceResponsibles,
-  serviceTaskTemplates,
+  serviceDeliveryTemplates,
   services,
   serviceTags,
   tags,
@@ -79,19 +79,19 @@ async function hydrateServiceTemplates(
         )
         .orderBy(asc(serviceResponsibles.sortOrder), asc(users.id))
     : [];
-  const serviceTaskRows = serviceIds.length
+  const serviceDeliveryRows = serviceIds.length
     ? await database
         .select()
-        .from(serviceTaskTemplates)
+        .from(serviceDeliveryTemplates)
         .where(
           and(
-            eq(serviceTaskTemplates.workspaceId, workspaceId),
-            inArray(serviceTaskTemplates.serviceId, serviceIds),
+            eq(serviceDeliveryTemplates.workspaceId, workspaceId),
+            inArray(serviceDeliveryTemplates.serviceId, serviceIds),
           ),
         )
         .orderBy(
-          asc(serviceTaskTemplates.sortOrder),
-          asc(serviceTaskTemplates.id),
+          asc(serviceDeliveryTemplates.sortOrder),
+          asc(serviceDeliveryTemplates.id),
         )
     : [];
 
@@ -121,19 +121,19 @@ async function hydrateServiceTemplates(
       paymentMethod: row.defaultPaymentMethod ?? "",
       paymentTerms: row.defaultPaymentTerms ?? "",
       financeNotes: row.defaultFinanceNotes ?? "",
-      tasks: serviceTaskRows
+      deliveries: serviceDeliveryRows
         .filter(({ serviceId }) => serviceId === row.id)
-        .map((task) => ({
-          id: task.id,
-          templateId: task.deliveryTemplateId,
-          name: task.name,
-          frequency: task.recurrenceType as
+        .map((delivery) => ({
+          id: delivery.id,
+          templateId: delivery.deliveryTemplateId,
+          name: delivery.name,
+          frequency: delivery.recurrenceType as
             "one_off" | "weekly" | "monthly" | "custom",
-          customUnit: (task.recurrenceUnit || undefined) as
+          customUnit: (delivery.recurrenceUnit || undefined) as
             "week" | "month" | undefined,
           recurrenceDays: (() => {
             try {
-              const parsed: unknown = JSON.parse(task.recurrenceDays);
+              const parsed: unknown = JSON.parse(delivery.recurrenceDays);
               return Array.isArray(parsed)
                 ? parsed.filter((item): item is number =>
                     Number.isInteger(item),
@@ -163,19 +163,19 @@ async function hydrateDeliveryTemplates(
     )
     .orderBy(asc(deliveryTemplates.sortOrder), asc(deliveryTemplates.id));
   const deliveryIds = deliveryRows.map(({ id }) => id);
-  const subtaskRows = deliveryIds.length
+  const taskRows = deliveryIds.length
     ? await database
         .select()
-        .from(deliveryTemplateSubtasks)
+        .from(deliveryTemplateTasks)
         .where(
           and(
-            eq(deliveryTemplateSubtasks.workspaceId, workspaceId),
-            inArray(deliveryTemplateSubtasks.deliveryTemplateId, deliveryIds),
+            eq(deliveryTemplateTasks.workspaceId, workspaceId),
+            inArray(deliveryTemplateTasks.deliveryTemplateId, deliveryIds),
           ),
         )
         .orderBy(
-          asc(deliveryTemplateSubtasks.sortOrder),
-          asc(deliveryTemplateSubtasks.id),
+          asc(deliveryTemplateTasks.sortOrder),
+          asc(deliveryTemplateTasks.id),
         )
     : [];
   const deliveryTagRows = deliveryIds.length
@@ -232,13 +232,13 @@ async function hydrateDeliveryTemplates(
       name: row.name,
       category: row.categoryKey ?? "",
       briefing: row.description,
-      subtasks: subtaskRows
+      tasks: taskRows
         .filter(({ deliveryTemplateId }) => deliveryTemplateId === row.id)
-        .map((subtask) => ({
-          id: subtask.id,
-          nome: subtask.name,
-          duracao: durationHours(subtask.durationMinutes),
-          status: subtask.defaultStatusKey,
+        .map((task) => ({
+          id: task.id,
+          nome: task.name,
+          duracao: durationHours(task.durationMinutes),
+          status: task.defaultStatusKey,
         })),
       status: row.defaultStatusKey,
       priority: row.defaultPriorityKey,

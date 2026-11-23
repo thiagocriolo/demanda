@@ -1,8 +1,8 @@
 export type CronogramaBlock = {
   id: string;
   workspaceId: string;
+  deliveryId: string;
   taskId: string;
-  subtaskId: string;
   date: string;
   startMinutes: number;
   durationMinutes: number;
@@ -29,7 +29,7 @@ export type CronogramaDeleteInput = {
 };
 
 export type CronogramaReorganizationBlockInput = CronogramaBlockInput & {
-  subtaskId: string;
+  taskId: string;
 };
 
 export type CronogramaReorganizationInput = {

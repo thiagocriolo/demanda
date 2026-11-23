@@ -17,8 +17,8 @@
     X,
   } from "@lucide/svelte";
   import { onMount } from "svelte";
-  import type { Task } from "$lib/tasks/types";
-  import { listAllTasks, TaskApiError } from "$lib/tasks/client";
+  import type { Delivery } from "$lib/deliveries/types";
+  import { listAllDeliveries, DeliveryApiError } from "$lib/deliveries/client";
   import Tabs from "$lib/ui/Tabs.svelte";
   import PageHeader from "$lib/ui/PageHeader.svelte";
   import {
@@ -63,7 +63,7 @@
   let activeTab = $state<PageTab>("uses");
   let models = $state<ToolModel[]>([]);
   let uses = $state<ToolUse[]>([]);
-  let tasks = $state<Task[]>([]);
+  let deliveries = $state<Delivery[]>([]);
   let loading = $state(true);
   let loadError = $state("");
   let query = $state("");
@@ -76,7 +76,7 @@
   let useModal = $state(false);
   let editingUse = $state<ToolUse>();
   let initialUseModel = $state<ToolModel>();
-  let initialTaskId = $state<string | null>(null);
+  let initialDeliveryId = $state<string | null>(null);
   let detailUse = $state<ToolUse>();
   let createUseAfterModel = $state(false);
   let pendingAction = $state("");
@@ -98,7 +98,7 @@
       const searchable = [
         use.name,
         use.modelName,
-        use.context?.task.name,
+        use.context?.delivery.name,
         use.context?.project.name,
         use.context?.business.name,
         findToolResource(use.toolKey).name,
@@ -145,17 +145,17 @@
     loading = true;
     loadError = "";
     try {
-      const [snapshots, loadedTasks] = await Promise.all([
+      const [snapshots, loadedDeliveries] = await Promise.all([
         loadTools(),
-        listAllTasks(),
+        listAllDeliveries(),
       ]);
       models = snapshots.flatMap(({ models: items }) => items);
       uses = snapshots.flatMap(({ uses: items }) => items);
-      tasks = loadedTasks;
+      deliveries = loadedDeliveries;
       handleRequestedFlow();
     } catch (cause) {
       loadError =
-        cause instanceof ToolApiError || cause instanceof TaskApiError
+        cause instanceof ToolApiError || cause instanceof DeliveryApiError
           ? cause.message
           : "Não foi possível carregar Ferramentas.";
     } finally {
@@ -165,7 +165,7 @@
 
   function clearFlowQuery(): void {
     const url = new URL(page.url);
-    for (const key of ["novoUso", "taskId", "modelo", "ferramenta"]) {
+    for (const key of ["novoUso", "deliveryId", "modelo", "ferramenta"]) {
       url.searchParams.delete(key);
     }
     history.replaceState(history.state, "", `${url.pathname}${url.search}`);
@@ -174,26 +174,26 @@
   function handleRequestedFlow(): void {
     if (requestedFlowHandled) return;
     const wantsUse = page.url.searchParams.get("novoUso") === "1";
-    const taskId = page.url.searchParams.get("taskId");
+    const deliveryId = page.url.searchParams.get("deliveryId");
     const modelId = page.url.searchParams.get("modelo");
     const requestedTool = page.url.searchParams.get("ferramenta");
-    if (!wantsUse && !taskId && !modelId && !isToolKey(requestedTool)) return;
+    if (!wantsUse && !deliveryId && !modelId && !isToolKey(requestedTool)) return;
     requestedFlowHandled = true;
-    const task = tasks.find(({ id }) => id === taskId);
+    const delivery = deliveries.find(({ id }) => id === deliveryId);
     const model = activeModels.find(({ id }) => id === modelId);
     if (model) {
-      openUse(model, task?.id ?? null);
-    } else if (task) {
-      const taskModel = activeModels.find(
-        ({ workspaceId }) => workspaceId === task.workspaceId,
+      openUse(model, delivery?.id ?? null);
+    } else if (delivery) {
+      const deliveryModel = activeModels.find(
+        ({ workspaceId }) => workspaceId === delivery.workspaceId,
       );
-      if (taskModel) openUse(taskModel, task.id);
+      if (deliveryModel) openUse(deliveryModel, delivery.id);
       else
         openTemplate(
           isToolKey(requestedTool) ? requestedTool : "form",
-          task.workspaceId,
+          delivery.workspaceId,
           true,
-          task.id,
+          delivery.id,
         );
     } else if (isToolKey(requestedTool)) {
       const toolModel = activeModels.find(
@@ -217,13 +217,13 @@
     toolKey: ToolKey = "form",
     workspaceId = currentWorkspaceId(),
     thenCreateUse = false,
-    taskId: string | null = null,
+    deliveryId: string | null = null,
   ): void {
     editingModel = undefined;
     templateToolKey = toolKey;
     templateWorkspaceId = workspaceId;
     createUseAfterModel = thenCreateUse;
-    initialTaskId = taskId;
+    initialDeliveryId = deliveryId;
     templateModal = true;
   }
 
@@ -243,24 +243,24 @@
     openUse();
   }
 
-  function openUse(model?: ToolModel, taskId: string | null = null): void {
+  function openUse(model?: ToolModel, deliveryId: string | null = null): void {
     editingUse = undefined;
     initialUseModel = model;
-    initialTaskId = taskId;
+    initialDeliveryId = deliveryId;
     useModal = true;
   }
 
   function editUse(use: ToolUse): void {
     editingUse = use;
     initialUseModel = models.find(({ id }) => id === use.modelId);
-    initialTaskId = use.taskId;
+    initialDeliveryId = use.deliveryId;
     useModal = true;
   }
 
   function replaceModel(saved: ToolModel): void {
     models = [saved, ...models.filter(({ id }) => id !== saved.id)];
     templateModal = false;
-    if (createUseAfterModel) openUse(saved, initialTaskId);
+    if (createUseAfterModel) openUse(saved, initialDeliveryId);
     createUseAfterModel = false;
   }
 
@@ -321,7 +321,7 @@
     try {
       const archived = await updateToolUse(use.id, {
         name: use.name,
-        taskId: use.taskId,
+        deliveryId: use.deliveryId,
         content: use.content,
         status: "archived",
         version: use.version,
@@ -384,7 +384,7 @@
             bind:value={query}
             aria-label={activeTab === "uses" ? "Buscar usos" : "Buscar modelos"}
             placeholder={activeTab === "uses"
-              ? "Buscar por nome, projeto ou tarefa…"
+              ? "Buscar por nome, projeto ou entrega…"
               : "Buscar modelos…"}
           /></label
         >
@@ -453,8 +453,8 @@
                 <h3>{use.name}</h3>
                 {#if use.context}<p>
                     <FolderKanban size={13} />
-                    {use.context.project.name} · {use.context.task.name}
-                  </p>{:else}<p>Sem tarefa associada</p>{/if}
+                    {use.context.project.name} · {use.context.delivery.name}
+                  </p>{:else}<p>Sem entrega associada</p>{/if}
               </div>
               <div class="tool-card-meta">
                 <span
@@ -672,9 +672,9 @@
 {#if useModal}
   <UseEditorModal
     {models}
-    {tasks}
+    {deliveries}
     initialModel={initialUseModel}
-    {initialTaskId}
+    {initialDeliveryId}
     use={editingUse}
     onclose={() => (useModal = false)}
     onsaved={replaceUse}

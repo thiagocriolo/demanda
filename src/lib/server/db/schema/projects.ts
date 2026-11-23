@@ -283,15 +283,15 @@ export const projectResponsibles = applicationSchema.table(
   ],
 );
 
-export const projectTaskRoutines = applicationSchema.table(
-  "project_task_routines",
+export const projectDeliveryRoutines = applicationSchema.table(
+  "project_delivery_routines",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
     projectId: uuid("project_id").notNull(),
-    sourceServiceTaskTemplateId: uuid("source_service_task_template_id"),
+    sourceServiceDeliveryTemplateId: uuid("source_service_delivery_template_id"),
     name: varchar("name", { length: 140 }).notNull(),
     description: text("description").default("").notNull(),
     categoryKey: varchar("category_key", { length: 64 }),
@@ -299,7 +299,7 @@ export const projectTaskRoutines = applicationSchema.table(
     statusKey: varchar("status_key", { length: 64 }).notNull(),
     responsibleUserId: uuid("responsible_user_id").notNull(),
     tagIds: text("tag_ids").default("[]").notNull(),
-    subtasks: text("subtasks").default("[]").notNull(),
+    tasks: text("tasks").default("[]").notNull(),
     recurrenceType: varchar("recurrence_type", { length: 16 })
       .default("one_off")
       .notNull(),
@@ -309,21 +309,21 @@ export const projectTaskRoutines = applicationSchema.table(
     updatedAt: updatedAt(),
   },
   (table) => [
-    unique("project_task_routines_workspace_id_id_unique").on(
+    unique("project_delivery_routines_workspace_id_id_unique").on(
       table.workspaceId,
       table.id,
     ),
     foreignKey({
-      name: "project_task_routines_workspace_project_foreign_key",
+      name: "project_delivery_routines_workspace_project_foreign_key",
       columns: [table.workspaceId, table.projectId],
       foreignColumns: [projects.workspaceId, projects.id],
     }).onDelete("cascade"),
     foreignKey({
-      name: "project_task_routines_workspace_member_foreign_key",
+      name: "project_delivery_routines_workspace_member_foreign_key",
       columns: [table.workspaceId, table.responsibleUserId],
       foreignColumns: [workspaceMembers.workspaceId, workspaceMembers.userId],
     }),
-    index("project_task_routines_workspace_project_index").on(
+    index("project_delivery_routines_workspace_project_index").on(
       table.workspaceId,
       table.projectId,
     ),

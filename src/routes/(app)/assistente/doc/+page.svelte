@@ -44,6 +44,17 @@
         "businessRef": "business-macajo",
         "contractType": "pontual"
       }
+    },
+    {
+      "id": "revenue-site",
+      "action": "create",
+      "resource": "finance_entry",
+      "data": {
+        "name": "Entrada do projeto Site",
+        "type": "receita",
+        "amountCents": 250000,
+        "dueDate": "2026-11-30"
+      }
     }
   ]
 }`;

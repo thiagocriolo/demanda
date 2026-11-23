@@ -14,36 +14,36 @@ import {
   businesses,
   projects,
   tags,
-  taskResponsibles,
-  taskSubtasks,
-  taskTags,
+  deliveryResponsibles,
+  deliveryTasks,
+  deliveryTags,
   users,
   workspaceMembers,
   workspaces,
   type WorkspaceRole,
 } from "../../src/lib/server/db/schema";
 import {
-  archiveWorkspaceTask,
-  createWorkspaceTask,
-  getWorkspaceTask,
-  listWorkspaceTasks,
-  setWorkspaceSubtaskState,
+  archiveWorkspaceDelivery,
+  createWorkspaceDelivery,
+  getWorkspaceDelivery,
+  listWorkspaceDeliveries,
   setWorkspaceTaskState,
-  TaskArchivedError,
-  TaskNotFoundError,
-  TaskRelationsInvalidError,
-  TaskStateConflictError,
-  TaskSubtaskNotFoundError,
-  TaskVersionConflictError,
-  updateWorkspaceTaskBoard,
-  updateWorkspaceTask,
-} from "../../src/lib/server/tasks/service";
+  setWorkspaceDeliveryState,
+  DeliveryArchivedError,
+  DeliveryNotFoundError,
+  DeliveryRelationsInvalidError,
+  DeliveryStateConflictError,
+  DeliveryTaskNotFoundError,
+  DeliveryVersionConflictError,
+  updateWorkspaceDeliveryBoard,
+  updateWorkspaceDelivery,
+} from "../../src/lib/server/deliveries/service";
 import type {
-  Task,
-  TaskCreateInput,
-  TaskUpdateInput,
-} from "../../src/lib/server/tasks/types";
-import { taskListQuerySchema } from "../../src/lib/server/tasks/validation";
+  Delivery,
+  DeliveryCreateInput,
+  DeliveryUpdateInput,
+} from "../../src/lib/server/deliveries/types";
+import { deliveryListQuerySchema } from "../../src/lib/server/deliveries/validation";
 
 const pool = createDatabasePool(parseServerEnvironment(process.env));
 const database = createDatabase(pool);
@@ -211,11 +211,11 @@ function context(
   };
 }
 
-function taskInput(
+function deliveryInput(
   projectId: string,
   responsibleUserIds: string[],
-  overrides: Partial<TaskCreateInput> = {},
-): TaskCreateInput {
+  overrides: Partial<DeliveryCreateInput> = {},
+): DeliveryCreateInput {
   return {
     name: "Campanha de lançamento",
     projectId,
@@ -226,7 +226,7 @@ function taskInput(
     dueDate: "2026-08-31",
     tagLabels: ["Campanha", "Digital"],
     responsibleUserIds,
-    subtasks: [
+    tasks: [
       {
         name: "Criar roteiro",
         durationMinutes: 90,
@@ -245,33 +245,33 @@ function taskInput(
 }
 
 function updateInput(
-  task: Task,
-  overrides: Partial<TaskUpdateInput> = {},
-): TaskUpdateInput {
+  delivery: Delivery,
+  overrides: Partial<DeliveryUpdateInput> = {},
+): DeliveryUpdateInput {
   return {
-    version: task.version,
-    status: task.status,
-    name: task.name,
-    projectId: task.project.id,
-    category: task.category,
-    priority: task.priority,
-    briefing: task.briefing,
-    dueDate: task.dueDate,
-    tagLabels: task.tags.map(({ name }) => name),
-    responsibleUserIds: task.responsibles.map(({ userId }) => userId),
-    subtasks: task.subtasks.map((subtask) => ({
-      id: subtask.id,
-      name: subtask.name,
-      durationMinutes: subtask.durationMinutes,
-      status: subtask.status,
+    version: delivery.version,
+    status: delivery.status,
+    name: delivery.name,
+    projectId: delivery.project.id,
+    category: delivery.category,
+    priority: delivery.priority,
+    briefing: delivery.briefing,
+    dueDate: delivery.dueDate,
+    tagLabels: delivery.tags.map(({ name }) => name),
+    responsibleUserIds: delivery.responsibles.map(({ userId }) => userId),
+    tasks: delivery.tasks.map((task) => ({
+      id: task.id,
+      name: task.name,
+      durationMinutes: task.durationMinutes,
+      status: task.status,
     })),
-    sortOrder: task.sortOrder,
-    boardOrder: task.boardOrder,
+    sortOrder: delivery.sortOrder,
+    boardOrder: delivery.boardOrder,
     ...overrides,
   };
 }
 
-describe("BE-08: serviço de tarefas e subtarefas", () => {
+describe("BE-08: serviço de tarefas e tarefas", () => {
   afterAll(() => pool.end());
 
   it("compartilha CRUD, relações, busca, filtros e sincronização do agregado", async () => {
@@ -294,10 +294,10 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       const ownerContext = context(owner, workspace, "owner");
       const memberContext = context(member, workspace, "member");
 
-      const created = await createWorkspaceTask(
+      const created = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(project.id, [owner.id]),
+        deliveryInput(project.id, [owner.id]),
       );
       expect(created).toMatchObject({
         workspaceId: workspace.id,
@@ -320,19 +320,19 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       expect(created.responsibles.map(({ userId }) => userId)).toEqual([
         owner.id,
       ]);
-      expect(created.subtasks).toHaveLength(2);
+      expect(created.tasks).toHaveLength(2);
 
-      const shared = await getWorkspaceTask(
+      const shared = await getWorkspaceDelivery(
         database,
         memberContext,
         created.id,
       );
       expect(shared).toEqual(created);
 
-      const listed = await listWorkspaceTasks(
+      const listed = await listWorkspaceDeliveries(
         database,
         memberContext,
-        taskListQuerySchema.parse({
+        deliveryListQuerySchema.parse({
           query: "roteiro",
           projectId: project.id,
           businessId: business.id,
@@ -352,8 +352,8 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         projects: { [project.id]: 1 },
       });
 
-      const firstSubtask = created.subtasks[0]!;
-      const updated = await updateWorkspaceTask(
+      const firstTask = created.tasks[0]!;
+      const updated = await updateWorkspaceDelivery(
         database,
         memberContext,
         created.id,
@@ -362,9 +362,9 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
           priority: "urgente",
           tagLabels: ["Campanha", "Performance"],
           responsibleUserIds: [member.id],
-          subtasks: [
+          tasks: [
             {
-              id: firstSubtask.id,
+              id: firstTask.id,
               name: "Roteiro aprovado",
               durationMinutes: 120,
               status: "concluida",
@@ -393,14 +393,14 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         member.id,
       ]);
       expect(
-        updated.subtasks.map(({ name, status }) => ({ name, status })),
+        updated.tasks.map(({ name, status }) => ({ name, status })),
       ).toEqual([
         { name: "Roteiro aprovado", status: "concluida" },
         { name: "Programar mídia", status: "pendente" },
       ]);
 
       await expect(
-        updateWorkspaceTask(
+        updateWorkspaceDelivery(
           database,
           memberContext,
           created.id,
@@ -409,9 +409,9 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
             tagLabels: ["Não persistir"],
           }),
         ),
-      ).rejects.toBeInstanceOf(TaskVersionConflictError);
+      ).rejects.toBeInstanceOf(DeliveryVersionConflictError);
       expect(
-        await getWorkspaceTask(database, memberContext, created.id),
+        await getWorkspaceDelivery(database, memberContext, created.id),
       ).toEqual(updated);
       const [rolledBackTag] = await database
         .select({ value: count() })
@@ -424,32 +424,32 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         );
       expect(rolledBackTag?.value).toBe(0);
 
-      const [subtaskCount] = await database
-        .select({ all: count(), archived: count(taskSubtasks.archivedAt) })
-        .from(taskSubtasks)
+      const [taskCount] = await database
+        .select({ all: count(), archived: count(deliveryTasks.archivedAt) })
+        .from(deliveryTasks)
         .where(
           and(
-            eq(taskSubtasks.workspaceId, workspace.id),
-            eq(taskSubtasks.taskId, created.id),
+            eq(deliveryTasks.workspaceId, workspace.id),
+            eq(deliveryTasks.deliveryId, created.id),
           ),
         );
-      expect(subtaskCount).toEqual({ all: 3, archived: 1 });
+      expect(taskCount).toEqual({ all: 3, archived: 1 });
       const [tagCount] = await database
         .select({ value: count() })
-        .from(taskTags)
+        .from(deliveryTags)
         .where(
           and(
-            eq(taskTags.workspaceId, workspace.id),
-            eq(taskTags.taskId, created.id),
+            eq(deliveryTags.workspaceId, workspace.id),
+            eq(deliveryTags.deliveryId, created.id),
           ),
         );
       const [responsibleCount] = await database
         .select({ value: count() })
-        .from(taskResponsibles)
+        .from(deliveryResponsibles)
         .where(
           and(
-            eq(taskResponsibles.workspaceId, workspace.id),
-            eq(taskResponsibles.taskId, created.id),
+            eq(deliveryResponsibles.workspaceId, workspace.id),
+            eq(deliveryResponsibles.deliveryId, created.id),
           ),
         );
       expect(tagCount?.value).toBe(2);
@@ -469,25 +469,25 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         "Projeto Agregado",
       );
       const ownerContext = context(owner, workspace, "owner");
-      const created = await createWorkspaceTask(
+      const created = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(project.id, [owner.id]),
+        deliveryInput(project.id, [owner.id]),
       );
 
-      const completed = await updateWorkspaceTask(
+      const completed = await updateWorkspaceDelivery(
         database,
         ownerContext,
         created.id,
         updateInput(created, {
           status: "conclusao",
           name: "Campanha entregue",
-          briefing: "Conteúdo e subtarefas concluídos no mesmo agregado.",
+          briefing: "Conteúdo e tarefas concluídos no mesmo agregado.",
           tagLabels: ["Finalizada"],
-          subtasks: created.subtasks.map((subtask) => ({
-            id: subtask.id,
-            name: `${subtask.name} aprovada`,
-            durationMinutes: subtask.durationMinutes,
+          tasks: created.tasks.map((task) => ({
+            id: task.id,
+            name: `${task.name} aprovada`,
+            durationMinutes: task.durationMinutes,
             status: "concluida",
           })),
         }),
@@ -500,20 +500,20 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       expect(completed.completedAt).not.toBeNull();
       expect(completed.tags.map(({ name }) => name)).toEqual(["Finalizada"]);
       expect(
-        completed.subtasks.every(({ status }) => status === "concluida"),
+        completed.tasks.every(({ status }) => status === "concluida"),
       ).toBe(true);
 
-      const reopened = await updateWorkspaceTask(
+      const reopened = await updateWorkspaceDelivery(
         database,
         ownerContext,
         created.id,
         updateInput(completed, {
           status: "producao",
           name: "Campanha reaberta",
-          subtasks: completed.subtasks.map((subtask, index) => ({
-            id: subtask.id,
-            name: subtask.name,
-            durationMinutes: subtask.durationMinutes,
+          tasks: completed.tasks.map((task, index) => ({
+            id: task.id,
+            name: task.name,
+            durationMinutes: task.durationMinutes,
             status: index === 0 ? "pendente" : "concluida",
           })),
         }),
@@ -524,10 +524,10 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         version: completed.version + 1,
         completedAt: null,
       });
-      expect(reopened.subtasks[0]?.status).toBe("pendente");
+      expect(reopened.tasks[0]?.status).toBe("pendente");
 
       await expect(
-        updateWorkspaceTask(
+        updateWorkspaceDelivery(
           database,
           ownerContext,
           created.id,
@@ -538,9 +538,9 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
             tagLabels: ["Não Persistir"],
           }),
         ),
-      ).rejects.toBeInstanceOf(TaskStateConflictError);
+      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
       expect(
-        await getWorkspaceTask(database, ownerContext, created.id),
+        await getWorkspaceDelivery(database, ownerContext, created.id),
       ).toEqual(reopened);
       const [rolledBackTag] = await database
         .select({ value: count() })
@@ -580,23 +580,23 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       const ownerContext = context(owner, workspace, "owner");
 
       await expect(
-        createWorkspaceTask(
+        createWorkspaceDelivery(
           database,
           ownerContext,
-          taskInput(projectA.id, [owner.id], {
+          deliveryInput(projectA.id, [owner.id], {
             name: "Não criar com ordem",
             boardOrder: { status: 0 },
           }),
         ),
-      ).rejects.toBeInstanceOf(TaskRelationsInvalidError);
+      ).rejects.toBeInstanceOf(DeliveryRelationsInvalidError);
 
-      const created = await createWorkspaceTask(
+      const created = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(projectA.id, [owner.id]),
+        deliveryInput(projectA.id, [owner.id]),
       );
       const statusPositioned = (
-        await updateWorkspaceTaskBoard(database, ownerContext, {
+        await updateWorkspaceDeliveryBoard(database, ownerContext, {
           view: "status",
           updates: [
             {
@@ -609,7 +609,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         })
       ).items[0]!;
       const priorityPositioned = (
-        await updateWorkspaceTaskBoard(database, ownerContext, {
+        await updateWorkspaceDeliveryBoard(database, ownerContext, {
           view: "priority",
           updates: [
             {
@@ -622,7 +622,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         })
       ).items[0]!;
       const projectPositioned = (
-        await updateWorkspaceTaskBoard(database, ownerContext, {
+        await updateWorkspaceDeliveryBoard(database, ownerContext, {
           view: "project",
           updates: [
             {
@@ -635,7 +635,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         })
       ).items[0]!;
       const positioned = (
-        await updateWorkspaceTaskBoard(database, ownerContext, {
+        await updateWorkspaceDeliveryBoard(database, ownerContext, {
           view: "business",
           updates: [
             {
@@ -655,7 +655,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       });
 
       const movedByBoard = (
-        await updateWorkspaceTaskBoard(database, ownerContext, {
+        await updateWorkspaceDeliveryBoard(database, ownerContext, {
           view: "project",
           updates: [
             {
@@ -675,7 +675,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       expect(movedByBoard.boardOrder).not.toHaveProperty("business");
 
       await expect(
-        updateWorkspaceTask(
+        updateWorkspaceDelivery(
           database,
           ownerContext,
           movedByBoard.id,
@@ -683,12 +683,12 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
             boardOrder: { ...movedByBoard.boardOrder, status: 99 },
           }),
         ),
-      ).rejects.toBeInstanceOf(TaskRelationsInvalidError);
+      ).rejects.toBeInstanceOf(DeliveryRelationsInvalidError);
       expect(
-        await getWorkspaceTask(database, ownerContext, movedByBoard.id),
+        await getWorkspaceDelivery(database, ownerContext, movedByBoard.id),
       ).toEqual(movedByBoard);
 
-      const changedStatus = await updateWorkspaceTask(
+      const changedStatus = await updateWorkspaceDelivery(
         database,
         ownerContext,
         movedByBoard.id,
@@ -699,7 +699,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         project: 5,
       });
 
-      const changedRelation = await updateWorkspaceTask(
+      const changedRelation = await updateWorkspaceDelivery(
         database,
         ownerContext,
         changedStatus.id,
@@ -716,7 +716,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       });
 
       const statePositioned = (
-        await updateWorkspaceTaskBoard(database, ownerContext, {
+        await updateWorkspaceDeliveryBoard(database, ownerContext, {
           view: "status",
           updates: [
             {
@@ -728,7 +728,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
           ],
         })
       ).items[0]!;
-      const changedByStateEndpoint = await setWorkspaceTaskState(
+      const changedByStateEndpoint = await setWorkspaceDeliveryState(
         database,
         ownerContext,
         statePositioned.id,
@@ -757,12 +757,12 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         "Projeto B",
       );
       const ownerContext = context(owner, workspace, "owner");
-      const first = await createWorkspaceTask(
+      const first = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(projectA.id, [owner.id], {
+        deliveryInput(projectA.id, [owner.id], {
           name: "Primeira",
-          subtasks: [
+          tasks: [
             {
               name: "Pronta",
               durationMinutes: 60,
@@ -771,15 +771,15 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
           ],
         }),
       );
-      const second = await createWorkspaceTask(
+      const second = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(projectA.id, [owner.id], {
+        deliveryInput(projectA.id, [owner.id], {
           name: "Segunda",
         }),
       );
 
-      const statusResult = await updateWorkspaceTaskBoard(
+      const statusResult = await updateWorkspaceDeliveryBoard(
         database,
         ownerContext,
         {
@@ -822,7 +822,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         boardOrder: { status: 1 },
       });
 
-      const projectResult = await updateWorkspaceTaskBoard(
+      const projectResult = await updateWorkspaceDeliveryBoard(
         database,
         ownerContext,
         {
@@ -858,7 +858,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         boardOrder: { status: 1, project: 4 },
       });
 
-      const businessResult = await updateWorkspaceTaskBoard(
+      const businessResult = await updateWorkspaceDeliveryBoard(
         database,
         ownerContext,
         {
@@ -894,7 +894,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         boardOrder: { status: 1, business: 2, project: 4 },
       });
 
-      const priorityResult = await updateWorkspaceTaskBoard(
+      const priorityResult = await updateWorkspaceDeliveryBoard(
         database,
         ownerContext,
         {
@@ -951,19 +951,19 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         "Projeto B",
       );
       const ownerContext = context(owner, workspace, "owner");
-      const first = await createWorkspaceTask(
+      const first = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(projectA.id, [owner.id], { name: "Primeira" }),
+        deliveryInput(projectA.id, [owner.id], { name: "Primeira" }),
       );
-      const second = await createWorkspaceTask(
+      const second = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(projectA.id, [owner.id], { name: "Segunda" }),
+        deliveryInput(projectA.id, [owner.id], { name: "Segunda" }),
       );
 
       await expect(
-        updateWorkspaceTaskBoard(database, ownerContext, {
+        updateWorkspaceDeliveryBoard(database, ownerContext, {
           view: "priority",
           updates: [
             {
@@ -980,16 +980,16 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
             },
           ],
         }),
-      ).rejects.toBeInstanceOf(TaskVersionConflictError);
-      expect(await getWorkspaceTask(database, ownerContext, first.id)).toEqual(
+      ).rejects.toBeInstanceOf(DeliveryVersionConflictError);
+      expect(await getWorkspaceDelivery(database, ownerContext, first.id)).toEqual(
         first,
       );
-      expect(await getWorkspaceTask(database, ownerContext, second.id)).toEqual(
+      expect(await getWorkspaceDelivery(database, ownerContext, second.id)).toEqual(
         second,
       );
 
       await expect(
-        updateWorkspaceTaskBoard(database, ownerContext, {
+        updateWorkspaceDeliveryBoard(database, ownerContext, {
           view: "project",
           updates: [
             {
@@ -1006,16 +1006,16 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
             },
           ],
         }),
-      ).rejects.toBeInstanceOf(TaskRelationsInvalidError);
-      expect(await getWorkspaceTask(database, ownerContext, first.id)).toEqual(
+      ).rejects.toBeInstanceOf(DeliveryRelationsInvalidError);
+      expect(await getWorkspaceDelivery(database, ownerContext, first.id)).toEqual(
         first,
       );
-      expect(await getWorkspaceTask(database, ownerContext, second.id)).toEqual(
+      expect(await getWorkspaceDelivery(database, ownerContext, second.id)).toEqual(
         second,
       );
 
       await expect(
-        updateWorkspaceTaskBoard(database, ownerContext, {
+        updateWorkspaceDeliveryBoard(database, ownerContext, {
           view: "business",
           updates: [
             {
@@ -1026,13 +1026,13 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
             },
           ],
         }),
-      ).rejects.toBeInstanceOf(TaskRelationsInvalidError);
-      expect(await getWorkspaceTask(database, ownerContext, first.id)).toEqual(
+      ).rejects.toBeInstanceOf(DeliveryRelationsInvalidError);
+      expect(await getWorkspaceDelivery(database, ownerContext, first.id)).toEqual(
         first,
       );
 
       await expect(
-        updateWorkspaceTaskBoard(database, ownerContext, {
+        updateWorkspaceDeliveryBoard(database, ownerContext, {
           view: "status",
           updates: [
             {
@@ -1049,11 +1049,11 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
             },
           ],
         }),
-      ).rejects.toBeInstanceOf(TaskStateConflictError);
-      expect(await getWorkspaceTask(database, ownerContext, first.id)).toEqual(
+      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
+      expect(await getWorkspaceDelivery(database, ownerContext, first.id)).toEqual(
         first,
       );
-      expect(await getWorkspaceTask(database, ownerContext, second.id)).toEqual(
+      expect(await getWorkspaceDelivery(database, ownerContext, second.id)).toEqual(
         second,
       );
     });
@@ -1071,58 +1071,58 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         "Projeto Estado",
       );
       const ownerContext = context(owner, workspace, "owner");
-      const created = await createWorkspaceTask(
+      const created = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(project.id, [owner.id]),
+        deliveryInput(project.id, [owner.id]),
       );
 
       await expect(
-        setWorkspaceTaskState(database, ownerContext, created.id, {
+        setWorkspaceDeliveryState(database, ownerContext, created.id, {
           version: 1,
           status: "conclusao",
         }),
-      ).rejects.toBeInstanceOf(TaskStateConflictError);
+      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
 
-      const first = await setWorkspaceSubtaskState(
+      const first = await setWorkspaceTaskState(
         database,
         ownerContext,
         created.id,
-        created.subtasks[0]!.id,
+        created.tasks[0]!.id,
         { version: 1, status: "concluida" },
       );
       expect(first.version).toBe(2);
-      expect(first.subtasks[0]?.status).toBe("concluida");
+      expect(first.tasks[0]?.status).toBe("concluida");
 
-      const repeatedFirst = await setWorkspaceSubtaskState(
+      const repeatedFirst = await setWorkspaceTaskState(
         database,
         ownerContext,
         created.id,
-        created.subtasks[0]!.id,
+        created.tasks[0]!.id,
         { version: 1, status: "concluida" },
       );
       expect(repeatedFirst.version).toBe(2);
 
       await expect(
-        setWorkspaceSubtaskState(
+        setWorkspaceTaskState(
           database,
           ownerContext,
           created.id,
-          created.subtasks[0]!.id,
+          created.tasks[0]!.id,
           { version: 1, status: "pendente" },
         ),
-      ).rejects.toBeInstanceOf(TaskVersionConflictError);
+      ).rejects.toBeInstanceOf(DeliveryVersionConflictError);
 
-      const second = await setWorkspaceSubtaskState(
+      const second = await setWorkspaceTaskState(
         database,
         ownerContext,
         created.id,
-        created.subtasks[1]!.id,
+        created.tasks[1]!.id,
         { version: 2, status: "concluida" },
       );
       expect(second.version).toBe(3);
 
-      const completed = await setWorkspaceTaskState(
+      const completed = await setWorkspaceDeliveryState(
         database,
         ownerContext,
         created.id,
@@ -1131,7 +1131,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       expect(completed).toMatchObject({ status: "conclusao", version: 4 });
       expect(completed.completedAt).not.toBeNull();
 
-      const repeatedCompletion = await setWorkspaceTaskState(
+      const repeatedCompletion = await setWorkspaceDeliveryState(
         database,
         ownerContext,
         created.id,
@@ -1140,53 +1140,53 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       expect(repeatedCompletion.version).toBe(4);
 
       await expect(
-        setWorkspaceSubtaskState(
+        setWorkspaceTaskState(
           database,
           ownerContext,
           created.id,
-          created.subtasks[0]!.id,
+          created.tasks[0]!.id,
           { version: 4, status: "pendente" },
         ),
-      ).rejects.toBeInstanceOf(TaskStateConflictError);
+      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
       await expect(
-        updateWorkspaceTask(
+        updateWorkspaceDelivery(
           database,
           ownerContext,
           created.id,
           updateInput(completed, {
-            subtasks: completed.subtasks.map((subtask, index) => ({
-              id: subtask.id,
-              name: subtask.name,
-              durationMinutes: subtask.durationMinutes,
-              status: index === 0 ? "pendente" : subtask.status,
+            tasks: completed.tasks.map((task, index) => ({
+              id: task.id,
+              name: task.name,
+              durationMinutes: task.durationMinutes,
+              status: index === 0 ? "pendente" : task.status,
             })),
           }),
         ),
-      ).rejects.toBeInstanceOf(TaskStateConflictError);
+      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
 
-      const reopenedTask = await setWorkspaceTaskState(
+      const reopenedDelivery = await setWorkspaceDeliveryState(
         database,
         ownerContext,
         created.id,
         { version: 4, status: "producao" },
       );
-      expect(reopenedTask).toMatchObject({ status: "producao", version: 5 });
-      expect(reopenedTask.completedAt).toBeNull();
+      expect(reopenedDelivery).toMatchObject({ status: "producao", version: 5 });
+      expect(reopenedDelivery.completedAt).toBeNull();
 
-      const reopenedSubtask = await setWorkspaceSubtaskState(
+      const reopenedTask = await setWorkspaceTaskState(
         database,
         ownerContext,
         created.id,
-        created.subtasks[0]!.id,
+        created.tasks[0]!.id,
         { version: 5, status: "pendente" },
       );
-      expect(reopenedSubtask.version).toBe(6);
+      expect(reopenedTask.version).toBe(6);
       await expect(
-        setWorkspaceTaskState(database, ownerContext, created.id, {
+        setWorkspaceDeliveryState(database, ownerContext, created.id, {
           version: 5,
           status: "fila",
         }),
-      ).rejects.toBeInstanceOf(TaskVersionConflictError);
+      ).rejects.toBeInstanceOf(DeliveryVersionConflictError);
     });
   });
 
@@ -1202,16 +1202,16 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         "Projeto Arquivo",
       );
       const ownerContext = context(owner, workspace, "owner");
-      const created = await createWorkspaceTask(
+      const created = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(project.id, [owner.id]),
+        deliveryInput(project.id, [owner.id]),
       );
 
       await expect(
-        archiveWorkspaceTask(database, ownerContext, created.id, 2),
-      ).rejects.toBeInstanceOf(TaskVersionConflictError);
-      const archived = await archiveWorkspaceTask(
+        archiveWorkspaceDelivery(database, ownerContext, created.id, 2),
+      ).rejects.toBeInstanceOf(DeliveryVersionConflictError);
+      const archived = await archiveWorkspaceDelivery(
         database,
         ownerContext,
         created.id,
@@ -1220,7 +1220,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       expect(archived.version).toBe(2);
       expect(archived.archivedAt).not.toBeNull();
 
-      const repeated = await archiveWorkspaceTask(
+      const repeated = await archiveWorkspaceDelivery(
         database,
         ownerContext,
         created.id,
@@ -1228,24 +1228,24 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       );
       expect(repeated).toEqual(archived);
       await expect(
-        updateWorkspaceTask(
+        updateWorkspaceDelivery(
           database,
           ownerContext,
           created.id,
           updateInput(archived),
         ),
-      ).rejects.toBeInstanceOf(TaskArchivedError);
+      ).rejects.toBeInstanceOf(DeliveryArchivedError);
       await expect(
-        setWorkspaceTaskState(database, ownerContext, created.id, {
+        setWorkspaceDeliveryState(database, ownerContext, created.id, {
           version: archived.version,
           status: "fila",
         }),
-      ).rejects.toBeInstanceOf(TaskArchivedError);
+      ).rejects.toBeInstanceOf(DeliveryArchivedError);
 
-      const onlyArchived = await listWorkspaceTasks(
+      const onlyArchived = await listWorkspaceDeliveries(
         database,
         ownerContext,
-        taskListQuerySchema.parse({ archived: "only" }),
+        deliveryListQuerySchema.parse({ archived: "only" }),
       );
       expect(onlyArchived.items.map(({ id }) => id)).toEqual([created.id]);
     });
@@ -1276,67 +1276,67 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       const contextA = context(ownerA, workspaceA, "owner");
       const memberContextA = context(memberA, workspaceA, "member");
       const contextB = context(ownerB, workspaceB, "owner");
-      const taskA = await createWorkspaceTask(
+      const deliveryA = await createWorkspaceDelivery(
         database,
         contextA,
-        taskInput(projectA.id, [ownerA.id]),
+        deliveryInput(projectA.id, [ownerA.id]),
       );
-      const taskB = await createWorkspaceTask(
+      const deliveryB = await createWorkspaceDelivery(
         database,
         contextB,
-        taskInput(projectB.id, [ownerB.id], { name: "Tarefa B" }),
+        deliveryInput(projectB.id, [ownerB.id], { name: "Tarefa B" }),
       );
 
       await expect(
-        getWorkspaceTask(database, contextB, taskA.id),
-      ).rejects.toBeInstanceOf(TaskNotFoundError);
+        getWorkspaceDelivery(database, contextB, deliveryA.id),
+      ).rejects.toBeInstanceOf(DeliveryNotFoundError);
       await expect(
-        getWorkspaceTask(database, contextB, randomUUID()),
-      ).rejects.toBeInstanceOf(TaskNotFoundError);
+        getWorkspaceDelivery(database, contextB, randomUUID()),
+      ).rejects.toBeInstanceOf(DeliveryNotFoundError);
       await expect(
-        archiveWorkspaceTask(database, contextB, taskA.id, taskA.version),
-      ).rejects.toBeInstanceOf(TaskNotFoundError);
+        archiveWorkspaceDelivery(database, contextB, deliveryA.id, deliveryA.version),
+      ).rejects.toBeInstanceOf(DeliveryNotFoundError);
       await expect(
-        setWorkspaceSubtaskState(
+        setWorkspaceTaskState(
           database,
           contextA,
-          taskA.id,
-          taskB.subtasks[0]!.id,
-          { version: taskA.version, status: "concluida" },
+          deliveryA.id,
+          deliveryB.tasks[0]!.id,
+          { version: deliveryA.version, status: "concluida" },
         ),
-      ).rejects.toBeInstanceOf(TaskSubtaskNotFoundError);
+      ).rejects.toBeInstanceOf(DeliveryTaskNotFoundError);
 
       await expect(
-        createWorkspaceTask(
+        createWorkspaceDelivery(
           database,
           contextA,
-          taskInput(projectB.id, [ownerA.id], { name: "Projeto externo" }),
+          deliveryInput(projectB.id, [ownerA.id], { name: "Projeto externo" }),
         ),
-      ).rejects.toBeInstanceOf(TaskRelationsInvalidError);
+      ).rejects.toBeInstanceOf(DeliveryRelationsInvalidError);
       await expect(
-        createWorkspaceTask(
+        createWorkspaceDelivery(
           database,
           contextA,
-          taskInput(projectA.id, [ownerB.id], { name: "Membro externo" }),
+          deliveryInput(projectA.id, [ownerB.id], { name: "Membro externo" }),
         ),
-      ).rejects.toBeInstanceOf(TaskRelationsInvalidError);
+      ).rejects.toBeInstanceOf(DeliveryRelationsInvalidError);
       await expect(
-        updateWorkspaceTask(
+        updateWorkspaceDelivery(
           database,
           contextA,
-          taskA.id,
-          updateInput(taskA, {
-            subtasks: [
+          deliveryA.id,
+          updateInput(deliveryA, {
+            tasks: [
               {
-                id: taskB.subtasks[0]!.id,
-                name: "Subtarefa externa",
+                id: deliveryB.tasks[0]!.id,
+                name: "Tarefa externa",
                 durationMinutes: 60,
                 status: "pendente",
               },
             ],
           }),
         ),
-      ).rejects.toBeInstanceOf(TaskRelationsInvalidError);
+      ).rejects.toBeInstanceOf(DeliveryRelationsInvalidError);
 
       await database
         .delete(workspaceMembers)
@@ -1347,20 +1347,20 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
           ),
         );
       await expect(
-        getWorkspaceTask(database, memberContextA, taskA.id),
+        getWorkspaceDelivery(database, memberContextA, deliveryA.id),
       ).rejects.toBeInstanceOf(WorkspaceNotFoundError);
       await expect(
-        updateWorkspaceTask(
+        updateWorkspaceDelivery(
           database,
           memberContextA,
-          taskA.id,
-          updateInput(taskA),
+          deliveryA.id,
+          updateInput(deliveryA),
         ),
       ).rejects.toBeInstanceOf(WorkspaceNotFoundError);
     });
   });
 
-  it("exige subtarefas concluídas e preserva pais arquivados já vinculados", async () => {
+  it("exige tarefas concluídas e preserva pais arquivados já vinculados", async () => {
     await withRollback(async (database) => {
       const owner = await insertUser(database, "Owner Pais");
       const workspace = await insertWorkspace(database, owner, "Pais");
@@ -1374,19 +1374,19 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       const ownerContext = context(owner, workspace, "owner");
 
       await expect(
-        createWorkspaceTask(
+        createWorkspaceDelivery(
           database,
           ownerContext,
-          taskInput(project.id, [owner.id], { status: "conclusao" }),
+          deliveryInput(project.id, [owner.id], { status: "conclusao" }),
         ),
-      ).rejects.toBeInstanceOf(TaskStateConflictError);
-      const completed = await createWorkspaceTask(
+      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
+      const completed = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(project.id, [owner.id], {
+        deliveryInput(project.id, [owner.id], {
           name: "Concluída na criação",
           status: "conclusao",
-          subtasks: [
+          tasks: [
             {
               name: "Etapa concluída",
               durationMinutes: 60,
@@ -1396,14 +1396,14 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         }),
       );
       expect(completed.completedAt).not.toBeNull();
-      expect(completed.subtasks[0]?.updatedAt).toBe(
-        completed.subtasks[0]?.createdAt,
+      expect(completed.tasks[0]?.updatedAt).toBe(
+        completed.tasks[0]?.createdAt,
       );
 
-      const active = await createWorkspaceTask(
+      const active = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(project.id, [owner.id], { name: "Pai arquivado" }),
+        deliveryInput(project.id, [owner.id], { name: "Pai arquivado" }),
       );
       const retainedTagId = active.tags[0]!.id;
       await database
@@ -1419,7 +1419,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         .set({ archivedAt: new Date(), updatedAt: new Date() })
         .where(eq(tags.id, retainedTagId));
 
-      const retained = await updateWorkspaceTask(
+      const retained = await updateWorkspaceDelivery(
         database,
         ownerContext,
         active.id,
@@ -1429,23 +1429,23 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       expect(retained.business.archivedAt).not.toBeNull();
       expect(retained.tags[0]?.archivedAt).not.toBeNull();
       await expect(
-        createWorkspaceTask(
+        createWorkspaceDelivery(
           database,
           ownerContext,
-          taskInput(project.id, [owner.id], { name: "Novo vínculo arquivado" }),
+          deliveryInput(project.id, [owner.id], { name: "Novo vínculo arquivado" }),
         ),
-      ).rejects.toBeInstanceOf(TaskRelationsInvalidError);
+      ).rejects.toBeInstanceOf(DeliveryRelationsInvalidError);
 
-      const [archivedSubtasks] = await database
+      const [archivedTasks] = await database
         .select({ value: count() })
-        .from(taskSubtasks)
+        .from(deliveryTasks)
         .where(
           and(
-            eq(taskSubtasks.workspaceId, workspace.id),
-            isNotNull(taskSubtasks.archivedAt),
+            eq(deliveryTasks.workspaceId, workspace.id),
+            isNotNull(deliveryTasks.archivedAt),
           ),
         );
-      expect(archivedSubtasks?.value).toBe(0);
+      expect(archivedTasks?.value).toBe(0);
     });
   });
 
@@ -1465,40 +1465,40 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         "Projeto Concorrente",
       );
       const ownerContext = context(owner, workspace, "owner");
-      const anchorZero = await createWorkspaceTask(
+      const anchorZero = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(project.id, [owner.id], {
+        deliveryInput(project.id, [owner.id], {
           name: "Âncora zero",
           priority: "destino",
         }),
       );
-      const anchorOne = await createWorkspaceTask(
+      const anchorOne = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(project.id, [owner.id], {
+        deliveryInput(project.id, [owner.id], {
           name: "Âncora um",
           priority: "destino",
         }),
       );
-      const contenderA = await createWorkspaceTask(
+      const contenderA = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(project.id, [owner.id], {
+        deliveryInput(project.id, [owner.id], {
           name: "Append A",
           priority: "origem_a",
         }),
       );
-      const contenderB = await createWorkspaceTask(
+      const contenderB = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(project.id, [owner.id], {
+        deliveryInput(project.id, [owner.id], {
           name: "Append B",
           priority: "origem_b",
         }),
       );
 
-      const seededAnchors = await updateWorkspaceTaskBoard(
+      const seededAnchors = await updateWorkspaceDeliveryBoard(
         database,
         ownerContext,
         {
@@ -1523,7 +1523,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       const seededAnchorOne = seededAnchors.items[1]!;
 
       await expect(
-        updateWorkspaceTaskBoard(database, ownerContext, {
+        updateWorkspaceDeliveryBoard(database, ownerContext, {
           view: "priority",
           updates: [
             {
@@ -1534,12 +1534,12 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
             },
           ],
         }),
-      ).rejects.toBeInstanceOf(TaskStateConflictError);
+      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
       expect(
-        await getWorkspaceTask(database, ownerContext, contenderA.id),
+        await getWorkspaceDelivery(database, ownerContext, contenderA.id),
       ).toEqual(contenderA);
 
-      const appendBatch = (contender: Task) => ({
+      const appendBatch = (contender: Delivery) => ({
         view: "priority" as const,
         updates: [
           {
@@ -1563,12 +1563,12 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         ],
       });
       const outcomes = await Promise.allSettled([
-        updateWorkspaceTaskBoard(
+        updateWorkspaceDeliveryBoard(
           database,
           ownerContext,
           appendBatch(contenderA),
         ),
-        updateWorkspaceTaskBoard(
+        updateWorkspaceDeliveryBoard(
           database,
           ownerContext,
           appendBatch(contenderB),
@@ -1581,24 +1581,24 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       if (!rejected || rejected.status !== "rejected") {
         throw new Error("O lote concorrente deveria falhar por versão.");
       }
-      expect(rejected.reason).toBeInstanceOf(TaskVersionConflictError);
+      expect(rejected.reason).toBeInstanceOf(DeliveryVersionConflictError);
 
-      const persistedAnchorZero = await getWorkspaceTask(
+      const persistedAnchorZero = await getWorkspaceDelivery(
         database,
         ownerContext,
         seededAnchorZero.id,
       );
-      const persistedAnchorOne = await getWorkspaceTask(
+      const persistedAnchorOne = await getWorkspaceDelivery(
         database,
         ownerContext,
         seededAnchorOne.id,
       );
-      const persistedA = await getWorkspaceTask(
+      const persistedA = await getWorkspaceDelivery(
         database,
         ownerContext,
         contenderA.id,
       );
-      const persistedB = await getWorkspaceTask(
+      const persistedB = await getWorkspaceDelivery(
         database,
         ownerContext,
         contenderB.id,
@@ -1639,8 +1639,8 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
 
   it("mantem o nome do negocio privado em tarefas compartilhadas sem expor seu arquivamento", async () => {
     await withRollback(async (database) => {
-      const owner = await insertUser(database, "TaskBizOwner");
-      const member = await insertUser(database, "TaskBizMember");
+      const owner = await insertUser(database, "DeliveryBizOwner");
+      const member = await insertUser(database, "DeliveryBizMember");
       const sharedWorkspace = await insertWorkspace(
         database,
         owner,
@@ -1666,30 +1666,30 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
       );
       const ownerContext = context(owner, sharedWorkspace, "owner");
       const memberContext = context(member, sharedWorkspace, "member");
-      const task = await createWorkspaceTask(
+      const delivery = await createWorkspaceDelivery(
         database,
         ownerContext,
-        taskInput(project.id, [owner.id]),
+        deliveryInput(project.id, [owner.id]),
       );
 
       expect(
         (
-          await listWorkspaceTasks(
+          await listWorkspaceDeliveries(
             database,
             memberContext,
-            taskListQuerySchema.parse({ query: "Cliente visivel" }),
+            deliveryListQuerySchema.parse({ query: "Cliente visivel" }),
           )
         ).items.map(({ id }) => id),
-      ).toEqual([task.id]);
+      ).toEqual([delivery.id]);
       await database
         .update(businesses)
         .set({ archivedAt: new Date(), updatedAt: new Date() })
         .where(eq(businesses.id, business.id));
 
-      const visibleToMember = await getWorkspaceTask(
+      const visibleToMember = await getWorkspaceDelivery(
         database,
         memberContext,
-        task.id,
+        delivery.id,
       );
       expect(visibleToMember.business).toEqual({
         id: business.id,
@@ -1697,7 +1697,7 @@ describe("BE-08: serviço de tarefas e subtarefas", () => {
         archivedAt: null,
       });
       expect(
-        (await getWorkspaceTask(database, ownerContext, task.id)).business
+        (await getWorkspaceDelivery(database, ownerContext, delivery.id)).business
           .archivedAt,
       ).not.toBeNull();
     });

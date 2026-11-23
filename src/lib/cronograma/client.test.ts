@@ -20,8 +20,8 @@ const snapshot: CronogramaSnapshot = {
     {
       id: "3fa3e1f2-3955-4c40-b93c-ed74761415d6",
       workspaceId: "01dd1ab3-ed34-44fd-b100-8c371bf1bbad",
-      taskId: "4acb30bc-b993-41cb-beda-ecde061fbc76",
-      subtaskId: "34a880a0-d3b4-467b-b8bd-026af1019505",
+      deliveryId: "4acb30bc-b993-41cb-beda-ecde061fbc76",
+      taskId: "34a880a0-d3b4-467b-b8bd-026af1019505",
       date: "2026-07-15",
       startMinutes: 480,
       durationMinutes: 90,
@@ -71,7 +71,7 @@ describe("BE-11: cliente do Cronograma", () => {
       return response();
     };
     await saveCronogramaEntry(
-      snapshot.items[0]!.subtaskId,
+      snapshot.items[0]!.taskId,
       {
         date: "2026-07-15",
         startMinutes: 480,
@@ -80,7 +80,7 @@ describe("BE-11: cliente do Cronograma", () => {
       },
       fetcher,
     );
-    await deleteCronogramaEntry(snapshot.items[0]!.subtaskId, 2, fetcher);
+    await deleteCronogramaEntry(snapshot.items[0]!.taskId, 2, fetcher);
     expect(calls[0]?.[1]).toMatchObject({ method: "PUT" });
     expect(calls[1]?.[1]).toMatchObject({ method: "DELETE" });
     expect(calls[1]?.[1]?.body).toBe(JSON.stringify({ version: 2 }));
@@ -92,7 +92,7 @@ describe("BE-11: cliente do Cronograma", () => {
       workspaceId: snapshot.workspaceId,
       blocks: [
         {
-          subtaskId: snapshot.items[0]!.subtaskId,
+          taskId: snapshot.items[0]!.taskId,
           date: "2026-07-16",
           startMinutes: 9 * 60,
           durationMinutes: 90,

@@ -24,11 +24,11 @@
     negocio: BriefcaseBusiness,
     contrato: FileText,
     projeto: FolderKanban,
-    tarefa: ListTodo,
+    entrega: ListTodo,
   };
   let Icon = $derived(icons[data.detail.kind]);
   let businessView = $state<"cards" | "table">("cards");
-  let taskComments = $state<NonNullable<PageData["taskComments"]>>([]);
+  let deliveryComments = $state<NonNullable<PageData["deliveryComments"]>>([]);
   let commentBody = $state("");
   let commentError = $state("");
   let commentSaving = $state(false);
@@ -37,7 +37,7 @@
   let projectVisibilityError = $state("");
 
   $effect(() => {
-    taskComments = data.taskComments ?? [];
+    deliveryComments = data.deliveryComments ?? [];
   });
 
   $effect(() => {
@@ -51,7 +51,7 @@
     commentError = "";
     try {
       const response = await fetch(
-        `/api/tasks/${encodeURIComponent(data.detail.id)}/comments`,
+        `/api/deliveries/${encodeURIComponent(data.detail.id)}/comments`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -60,7 +60,7 @@
       );
       if (!response.ok)
         throw new Error("Não foi possível publicar o comentário.");
-      taskComments = [...taskComments, await response.json()];
+      deliveryComments = [...deliveryComments, await response.json()];
       commentBody = "";
     } catch (cause) {
       commentError =
@@ -150,12 +150,12 @@
             <span>Projetos em andamento</span>
           </div>
           <div>
-            <strong>{data.contactDashboard.metrics.openTasks}</strong>
-            <span>Tarefas abertas</span>
+            <strong>{data.contactDashboard.metrics.openDeliveries}</strong>
+            <span>Entregas abertas</span>
           </div>
-          <div class:attention={data.contactDashboard.metrics.overdueTasks > 0}>
-            <strong>{data.contactDashboard.metrics.overdueTasks}</strong>
-            <span>Tarefas vencidas</span>
+          <div class:attention={data.contactDashboard.metrics.overdueDeliveries > 0}>
+            <strong>{data.contactDashboard.metrics.overdueDeliveries}</strong>
+            <span>Entregas vencidas</span>
           </div>
         </div>
 
@@ -183,7 +183,7 @@
           </a>
         {:else}
           <div class="contact-dashboard__quiet-state">
-            Não há tarefas com prazo próximo. Use os relacionamentos abaixo para
+            Não há entregas com prazo próximo. Use os relacionamentos abaixo para
             planejar a próxima ação.
           </div>
         {/if}
@@ -232,24 +232,24 @@
 
           <section>
             <header>
-              <span><ListTodo size={16} />Tarefas</span>
-              <a href="/clientes/tarefas">Ver todas</a>
+              <span><ListTodo size={16} />Entregas</span>
+              <a href="/clientes/entregas">Ver todas</a>
             </header>
-            {#if data.contactDashboard.tasks.length}
+            {#if data.contactDashboard.deliveries.length}
               <div class="contact-dashboard__list">
-                {#each data.contactDashboard.tasks as task (task.id)}
-                  <a href={`/clientes/tarefas/${task.id}`}>
-                    <span>{task.name}</span>
+                {#each data.contactDashboard.deliveries as delivery (delivery.id)}
+                  <a href={`/clientes/entregas/${delivery.id}`}>
+                    <span>{delivery.name}</span>
                     <small
-                      >{task.dueDate
-                        ? `Prazo: ${task.dueDate}`
-                        : task.projectName}</small
+                      >{delivery.dueDate
+                        ? `Prazo: ${delivery.dueDate}`
+                        : delivery.projectName}</small
                     >
                   </a>
                 {/each}
               </div>
             {:else}
-              <p>Nenhuma tarefa aberta.</p>
+              <p>Nenhuma entrega aberta.</p>
             {/if}
           </section>
         </div>
@@ -288,18 +288,18 @@
             >
           </div>
           <div>
-            <strong>{data.businessDashboard.metrics.openTasks}</strong><span
-              >Tarefas abertas</span
+            <strong>{data.businessDashboard.metrics.openDeliveries}</strong><span
+              >Entregas abertas</span
             >
           </div>
           <div>
-            <strong>{data.businessDashboard.metrics.completedTasks}</strong
-            ><span>Tarefas concluídas</span>
+            <strong>{data.businessDashboard.metrics.completedDeliveries}</strong
+            ><span>Entregas concluídas</span>
           </div>
           <div
-            class:attention={data.businessDashboard.metrics.overdueTasks > 0}
+            class:attention={data.businessDashboard.metrics.overdueDeliveries > 0}
           >
-            <strong>{data.businessDashboard.metrics.overdueTasks}</strong><span
+            <strong>{data.businessDashboard.metrics.overdueDeliveries}</strong><span
               >Em atraso</span
             >
           </div>
@@ -320,7 +320,7 @@
                         >{project.name}</strong
                       >
                       <small
-                        >{project.openTasks} abertas · {project.completedTasks} concluídas</small
+                        >{project.openDeliveries} abertas · {project.completedDeliveries} concluídas</small
                       >
                       <em
                         >{project.endDate
@@ -335,23 +335,23 @@
             <section class="operations-dashboard__panel">
               <header>
                 <h3>Fila de trabalho</h3>
-                <a href="/clientes/tarefas">Ver tarefas</a>
+                <a href="/clientes/entregas">Ver entregas</a>
               </header>
-              {#if data.businessDashboard.tasks.length}
-                <div class="task-operation-list">
-                  {#each data.businessDashboard.tasks
-                    .filter((task) => !task.completed)
-                    .slice(0, 6) as task (task.id)}
-                    <a href={`/clientes/tarefas/${task.id}`}>
-                      <span>{task.name}</span><small
-                        >{task.projectName} · {task.dueDate
-                          ? `Prazo: ${task.dueDate}`
-                          : task.priority}</small
+              {#if data.businessDashboard.deliveries.length}
+                <div class="delivery-operation-list">
+                  {#each data.businessDashboard.deliveries
+                    .filter((delivery) => !delivery.completed)
+                    .slice(0, 6) as delivery (delivery.id)}
+                    <a href={`/clientes/entregas/${delivery.id}`}>
+                      <span>{delivery.name}</span><small
+                        >{delivery.projectName} · {delivery.dueDate
+                          ? `Prazo: ${delivery.dueDate}`
+                          : delivery.priority}</small
                       >
                     </a>
                   {/each}
                 </div>
-              {:else}<p>Não há tarefas pendentes.</p>{/if}
+              {:else}<p>Não há entregas pendentes.</p>{/if}
             </section>
           </div>
         {:else}
@@ -359,22 +359,22 @@
             <table>
               <thead
                 ><tr
-                  ><th>Tarefa</th><th>Projeto</th><th>Prioridade</th><th
+                  ><th>Entrega</th><th>Projeto</th><th>Prioridade</th><th
                     >Prazo</th
                   ><th>Status</th></tr
                 ></thead
               >
               <tbody>
-                {#each data.businessDashboard.tasks as task (task.id)}
+                {#each data.businessDashboard.deliveries as delivery (delivery.id)}
                   <tr>
                     <td
-                      ><a href={`/clientes/tarefas/${task.id}`}>{task.name}</a
+                      ><a href={`/clientes/entregas/${delivery.id}`}>{delivery.name}</a
                       ></td
-                    ><td>{task.projectName}</td><td>{task.priority}</td><td
-                      >{task.dueDate ?? "—"}</td
-                    ><td>{task.completed ? "Concluída" : task.status}</td>
+                    ><td>{delivery.projectName}</td><td>{delivery.priority}</td><td
+                      >{delivery.dueDate ?? "—"}</td
+                    ><td>{delivery.completed ? "Concluída" : delivery.status}</td>
                   </tr>
-                {:else}<tr><td colspan="5">Nenhuma tarefa registrada.</td></tr
+                {:else}<tr><td colspan="5">Nenhuma entrega registrada.</td></tr
                   >{/each}
               </tbody>
             </table>
@@ -400,17 +400,17 @@
           class="operations-dashboard__metrics operations-dashboard__metrics--three"
         >
           <div>
-            <strong>{data.projectDashboard.metrics.openTasks}</strong><span
-              >Tarefas abertas</span
+            <strong>{data.projectDashboard.metrics.openDeliveries}</strong><span
+              >Entregas abertas</span
             >
           </div>
           <div>
-            <strong>{data.projectDashboard.metrics.completedTasks}</strong><span
-              >Tarefas concluídas</span
+            <strong>{data.projectDashboard.metrics.completedDeliveries}</strong><span
+              >Entregas concluídas</span
             >
           </div>
-          <div class:attention={data.projectDashboard.metrics.overdueTasks > 0}>
-            <strong>{data.projectDashboard.metrics.overdueTasks}</strong><span
+          <div class:attention={data.projectDashboard.metrics.overdueDeliveries > 0}>
+            <strong>{data.projectDashboard.metrics.overdueDeliveries}</strong><span
               >Em atraso</span
             >
           </div>
@@ -418,18 +418,18 @@
         <section class="operations-dashboard__panel">
           <header>
             <h3>Entregas do projeto</h3>
-            <a href="/clientes/tarefas">Ver todas</a>
+            <a href="/clientes/entregas">Ver todas</a>
           </header>
-          <div class="task-operation-list task-operation-list--wide">
-            {#each data.projectDashboard.tasks as task (task.id)}
-              <a href={`/clientes/tarefas/${task.id}`}>
-                <span>{task.name}</span><small
-                  >{task.completed ? "Concluída" : task.status} · {task.dueDate
-                    ? `Prazo: ${task.dueDate}`
+          <div class="delivery-operation-list delivery-operation-list--wide">
+            {#each data.projectDashboard.deliveries as delivery (delivery.id)}
+              <a href={`/clientes/entregas/${delivery.id}`}>
+                <span>{delivery.name}</span><small
+                  >{delivery.completed ? "Concluída" : delivery.status} · {delivery.dueDate
+                    ? `Prazo: ${delivery.dueDate}`
                     : "Sem prazo"}</small
                 >
               </a>
-            {:else}<p>Nenhuma tarefa vinculada a este projeto.</p>{/each}
+            {:else}<p>Nenhuma entrega vinculada a este projeto.</p>{/each}
           </div>
         </section>
       </section>
@@ -462,14 +462,14 @@
             ><span>Projetos ativos</span>
           </div>
           <div>
-            <strong>{data.contractDashboard.metrics.openTasks}</strong><span
+            <strong>{data.contractDashboard.metrics.openDeliveries}</strong><span
               >Entregas abertas</span
             >
           </div>
           <div
-            class:attention={data.contractDashboard.metrics.overdueTasks > 0}
+            class:attention={data.contractDashboard.metrics.overdueDeliveries > 0}
           >
-            <strong>{data.contractDashboard.metrics.overdueTasks}</strong><span
+            <strong>{data.contractDashboard.metrics.overdueDeliveries}</strong><span
               >Em atraso</span
             >
           </div>
@@ -486,7 +486,7 @@
               >
             </span>
           </div>
-        {:else if data.contractDashboard.metrics.overdueTasks > 0}
+        {:else if data.contractDashboard.metrics.overdueDeliveries > 0}
           <div class="decision-card decision-card--urgent">
             <TriangleAlert size={20} aria-hidden="true" />
             <span>
@@ -535,7 +535,7 @@
                   <a href={`/clientes/projetos/${project.id}`}>
                     <span>{project.status}</span><strong>{project.name}</strong>
                     <small
-                      >{project.openTasks} abertas · {project.completedTasks}
+                      >{project.openDeliveries} abertas · {project.completedDeliveries}
                       concluídas</small
                     >
                     <em
@@ -551,18 +551,18 @@
           <section class="operations-dashboard__panel">
             <header>
               <h3>Próximas entregas</h3>
-              <a href="/clientes/tarefas">Ver entregas</a>
+              <a href="/clientes/entregas">Ver entregas</a>
             </header>
-            {#if data.contractDashboard.tasks.length}
-              <div class="task-operation-list">
-                {#each data.contractDashboard.tasks
-                  .filter((task) => !task.completed)
-                  .slice(0, 6) as task (task.id)}
-                  <a href={`/clientes/tarefas/${task.id}`}>
-                    <span>{task.name}</span><small
-                      >{task.projectName} · {task.dueDate
-                        ? `Prazo: ${task.dueDate}`
-                        : task.priority}</small
+            {#if data.contractDashboard.deliveries.length}
+              <div class="delivery-operation-list">
+                {#each data.contractDashboard.deliveries
+                  .filter((delivery) => !delivery.completed)
+                  .slice(0, 6) as delivery (delivery.id)}
+                  <a href={`/clientes/entregas/${delivery.id}`}>
+                    <span>{delivery.name}</span><small
+                      >{delivery.projectName} · {delivery.dueDate
+                        ? `Prazo: ${delivery.dueDate}`
+                        : delivery.priority}</small
                     >
                   </a>
                 {/each}
@@ -573,9 +573,9 @@
       </section>
     {/if}
 
-    {#if data.taskDashboard}
+    {#if data.deliveryDashboard}
       <section
-        class="operations-dashboard operations-dashboard--task"
+        class="operations-dashboard operations-dashboard--delivery"
         aria-label="Painel da entrega"
       >
         <header class="operations-dashboard__header">
@@ -585,54 +585,54 @@
           </div>
           <a
             class="operations-dashboard__business-link"
-            href={`/clientes/projetos/${data.taskDashboard.project.id}`}
-            >Ver {data.taskDashboard.project.name}</a
+            href={`/clientes/projetos/${data.deliveryDashboard.project.id}`}
+            >Ver {data.deliveryDashboard.project.name}</a
           >
         </header>
         <div
           class="operations-dashboard__metrics operations-dashboard__metrics--three"
         >
           <div>
-            <strong>{data.taskDashboard.metrics.subtasks}</strong><span
+            <strong>{data.deliveryDashboard.metrics.tasks}</strong><span
               >Etapas</span
             >
           </div>
           <div>
-            <strong>{data.taskDashboard.metrics.completedSubtasks}</strong><span
+            <strong>{data.deliveryDashboard.metrics.completedTasks}</strong><span
               >Concluídas</span
             >
           </div>
           <div>
-            <strong>{data.taskDashboard.metrics.remainingSubtasks}</strong><span
+            <strong>{data.deliveryDashboard.metrics.remainingTasks}</strong><span
               >Pendentes</span
             >
           </div>
         </div>
         <div
-          class:decision-card--urgent={data.taskDashboard.nextAction.tone ===
+          class:decision-card--urgent={data.deliveryDashboard.nextAction.tone ===
             "urgent"}
-          class:decision-card--attention={data.taskDashboard.nextAction.tone ===
+          class:decision-card--attention={data.deliveryDashboard.nextAction.tone ===
             "attention"}
           class="decision-card"
         >
-          {#if data.taskDashboard.nextAction.tone === "urgent"}
+          {#if data.deliveryDashboard.nextAction.tone === "urgent"}
             <TriangleAlert size={20} aria-hidden="true" />
-          {:else if data.taskDashboard.nextAction.tone === "complete"}
+          {:else if data.deliveryDashboard.nextAction.tone === "complete"}
             <CheckCircle2 size={20} aria-hidden="true" />
           {:else}
             <CalendarClock size={20} aria-hidden="true" />
           {/if}
           <span>
             <small>Próximo passo recomendado</small>
-            <strong>{data.taskDashboard.nextAction.title}</strong>
-            <em>{data.taskDashboard.nextAction.description}</em>
+            <strong>{data.deliveryDashboard.nextAction.title}</strong>
+            <em>{data.deliveryDashboard.nextAction.description}</em>
           </span>
         </div>
       </section>
     {/if}
 
-    {#if data.taskComments}
-      <section class="task-comments" aria-label="Comentários da tarefa">
+    {#if data.deliveryComments}
+      <section class="delivery-comments" aria-label="Comentários da entrega">
         <header>
           <div>
             <span>Colaboração</span>
@@ -653,7 +653,7 @@
               placeholder="Compartilhe uma atualização, dúvida ou instrução…"
             ></textarea>
           </label>
-          <div class="task-comments__form-actions">
+          <div class="delivery-comments__form-actions">
             {#if commentError}<p role="alert">{commentError}</p>{/if}
             <button
               type="submit"
@@ -664,8 +664,8 @@
             >
           </div>
         </form>
-        <div class="task-comments__list">
-          {#each taskComments as comment (comment.id)}
+        <div class="delivery-comments__list">
+          {#each deliveryComments as comment (comment.id)}
             <article>
               <header>
                 <strong>{comment.authorName}</strong><time
@@ -678,7 +678,7 @@
               </header>
               <p>{comment.body}</p>
             </article>
-          {:else}<p class="task-comments__empty">
+          {:else}<p class="delivery-comments__empty">
               Ainda não há comentários. Registre o contexto que ajuda a equipe a
               avançar.
             </p>{/each}
@@ -1136,7 +1136,7 @@
     font-weight: 700;
   }
   .operations-dashboard__panel > p,
-  .task-operation-list > p {
+  .delivery-operation-list > p {
     color: var(--muted);
     font-size: var(--text-sm);
   }
@@ -1155,7 +1155,7 @@
     background: var(--panel);
   }
   .project-operation-cards a:hover,
-  .task-operation-list a:hover {
+  .delivery-operation-list a:hover {
     border-color: var(--brand-500);
     background: var(--brand-50);
   }
@@ -1166,7 +1166,7 @@
     text-transform: uppercase;
   }
   .project-operation-cards strong,
-  .task-operation-list span {
+  .delivery-operation-list span {
     overflow: hidden;
     color: var(--text);
     font-size: var(--text-sm);
@@ -1175,7 +1175,7 @@
   }
   .project-operation-cards small,
   .project-operation-cards em,
-  .task-operation-list small {
+  .delivery-operation-list small {
     overflow: hidden;
     color: var(--muted);
     font-size: var(--text-xs);
@@ -1183,11 +1183,11 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .task-operation-list {
+  .delivery-operation-list {
     display: grid;
     gap: 5px;
   }
-  .task-operation-list a {
+  .delivery-operation-list a {
     display: grid;
     gap: 3px;
     padding: 8px;
@@ -1224,7 +1224,7 @@
     color: var(--brand-600);
     font-weight: 700;
   }
-  .task-comments {
+  .delivery-comments {
     display: grid;
     gap: 13px;
     padding: 18px;
@@ -1232,25 +1232,25 @@
     border-radius: var(--radius-xl);
     background: var(--panel);
   }
-  .task-comments > header > div {
+  .delivery-comments > header > div {
     display: grid;
     gap: 3px;
   }
-  .task-comments > header span {
+  .delivery-comments > header span {
     color: var(--brand-600);
     font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
-  .task-comments h2 {
+  .delivery-comments h2 {
     margin: 0;
   }
-  .task-comments form {
+  .delivery-comments form {
     display: grid;
     gap: 8px;
   }
-  .task-comments textarea {
+  .delivery-comments textarea {
     width: 100%;
     min-height: 88px;
     padding: 11px 12px;
@@ -1264,22 +1264,22 @@
     line-height: 1.45;
     resize: vertical;
   }
-  .task-comments textarea:focus {
+  .delivery-comments textarea:focus {
     border-color: var(--brand-500);
     box-shadow: var(--focus-ring);
   }
-  .task-comments__form-actions {
+  .delivery-comments__form-actions {
     display: flex;
     min-height: 32px;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
   }
-  .task-comments__form-actions p {
+  .delivery-comments__form-actions p {
     color: var(--red-500);
     font-size: var(--text-xs);
   }
-  .task-comments__form-actions button {
+  .delivery-comments__form-actions button {
     display: inline-flex;
     min-height: 34px;
     align-items: center;
@@ -1294,42 +1294,42 @@
     font-size: var(--text-sm);
     font-weight: 700;
   }
-  .task-comments__form-actions button:disabled {
+  .delivery-comments__form-actions button:disabled {
     cursor: not-allowed;
     opacity: 0.5;
   }
-  .task-comments__list {
+  .delivery-comments__list {
     display: grid;
     gap: 8px;
   }
-  .task-comments__list article {
+  .delivery-comments__list article {
     padding: 12px;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--canvas);
   }
-  .task-comments__list article header {
+  .delivery-comments__list article header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
   }
-  .task-comments__list strong {
+  .delivery-comments__list strong {
     color: var(--text);
     font-size: var(--text-sm);
   }
-  .task-comments__list time {
+  .delivery-comments__list time {
     color: var(--muted);
     font-size: var(--text-xs);
   }
-  .task-comments__list article p {
+  .delivery-comments__list article p {
     margin-top: 7px;
     color: var(--text-soft);
     font-size: var(--text-sm);
     line-height: 1.5;
     white-space: pre-wrap;
   }
-  .task-comments__empty {
+  .delivery-comments__empty {
     padding: 12px;
     border-radius: var(--radius-md);
     color: var(--muted);

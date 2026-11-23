@@ -197,7 +197,7 @@
       allowOverflow
     >
       <LabelListEditor
-        bind:items={settings.taskStatuses}
+        bind:items={settings.deliveryStatuses}
         showHeader={false}
         fixed
         levelMode
@@ -225,7 +225,7 @@
       allowOverflow
     >
       <LabelListEditor
-        bind:items={settings.taskCategories}
+        bind:items={settings.deliveryCategories}
         showHeader={false}
         max={30}
         lockedKey="outro"

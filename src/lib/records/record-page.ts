@@ -8,7 +8,7 @@ const tabByKind: Record<EntityCardKind, RecordsTab> = {
   negocio: "negocios",
   contrato: "contratos",
   projeto: "projetos",
-  tarefa: "tarefas",
+  entrega: "entregas",
 };
 
 const kindByEntityKey: Record<EntityConfig["key"], EntityCardKind> = {
@@ -16,7 +16,7 @@ const kindByEntityKey: Record<EntityConfig["key"], EntityCardKind> = {
   negocios: "negocio",
   contratos: "contrato",
   projetos: "projeto",
-  entregas: "tarefa",
+  entregas: "entrega",
 };
 
 /** The canonical, directly accessible page for a persisted record. */
@@ -37,6 +37,6 @@ export function recordTabFromRoute(value: string): RecordsTab | undefined {
   if (tab === "negócios") return "negocios";
   if (tab === "contratos") return "contratos";
   if (tab === "projetos") return "projetos";
-  if (tab === "entregas" || tab === "tarefas") return "tarefas";
+  if (tab === "entregas" || tab === "entregas") return "entregas";
   return undefined;
 }

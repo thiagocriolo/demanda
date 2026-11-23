@@ -15,11 +15,11 @@ export type ScheduleTask = {
   archivedAt?: string;
   tipo?: string;
   etapa?: string;
+  deliveryId: string;
+  deliveryNome: string;
   taskId: string;
-  taskNome: string;
-  subtaskId: string;
   sequence: number;
-  subtaskCount: number;
+  taskCount: number;
   nome: string;
   duracao: string;
   negocio?: string;
@@ -30,7 +30,7 @@ export type ScheduleTask = {
   responsibleUserIds?: string;
   responsibleAvatarUrl?: string;
   status?: string;
-  taskStatus?: string;
+  deliveryStatus?: string;
   priority?: string;
   requestedDate?: string;
   dueDate?: string;
@@ -49,7 +49,7 @@ export type WeekDay = {
 };
 
 export type PositionedTask = {
-  task: ScheduleTask;
+  delivery: ScheduleTask;
   schedule: ScheduleEntry;
   lane: number;
   laneCount: number;

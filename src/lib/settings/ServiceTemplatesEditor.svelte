@@ -9,7 +9,7 @@
   import type {
     DeliveryTemplate,
     ServiceTemplate,
-    TemplateTask,
+    TemplateDelivery,
   } from "./types";
 
   let {
@@ -34,7 +34,7 @@
   let cards = $derived(templates.map(toCard));
 
   function deliveryCount(template: ServiceTemplate): number {
-    if (template.tasks.length) return template.tasks.length;
+    if (template.deliveries.length) return template.deliveries.length;
     return deliveries.filter(
       (delivery: DeliveryTemplate) =>
         delivery.projectTemplateId === template.id ||
@@ -112,14 +112,14 @@
       paymentMethod: "",
       paymentTerms: "",
       financeNotes: "",
-      tasks: [],
+      deliveries: [],
     };
-    let tasks: ServiceTemplate["tasks"] = [];
+    let deliveries: ServiceTemplate["deliveries"] = [];
     try {
-      const parsed = JSON.parse(values.tasks);
-      if (Array.isArray(parsed)) tasks = parsed;
+      const parsed = JSON.parse(values.deliveries);
+      if (Array.isArray(parsed)) deliveries = parsed;
     } catch {
-      tasks = [];
+      deliveries = [];
     }
     const next: ServiceTemplate = {
       ...base,
@@ -131,7 +131,7 @@
       duration: values.duration,
       contractType: values.contractType.trim(),
       amount: values.amount,
-      tasks,
+      deliveries,
     };
 
     templates = editingTemplate
@@ -155,8 +155,8 @@
         id: crypto.randomUUID(),
         name: `${source.name} (cópia)`,
         serviceId: undefined,
-        tasks: source.tasks.map((task: TemplateTask) => ({
-          ...task,
+        deliveries: source.deliveries.map((delivery: TemplateDelivery) => ({
+          ...delivery,
           id: crypto.randomUUID(),
         })),
       },

@@ -10,15 +10,15 @@ import {
   workdayStyle,
 } from "./presentation";
 
-const task = (overrides: Partial<ScheduleTask> = {}): ScheduleTask => ({
-  id: "subtask-1",
+const delivery = (overrides: Partial<ScheduleTask> = {}): ScheduleTask => ({
+  id: "task-1",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
+  deliveryId: "delivery-1",
+  deliveryNome: "Planejamento",
   taskId: "task-1",
-  taskNome: "Planejamento",
-  subtaskId: "subtask-1",
   sequence: 1,
-  subtaskCount: 1,
+  taskCount: 1,
   nome: "Definir escopo",
   duracao: "30 min",
   ...overrides,
@@ -35,14 +35,14 @@ describe("dashboard presentation", () => {
   it("uses the canonical delivery fields when calculating pending work", () => {
     const records = [
       {
-        id: "task-1",
+        id: "delivery-1",
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
         status: "aberto",
         dataEntrega: "2026-07-15",
       },
       {
-        id: "task-2",
+        id: "delivery-2",
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
         status: "concluido",
@@ -50,15 +50,15 @@ describe("dashboard presentation", () => {
       },
     ] as EntityRecord[];
 
-    expect(recordDate(records[0]!, "task")).toBe("2026-07-15");
-    expect(scheduledIn(records, "task", "2026-07-15")).toBe(1);
+    expect(recordDate(records[0]!, "delivery")).toBe("2026-07-15");
+    expect(scheduledIn(records, "delivery", "2026-07-15")).toBe(1);
   });
 
   it("renders the current half-hour slot from today's schedule only", () => {
     const preview = buildSchedulePreview(
       [
         {
-          task: task(),
+          delivery: delivery(),
           entry: { date: "2026-07-15", startMinutes: 600, durationSlots: 2 },
         },
       ],

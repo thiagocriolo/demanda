@@ -3,8 +3,8 @@ import { safeInternalRedirect } from "./redirect";
 
 describe("redirecionamento pós-login", () => {
   it("aceita somente caminhos internos", () => {
-    expect(safeInternalRedirect("/tarefas?status=aberta")).toBe(
-      "/tarefas?status=aberta",
+    expect(safeInternalRedirect("/entregas?status=aberta")).toBe(
+      "/entregas?status=aberta",
     );
     expect(safeInternalRedirect("https://evil.example/roubo")).toBe(
       "/dashboard",

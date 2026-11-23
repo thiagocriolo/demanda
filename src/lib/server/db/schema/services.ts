@@ -361,8 +361,8 @@ export const deliveryTemplates = applicationSchema.table(
   ],
 );
 
-export const serviceTaskTemplates = applicationSchema.table(
-  "service_task_templates",
+export const serviceDeliveryTemplates = applicationSchema.table(
+  "service_delivery_templates",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     workspaceId: uuid("workspace_id")
@@ -382,47 +382,47 @@ export const serviceTaskTemplates = applicationSchema.table(
     updatedAt: updatedAt(),
   },
   (table) => [
-    unique("service_task_templates_workspace_id_id_unique").on(
+    unique("service_delivery_templates_workspace_id_id_unique").on(
       table.workspaceId,
       table.id,
     ),
     foreignKey({
-      name: "service_task_templates_workspace_service_foreign_key",
+      name: "service_delivery_templates_workspace_service_foreign_key",
       columns: [table.workspaceId, table.serviceId],
       foreignColumns: [services.workspaceId, services.id],
     }).onDelete("cascade"),
     foreignKey({
-      name: "service_task_templates_workspace_template_foreign_key",
+      name: "service_delivery_templates_workspace_template_foreign_key",
       columns: [table.workspaceId, table.deliveryTemplateId],
       foreignColumns: [deliveryTemplates.workspaceId, deliveryTemplates.id],
     }).onDelete("cascade"),
-    index("service_task_templates_workspace_service_order_index").on(
+    index("service_delivery_templates_workspace_service_order_index").on(
       table.workspaceId,
       table.serviceId,
       table.sortOrder,
       table.id,
     ),
-    index("service_task_templates_workspace_template_index").on(
+    index("service_delivery_templates_workspace_template_index").on(
       table.workspaceId,
       table.deliveryTemplateId,
     ),
     check(
-      "service_task_templates_name_not_blank",
+      "service_delivery_templates_name_not_blank",
       sql`length(btrim(${table.name})) > 0`,
     ),
     check(
-      "service_task_templates_sort_order_non_negative",
+      "service_delivery_templates_sort_order_non_negative",
       sql`${table.sortOrder} >= 0`,
     ),
     check(
-      "service_task_templates_updated_not_before_creation",
+      "service_delivery_templates_updated_not_before_creation",
       sql`${table.updatedAt} >= ${table.createdAt}`,
     ),
   ],
 );
 
-export const deliveryTemplateSubtasks = applicationSchema.table(
-  "delivery_template_subtasks",
+export const deliveryTemplateTasks = applicationSchema.table(
+  "delivery_template_tasks",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     workspaceId: uuid("workspace_id")
@@ -440,42 +440,42 @@ export const deliveryTemplateSubtasks = applicationSchema.table(
   },
   (table) => [
     foreignKey({
-      name: "delivery_template_subtasks_workspace_template_foreign_key",
+      name: "delivery_template_tasks_workspace_template_foreign_key",
       columns: [table.workspaceId, table.deliveryTemplateId],
       foreignColumns: [deliveryTemplates.workspaceId, deliveryTemplates.id],
     }).onDelete("cascade"),
-    index("delivery_template_subtasks_workspace_template_order_index").on(
+    index("delivery_template_tasks_workspace_template_order_index").on(
       table.workspaceId,
       table.deliveryTemplateId,
       table.sortOrder,
       table.id,
     ),
     check(
-      "delivery_template_subtasks_name_not_blank",
+      "delivery_template_tasks_name_not_blank",
       sql`length(btrim(${table.name})) > 0`,
     ),
     check(
-      "delivery_template_subtasks_duration_range",
+      "delivery_template_tasks_duration_range",
       sql`${table.durationMinutes} between 30 and 10080`,
     ),
     check(
-      "delivery_template_subtasks_duration_half_hour",
+      "delivery_template_tasks_duration_half_hour",
       sql`${table.durationMinutes} % 30 = 0`,
     ),
     check(
-      "delivery_template_subtasks_status_normalized",
+      "delivery_template_tasks_status_normalized",
       sql`${table.defaultStatusKey} = lower(btrim(${table.defaultStatusKey}))`,
     ),
     check(
-      "delivery_template_subtasks_status_format",
+      "delivery_template_tasks_status_format",
       sql`${table.defaultStatusKey} ~ '^[a-z0-9][a-z0-9_-]{0,63}$'`,
     ),
     check(
-      "delivery_template_subtasks_sort_order_non_negative",
+      "delivery_template_tasks_sort_order_non_negative",
       sql`${table.sortOrder} >= 0`,
     ),
     check(
-      "delivery_template_subtasks_updated_not_before_creation",
+      "delivery_template_tasks_updated_not_before_creation",
       sql`${table.updatedAt} >= ${table.createdAt}`,
     ),
   ],

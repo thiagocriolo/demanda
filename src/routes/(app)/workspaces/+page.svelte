@@ -4,10 +4,10 @@
   import type { EntityRecord } from "$lib/entities/types";
   import { observeProjects } from "$lib/projects/client";
   import {
-    listAllTasks,
-    observeTasks,
-    taskToEntityRecord,
-  } from "$lib/tasks/client";
+    listAllDeliveries,
+    observeDeliveries,
+    deliveryToEntityRecord,
+  } from "$lib/deliveries/client";
   import {
     currentSettings,
     loadSettingsFromServer,
@@ -64,8 +64,8 @@
 
   let workspaces = $state<Workspace[]>([]);
   let users = $state<WorkspaceUser[]>([]);
-  let tasks = $state<EntityRecord[]>([]);
-  let tasksRequest: AbortController | undefined;
+  let deliveries = $state<EntityRecord[]>([]);
+  let deliveriesRequest: AbortController | undefined;
   let activeId = $state(PERSONAL_WORKSPACE_ID);
   let createOpen = $state(false);
   let editingId = $state<string | null>(null);
@@ -128,15 +128,15 @@
     }
   }
 
-  async function refreshTasks(): Promise<void> {
-    tasksRequest?.abort();
+  async function refreshDeliveries(): Promise<void> {
+    deliveriesRequest?.abort();
     const request = new AbortController();
-    tasksRequest = request;
+    deliveriesRequest = request;
     try {
-      const serverTasks = await listAllTasks({ signal: request.signal });
-      if (!request.signal.aborted) tasks = serverTasks.map(taskToEntityRecord);
+      const serverDeliveries = await listAllDeliveries({ signal: request.signal });
+      if (!request.signal.aborted) deliveries = serverDeliveries.map(deliveryToEntityRecord);
     } catch {
-      if (!request.signal.aborted) tasks = [];
+      if (!request.signal.aborted) deliveries = [];
     }
   }
 
@@ -158,19 +158,19 @@
     void refreshWorkspaceSnapshot()
       .then(syncWorkspaceState)
       .catch(() => undefined);
-    void refreshTasks();
+    void refreshDeliveries();
     const stopWorkspaces = observeWorkspaces(() => {
       syncWorkspaceState();
-      void refreshTasks();
+      void refreshDeliveries();
     });
-    const stopTasks = observeTasks(() => void refreshTasks());
+    const stopDeliveries = observeDeliveries(() => void refreshDeliveries());
     const stopProjects = observeProjects(() => {
       void refreshWorkspaceSnapshot().then(syncWorkspaceState);
     });
     return () => {
-      tasksRequest?.abort();
+      deliveriesRequest?.abort();
       stopWorkspaces();
-      stopTasks();
+      stopDeliveries();
       stopProjects();
     };
   });
@@ -183,9 +183,9 @@
       .toLocaleLowerCase("pt-BR");
   }
 
-  function tasksFor(workspaceId: string): EntityRecord[] {
-    return tasks.filter(
-      (task) => (task.workspaceId ?? PERSONAL_WORKSPACE_ID) === workspaceId,
+  function deliveriesFor(workspaceId: string): EntityRecord[] {
+    return deliveries.filter(
+      (delivery) => (delivery.workspaceId ?? PERSONAL_WORKSPACE_ID) === workspaceId,
     );
   }
 
@@ -220,7 +220,7 @@
   }
 
   function isWorkspaceActive(workspaceId: string): boolean {
-    return tasksFor(workspaceId).some((task) => !isTerminal(task));
+    return deliveriesFor(workspaceId).some((delivery) => !isTerminal(delivery));
   }
 
   function ownerFor(workspace: Workspace): WorkspaceUser {

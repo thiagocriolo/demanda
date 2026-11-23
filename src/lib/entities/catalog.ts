@@ -17,7 +17,7 @@ import {
   businessSeeds,
   peopleSeeds,
   projectSeeds,
-  taskSeeds,
+  deliverySeeds,
 } from "./seed-data";
 import type { EntityConfig, EntityFieldOption } from "./types";
 
@@ -386,7 +386,7 @@ export const deliveryConfig: EntityConfig = {
       placeholder: "Briefing",
     },
   ],
-  seeds: taskSeeds,
+  seeds: deliverySeeds,
 };
 
 export const entityConfigs = {

@@ -3,7 +3,8 @@ import type { EntityCardItem, EntityCardKind } from "../ui/entity-card";
 import type { FilterOption } from "../ui/FilterBar.svelte";
 import type { WorkspaceUser } from "../workspaces/workspace-storage";
 
-export type RecordsTab = "pessoas" | "negocios" | "contratos" | "projetos" | "tarefas";
+export type RecordsTab =
+  "pessoas" | "negocios" | "contratos" | "projetos" | "entregas";
 export type RecordsOrderBy = "updated" | "name_asc" | "name_desc";
 
 export type RecordsTabConfig = {

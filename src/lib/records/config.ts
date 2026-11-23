@@ -46,9 +46,9 @@ export const recordsTabConfigs: Record<RecordsTab, RecordsTabConfig> = {
     emptyLabel: "projeto",
     createLabel: "projeto",
   },
-  tarefas: {
+  entregas: {
     config: deliveryConfig,
-    kind: "tarefa",
+    kind: "entrega",
     statusField: "status",
     placeholder: "Buscar entregas",
     emptyLabel: "entrega",

@@ -24,6 +24,11 @@ export function ensureRuntimeSchema(database: Database): Promise<void> {
 }
 
 async function applyRuntimeSchema(database: Database): Promise<void> {
+  // Version 0019 is a semantic rename, rather than an additive migration.
+  // Managed deployments invoke this guard before serving requests, so old
+  // installations receive the same Delivery -> Task vocabulary as migrated
+  // installations while preserving every existing UUID and row.
+  await renameLegacyDeliverySchema(database);
   await addColumnIfMissing(
     database,
     "projects",
@@ -36,18 +41,8 @@ async function applyRuntimeSchema(database: Database): Promise<void> {
     "contract_type",
     "varchar(16) NOT NULL DEFAULT 'one_off'",
   );
-  await addColumnIfMissing(
-    database,
-    "contracts",
-    "start_date",
-    "date NULL",
-  );
-  await addColumnIfMissing(
-    database,
-    "contracts",
-    "end_date",
-    "date NULL",
-  );
+  await addColumnIfMissing(database, "contracts", "start_date", "date NULL");
+  await addColumnIfMissing(database, "contracts", "end_date", "date NULL");
   // The managed runtime does not execute Drizzle migrations on deploy. These
   // additive columns keep the personal-contract and private-finance queries
   // compatible with databases created before migration 0015.
@@ -81,30 +76,30 @@ async function applyRuntimeSchema(database: Database): Promise<void> {
   );
   await addColumnIfMissing(
     database,
-    "service_task_templates",
+    "service_delivery_templates",
     "recurrence_type",
     "varchar(16) NOT NULL DEFAULT 'one_off'",
   );
   await addColumnIfMissing(
     database,
-    "service_task_templates",
+    "service_delivery_templates",
     "recurrence_unit",
     "varchar(16) NULL",
   );
   await addColumnIfMissing(
     database,
-    "service_task_templates",
+    "service_delivery_templates",
     "recurrence_days",
     "text NOT NULL DEFAULT ('[]')",
   );
 
   await database.execute(
     sql.raw(`
-    CREATE TABLE IF NOT EXISTS project_task_routines (
+    CREATE TABLE IF NOT EXISTS project_delivery_routines (
       id char(36) NOT NULL,
       workspace_id char(36) NOT NULL,
       project_id char(36) NOT NULL,
-      source_service_task_template_id char(36) NULL,
+      source_service_delivery_template_id char(36) NULL,
       name varchar(140) NOT NULL,
       description text NOT NULL,
       category_key varchar(64) NULL,
@@ -112,19 +107,19 @@ async function applyRuntimeSchema(database: Database): Promise<void> {
       status_key varchar(64) NOT NULL,
       responsible_user_id char(36) NOT NULL,
       tag_ids text NOT NULL,
-      subtasks text NOT NULL,
+      tasks text NOT NULL,
       recurrence_type varchar(16) NOT NULL,
       recurrence_unit varchar(16) NULL,
       recurrence_days text NOT NULL,
       created_at timestamp(3) NOT NULL,
       updated_at timestamp(3) NOT NULL,
       PRIMARY KEY (id),
-      UNIQUE KEY project_task_routines_workspace_id_id_unique (workspace_id, id),
-      KEY project_task_routines_workspace_project_index (workspace_id, project_id),
-      CONSTRAINT project_task_routines_workspace_project_foreign_key
+      UNIQUE KEY project_delivery_routines_workspace_id_id_unique (workspace_id, id),
+      KEY project_delivery_routines_workspace_project_index (workspace_id, project_id),
+      CONSTRAINT project_delivery_routines_workspace_project_foreign_key
         FOREIGN KEY (workspace_id, project_id)
         REFERENCES projects (workspace_id, id) ON DELETE CASCADE,
-      CONSTRAINT project_task_routines_workspace_member_foreign_key
+      CONSTRAINT project_delivery_routines_workspace_member_foreign_key
         FOREIGN KEY (workspace_id, responsible_user_id)
         REFERENCES workspace_members (workspace_id, user_id)
     )
@@ -133,39 +128,117 @@ async function applyRuntimeSchema(database: Database): Promise<void> {
 
   await addColumnIfMissing(
     database,
-    "tasks",
+    "deliveries",
     "project_routine_id",
     "char(36) NULL",
   );
   await addColumnIfMissing(
     database,
-    "tasks",
+    "deliveries",
     "routine_occurrence_date",
     "date NULL",
   );
 
   await database.execute(
     sql.raw(`
-    CREATE TABLE IF NOT EXISTS task_comments (
+    CREATE TABLE IF NOT EXISTS delivery_comments (
       id char(36) NOT NULL,
       workspace_id char(36) NOT NULL,
-      task_id char(36) NOT NULL,
+      delivery_id char(36) NOT NULL,
       author_user_id char(36) NOT NULL,
       body text NOT NULL,
       created_at timestamp(3) NOT NULL,
       updated_at timestamp(3) NOT NULL,
       PRIMARY KEY (id),
-      KEY task_comments_workspace_task_created_index (workspace_id, task_id, created_at, id),
-      KEY task_comments_author_created_index (author_user_id, created_at),
-      CONSTRAINT task_comments_workspace_task_foreign_key
-        FOREIGN KEY (workspace_id, task_id)
-        REFERENCES tasks (workspace_id, id) ON DELETE CASCADE,
-      CONSTRAINT task_comments_author_user_id_users_id_fk
+      KEY delivery_comments_workspace_delivery_created_index (workspace_id, delivery_id, created_at, id),
+      KEY delivery_comments_author_created_index (author_user_id, created_at),
+      CONSTRAINT delivery_comments_workspace_delivery_foreign_key
+        FOREIGN KEY (workspace_id, delivery_id)
+        REFERENCES deliveries (workspace_id, id) ON DELETE CASCADE,
+      CONSTRAINT delivery_comments_author_user_id_users_id_fk
         FOREIGN KEY (author_user_id)
         REFERENCES users (id) ON DELETE RESTRICT
     )
   `),
   );
+}
+
+async function renameLegacyDeliverySchema(database: Database): Promise<void> {
+  const tables: Array<[string, string]> = [
+    ["tasks", "deliveries"],
+    ["task_subtasks", "delivery_tasks"],
+    ["task_responsibles", "delivery_responsibles"],
+    ["task_tags", "delivery_tags"],
+    ["task_comments", "delivery_comments"],
+    ["project_task_routines", "project_delivery_routines"],
+    ["service_task_templates", "service_delivery_templates"],
+    ["delivery_template_subtasks", "delivery_template_tasks"],
+    ["personal_tasks", "personal_deliveries"],
+  ];
+  // MySQL updates InnoDB foreign-key targets during RENAME TABLE.  Disable
+  // validation only while renaming the mutually-referencing aggregate.
+  await database.execute(sql.raw("SET FOREIGN_KEY_CHECKS = 0"));
+  try {
+    for (const [oldName, newName] of tables) {
+      if (
+        (await tableExists(database, oldName)) &&
+        !(await tableExists(database, newName))
+      ) {
+        await database.execute(
+          sql.raw(`RENAME TABLE \`${oldName}\` TO \`${newName}\``),
+        );
+      }
+    }
+    const columns: Array<[string, string, string]> = [
+      ["delivery_tasks", "task_id", "delivery_id"],
+      ["delivery_responsibles", "task_id", "delivery_id"],
+      ["delivery_tags", "task_id", "delivery_id"],
+      ["delivery_comments", "task_id", "delivery_id"],
+      ["tool_uses", "task_id", "delivery_id"],
+      ["agenda_entries", "task_id", "delivery_id"],
+      ["cronograma_blocks", "task_id", "delivery_id"],
+      ["cronograma_blocks", "subtask_id", "task_id"],
+      ["project_delivery_routines", "subtasks", "tasks"],
+    ];
+    for (const [table, oldName, newName] of columns) {
+      if (
+        (await columnExists(database, table, oldName)) &&
+        !(await columnExists(database, table, newName))
+      ) {
+        await database.execute(
+          sql.raw(
+            `ALTER TABLE \`${table}\` RENAME COLUMN \`${oldName}\` TO \`${newName}\``,
+          ),
+        );
+      }
+    }
+  } finally {
+    await database.execute(sql.raw("SET FOREIGN_KEY_CHECKS = 1"));
+  }
+}
+
+async function tableExists(
+  database: Database,
+  tableName: string,
+): Promise<boolean> {
+  const result = await database.execute(
+    sql`select 1 as present from information_schema.tables
+        where table_schema = database() and table_name = ${tableName} limit 1`,
+  );
+  return rawRows<{ present: number }>(result).length > 0;
+}
+
+async function columnExists(
+  database: Database,
+  tableName: string,
+  columnName: string,
+): Promise<boolean> {
+  const result = await database.execute(
+    sql`select 1 as present from information_schema.columns
+        where table_schema = database() and table_name = ${tableName}
+          and column_name = ${columnName} limit 1`,
+  );
+  return rawRows<{ present: number }>(result).length > 0;
 }
 
 async function addColumnIfMissing(
@@ -185,6 +258,8 @@ async function addColumnIfMissing(
   if (rawRows<{ present: number }>(result).length) return;
 
   await database.execute(
-    sql.raw(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definition}`),
+    sql.raw(
+      `ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definition}`,
+    ),
   );
 }

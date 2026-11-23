@@ -17,9 +17,9 @@ import {
   contacts,
   cronogramaBlocks,
   projects,
-  taskResponsibles,
-  tasks,
-  taskSubtasks,
+  deliveryResponsibles,
+  deliveries,
+  deliveryTasks,
   users,
   workspaceMembers,
   workspaces,
@@ -165,37 +165,37 @@ async function fixture(transaction: Database) {
     statusKey: "execucao",
     endDate: "2026-07-10",
   });
-  const task = { id: randomUUID() };
+  const delivery = { id: randomUUID() };
   await transaction
-    .insert(tasks)
+    .insert(deliveries)
     .values({
-      id: task.id,
+      id: delivery.id,
       workspaceId: workspace.id,
       projectId: project.id,
       businessId: business.id,
       name: "Farol Tarefa",
       dueDate: "2026-07-12",
     });
-  const subtask = { id: randomUUID() };
+  const task = { id: randomUUID() };
   await transaction
-    .insert(taskSubtasks)
+    .insert(deliveryTasks)
     .values({
-      id: subtask.id,
+      id: task.id,
       workspaceId: workspace.id,
-      taskId: task.id,
+      deliveryId: delivery.id,
       name: "Preparar entrega",
       durationMinutes: 90,
       sortOrder: 0,
     });
-  await transaction.insert(taskResponsibles).values({
+  await transaction.insert(deliveryResponsibles).values({
     workspaceId: workspace.id,
-    taskId: task.id,
+    deliveryId: delivery.id,
     userId: owner.id,
   });
   await transaction.insert(cronogramaBlocks).values({
     workspaceId: workspace.id,
+    deliveryId: delivery.id,
     taskId: task.id,
-    subtaskId: subtask.id,
     scheduledDate: "2026-07-14",
     startMinutes: 540,
     durationMinutes: 90,
@@ -214,12 +214,12 @@ describe("BE-14 dashboard e busca globais", () => {
       );
       expect(snapshot.workspaceId).toBe(data.workspace.id);
       expect(snapshot.metrics).toMatchObject({
-        overdueTasks: 1,
+        overdueDeliveries: 1,
         overdueProjects: 1,
-        activeTasks: 1,
+        activeDeliveries: 1,
         activeProjects: 1,
-        todayTasks: 1,
-        periodTasks: 1,
+        todayDeliveries: 1,
+        periodDeliveries: 1,
         plannedMinutes: 90,
       });
       expect(snapshot.todaySchedule).toHaveLength(1);
@@ -267,14 +267,14 @@ describe("BE-14 dashboard e busca globais", () => {
         select distinct index_name from information_schema.statistics
         where table_schema = database() and index_name in (
           'contacts_name_search_index', 'businesses_name_search_index',
-          'projects_name_search_index', 'tasks_name_search_index',
+          'projects_name_search_index', 'deliveries_name_search_index',
           'projects_workspace_end_status_archive_index'
         )
       `);
       expect(rawRows(indexes)).toHaveLength(5);
       const plan = await transaction.execute(sql`
         explain
-        select id from tasks
+        select id from deliveries
         where workspace_id = ${data.workspace.id}
           and archived_at is null
           and name like '%farol%'

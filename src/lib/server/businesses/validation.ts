@@ -18,9 +18,13 @@ const normalizedKey = z
   .transform(normalizeKey)
   .pipe(z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/));
 
-const businessStage = normalizedKey.refine((value) => value !== "arquivado", {
-  message: "A etapa arquivado e reservada ao ciclo de arquivamento.",
-});
+const businessStage = normalizedKey
+  .refine((value) => value !== "arquivado", {
+    message: "A etapa arquivado e reservada ao ciclo de arquivamento.",
+  })
+  .refine((value) => value !== "novo", {
+    message: "A etapa novo não é permitida; use negociacao.",
+  });
 
 const responsibleIds = z
   .array(z.string().uuid())

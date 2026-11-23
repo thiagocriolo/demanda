@@ -49,7 +49,7 @@ export const defaultSettings: SettingsState = {
   recordsOrderBy: "updated",
   recordsShowArchived: false,
   recordsCardLevel: 5,
-  defaultTaskDuration: "1",
+  defaultDeliveryDuration: "1",
   pautaScope: "assigned",
   pautaGroupBy: "status",
   pautaOrderBy: "priority",
@@ -69,8 +69,8 @@ export const defaultSettings: SettingsState = {
     { start: "08:00", end: "12:00" },
     { start: "14:00", end: "18:00" },
   ],
-  taskReminderMinutes: "30",
-  notifyTaskReminders: false,
+  deliveryReminderMinutes: "30",
+  notifyDeliveryReminders: false,
   financeDefaultTab: "painel",
   financeInitialPeriod: "current",
   financePlanningMonths: "3",
@@ -116,7 +116,7 @@ export const defaultSettings: SettingsState = {
     ["concluido", "Conclusão", "check-check"],
     ["arquivado", "Arquivado", "folder-archive"],
   ]),
-  taskStatuses: statuses([
+  deliveryStatuses: statuses([
     ["planejamento", "Fila", "clipboard-list"],
     ["fila", "A fazer", "list-todo"],
     ["producao", "Fazendo", "loader-circle"],
@@ -144,7 +144,7 @@ export const defaultSettings: SettingsState = {
     },
     { key: "outro", label: "Outros", icon: "tag", color: "#64748B" },
   ],
-  taskCategories: [
+  deliveryCategories: [
     { key: "reuniao", label: "Reunião", icon: "users-round", color: "#2E56FF" },
     {
       key: "planejamento",
@@ -162,7 +162,7 @@ export const defaultSettings: SettingsState = {
     },
     { key: "outro", label: "Outros", icon: "tag", color: "#64748B" },
   ],
-  taskPriorities: [
+  deliveryPriorities: [
     { key: "baixa", label: "Baixa" },
     { key: "normal", label: "Normal" },
     { key: "alta", label: "Alta" },
@@ -229,7 +229,7 @@ export const defaultSettings: SettingsState = {
       paymentMethod: "Pix ou transferência",
       paymentTerms: "40% na entrada, 30% na aprovação e 30% na entrega",
       financeNotes: "Inclui duas rodadas de ajustes por etapa.",
-      tasks: [
+      deliveries: [
         {
           id: "tarefa-identidade-imersao",
           templateId: "modelo-entrega-imersao-estrategica",
@@ -260,7 +260,7 @@ export const defaultSettings: SettingsState = {
       paymentTerms: "50% na contratação e 50% antes da publicação",
       financeNotes:
         "Mídia paga e desenvolvimento avançado são orçados separadamente.",
-      tasks: [
+      deliveries: [
         {
           id: "tarefa-lancamento-landing-page",
           templateId: "modelo-entrega-landing-page",
@@ -285,7 +285,7 @@ export const defaultSettings: SettingsState = {
       paymentMethod: "Transferência",
       paymentTerms: "Vencimento no quinto dia útil de cada mês",
       financeNotes: "Captação externa e impulsionamento não estão incluídos.",
-      tasks: [
+      deliveries: [
         {
           id: "tarefa-conteudo-calendario",
           templateId: "modelo-entrega-calendario-editorial",
@@ -307,7 +307,7 @@ export const defaultSettings: SettingsState = {
       category: "planejamento",
       briefing:
         "Conduzir a imersão inicial e consolidar objetivos, público, referências e diferenciais.",
-      subtasks: [],
+      tasks: [],
       status: "planejamento",
       priority: "alta",
       tags: "briefing, estratégia",
@@ -321,7 +321,7 @@ export const defaultSettings: SettingsState = {
       category: "criacao",
       briefing:
         "Preparar as alternativas conceituais com racional, aplicações e recomendação de direção.",
-      subtasks: [],
+      tasks: [],
       status: "producao",
       priority: "emergente",
       tags: "direção criativa, apresentação",
@@ -335,7 +335,7 @@ export const defaultSettings: SettingsState = {
       category: "criacao",
       briefing:
         "Estruturar conteúdo, interface e chamada para ação da página principal da campanha.",
-      subtasks: [],
+      tasks: [],
       status: "fila",
       priority: "alta",
       tags: "landing page, conversão",
@@ -349,7 +349,7 @@ export const defaultSettings: SettingsState = {
       category: "planejamento",
       briefing:
         "Distribuir temas e formatos no mês, considerando datas relevantes e objetivos dos canais.",
-      subtasks: [],
+      tasks: [],
       status: "producao",
       priority: "normal",
       tags: "conteúdo, calendário",
@@ -363,7 +363,7 @@ export const defaultSettings: SettingsState = {
       category: "outro",
       briefing:
         "Apresentar indicadores, conteúdos de destaque e recomendações para o próximo ciclo.",
-      subtasks: [],
+      tasks: [],
       status: "conclusao",
       priority: "baixa",
       tags: "métricas, relatório",

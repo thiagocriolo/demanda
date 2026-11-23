@@ -77,7 +77,7 @@
     try {
       use = await updateToolUse(use.id, {
         name: use.name,
-        taskId: use.taskId,
+        deliveryId: use.deliveryId,
         content: use.content,
         status: "completed",
         version: use.version,
@@ -115,7 +115,7 @@
           <span>{resource.name}</span>
           <h2 id="tool-detail-title">{use.name}</h2>
           {#if use.context}<p>
-              {use.context.project.name} · {use.context.task.name}
+              {use.context.project.name} · {use.context.delivery.name}
             </p>{/if}
         </div>
       </div>

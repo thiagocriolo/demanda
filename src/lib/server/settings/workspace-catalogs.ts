@@ -19,10 +19,10 @@ const catalogDefinitions = [
   ["personStatuses", "person_status"],
   ["businessStatuses", "business_status"],
   ["projectStatuses", "project_status"],
-  ["taskStatuses", "task_status"],
+  ["deliveryStatuses", "delivery_status"],
   ["businessCategories", "business_category"],
-  ["taskCategories", "task_category"],
-  ["taskPriorities", "task_priority"],
+  ["deliveryCategories", "delivery_category"],
+  ["deliveryPriorities", "delivery_priority"],
   ["revenueCategories", "revenue_category"],
   ["expenseCategories", "expense_category"],
 ] as const satisfies readonly [
@@ -46,14 +46,14 @@ const lockedCatalogKeys = new Set([
   "project_status:alteracao",
   "project_status:concluido",
   "project_status:arquivado",
-  "task_status:planejamento",
-  "task_status:fila",
-  "task_status:producao",
-  "task_status:conclusao",
-  "task_status:arquivado",
+  "delivery_status:planejamento",
+  "delivery_status:fila",
+  "delivery_status:producao",
+  "delivery_status:conclusao",
+  "delivery_status:arquivado",
   "business_category:outro",
-  "task_category:outro",
-  "task_priority:normal",
+  "delivery_category:outro",
+  "delivery_priority:normal",
   "revenue_category:outros",
   "expense_category:outros",
 ]);
@@ -129,8 +129,8 @@ export async function hydrateWorkspaceCatalogs(
     );
   for (const [field, kind] of catalogDefinitions) {
     const entries = catalogRowsResult.filter((row) => row.kind === kind);
-    if (field === "taskPriorities") {
-      settings.taskPriorities = entries.map(({ key, label }) => ({
+    if (field === "deliveryPriorities") {
+      settings.deliveryPriorities = entries.map(({ key, label }) => ({
         key,
         label,
       }));

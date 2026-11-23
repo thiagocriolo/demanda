@@ -6,10 +6,10 @@ import type {
 } from "../../settings/types";
 import {
   deliveryTemplateResponsibles,
-  deliveryTemplateSubtasks,
+  deliveryTemplateTasks,
   deliveryTemplates,
   deliveryTemplateTags,
-  serviceTaskTemplates,
+  serviceDeliveryTemplates,
 } from "../db/schema";
 import { projectTagKey } from "../projects/validation";
 import type { SettingsDatabase } from "./database";
@@ -43,11 +43,11 @@ async function replaceDeliveryRelations(
   now: Date,
 ): Promise<void> {
   await database
-    .delete(deliveryTemplateSubtasks)
+    .delete(deliveryTemplateTasks)
     .where(
       and(
-        eq(deliveryTemplateSubtasks.workspaceId, workspaceId),
-        eq(deliveryTemplateSubtasks.deliveryTemplateId, templateId),
+        eq(deliveryTemplateTasks.workspaceId, workspaceId),
+        eq(deliveryTemplateTasks.deliveryTemplateId, templateId),
       ),
     );
   await database
@@ -66,14 +66,14 @@ async function replaceDeliveryRelations(
         eq(deliveryTemplateResponsibles.deliveryTemplateId, templateId),
       ),
     );
-  if (template.subtasks.length) {
-    await database.insert(deliveryTemplateSubtasks).values(
-      template.subtasks.map((subtask, sortOrder) => ({
+  if (template.tasks.length) {
+    await database.insert(deliveryTemplateTasks).values(
+      template.tasks.map((task, sortOrder) => ({
         workspaceId,
         deliveryTemplateId: templateId,
-        name: subtask.nome,
-        durationMinutes: durationMinutes(subtask.duracao)!,
-        defaultStatusKey: subtask.status,
+        name: task.nome,
+        durationMinutes: durationMinutes(task.duracao)!,
+        defaultStatusKey: task.status,
         sortOrder,
         createdAt: now,
         updatedAt: now,
@@ -135,8 +135,8 @@ export async function synchronizeDeliveryTemplates(
         "O modelo de projeto associado não existe.",
       );
     }
-    const subtaskTotal = template.subtasks.reduce(
-      (total, subtask) => total + (durationMinutes(subtask.duracao) ?? 0),
+    const taskTotal = template.tasks.reduce(
+      (total, task) => total + (durationMinutes(task.duracao) ?? 0),
       0,
     );
     const values = {
@@ -148,7 +148,7 @@ export async function synchronizeDeliveryTemplates(
       defaultStatusKey: template.status,
       defaultPriorityKey: template.priority,
       defaultDurationMinutes:
-        durationMinutes(template.duration) ?? (subtaskTotal || null),
+        durationMinutes(template.duration) ?? (taskTotal || null),
       sortOrder,
       archivedAt: null,
       updatedAt: now,
@@ -197,7 +197,7 @@ export async function synchronizeDeliveryTemplates(
   return canonical;
 }
 
-export async function synchronizeServiceTaskTemplates(
+export async function synchronizeServiceDeliveryTemplates(
   database: SettingsDatabase,
   workspaceId: string,
   settings: WorkspaceSettingsState,
@@ -206,14 +206,14 @@ export async function synchronizeServiceTaskTemplates(
   now: Date,
 ): Promise<void> {
   await database
-    .delete(serviceTaskTemplates)
-    .where(eq(serviceTaskTemplates.workspaceId, workspaceId));
+    .delete(serviceDeliveryTemplates)
+    .where(eq(serviceDeliveryTemplates.workspaceId, workspaceId));
 
   const values = settings.serviceTemplates.flatMap((service) => {
     const serviceId = serviceIds.get(service.id);
     if (!serviceId) throw new SettingsRelationsInvalidError();
-    return service.tasks.map((task, sortOrder) => {
-      const deliveryTemplateId = deliveryIds.get(task.templateId);
+    return service.deliveries.map((delivery, sortOrder) => {
+      const deliveryTemplateId = deliveryIds.get(delivery.templateId);
       if (!deliveryTemplateId) {
         throw new SettingsRelationsInvalidError(
           "O modelo de tarefa selecionado não existe.",
@@ -223,16 +223,16 @@ export async function synchronizeServiceTaskTemplates(
         workspaceId,
         serviceId,
         deliveryTemplateId,
-        name: task.name,
-        recurrenceType: task.frequency ?? "one_off",
+        name: delivery.name,
+        recurrenceType: delivery.frequency ?? "one_off",
         recurrenceUnit:
-          task.frequency === "custom" ? (task.customUnit ?? null) : null,
+          delivery.frequency === "custom" ? (delivery.customUnit ?? null) : null,
         recurrenceDays: JSON.stringify(
-          task.frequency === "weekly"
+          delivery.frequency === "weekly"
             ? [0]
-            : task.frequency === "monthly"
+            : delivery.frequency === "monthly"
               ? [1]
-              : (task.recurrenceDays ?? []),
+              : (delivery.recurrenceDays ?? []),
         ),
         sortOrder,
         createdAt: now,
@@ -240,5 +240,5 @@ export async function synchronizeServiceTaskTemplates(
       };
     });
   });
-  if (values.length) await database.insert(serviceTaskTemplates).values(values);
+  if (values.length) await database.insert(serviceDeliveryTemplates).values(values);
 }

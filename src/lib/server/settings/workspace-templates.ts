@@ -2,7 +2,7 @@ import type { WorkspaceSettingsState } from "../../settings/types";
 import type { SettingsDatabase } from "./database";
 import {
   synchronizeDeliveryTemplates,
-  synchronizeServiceTaskTemplates,
+  synchronizeServiceDeliveryTemplates,
 } from "./workspace-delivery-template-sync";
 import { synchronizeServiceTemplates } from "./workspace-service-template-sync";
 import { loadWorkspaceMemberIndex } from "./workspace-template-members";
@@ -36,7 +36,7 @@ export async function synchronizeWorkspaceTemplates(
     members,
     now,
   );
-  await synchronizeServiceTaskTemplates(
+  await synchronizeServiceDeliveryTemplates(
     database,
     workspaceId,
     settings,

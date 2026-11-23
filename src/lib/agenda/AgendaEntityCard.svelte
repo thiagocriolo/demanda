@@ -39,7 +39,7 @@
   class="agenda-entity-card"
   draggable={true}
   role="group"
-  aria-label={`${item.mode === "tasks" ? "Tarefa" : "Projeto"}: ${item.title}. Arraste para reagendar.`}
+  aria-label={`${item.mode === "deliveries" ? "Entrega" : "Projeto"}: ${item.title}. Arraste para reagendar.`}
   data-agenda-card={item.id}
   data-agenda-card-level={level}
   ondragstart={(event) => ondragstart(event, item)}

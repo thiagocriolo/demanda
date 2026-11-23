@@ -46,7 +46,7 @@ describe("BE-09 settings validation", () => {
 
   it("protege niveis obrigatorios dos catalogos compartilhados", () => {
     const settings = defaultWorkspaceSettings();
-    settings.taskStatuses = settings.taskStatuses.filter(
+    settings.deliveryStatuses = settings.deliveryStatuses.filter(
       ({ key }) => key !== "conclusao",
     );
     expect(workspaceSettingsSchema.safeParse(settings).success).toBe(false);
@@ -65,18 +65,18 @@ describe("BE-09 settings validation", () => {
     const settings = defaultWorkspaceSettings();
     const service = settings.serviceTemplates[0]!;
     const templateId = settings.deliveryTemplates[0]!.id;
-    service.tasks = [
+    service.deliveries = [
       { id: "ocorrencia-1", templateId, name: "Primeira etapa" },
       { id: "ocorrencia-2", templateId, name: "Revisão da etapa" },
     ];
 
     const parsed = workspaceSettingsSchema.parse(settings);
-    expect(parsed.serviceTemplates[0]?.tasks).toEqual(service.tasks);
+    expect(parsed.serviceTemplates[0]?.deliveries).toEqual(service.deliveries);
   });
 
   it("rejeita uma ocorrência cujo modelo de tarefa não existe", () => {
     const settings = defaultWorkspaceSettings();
-    settings.serviceTemplates[0]!.tasks = [
+    settings.serviceTemplates[0]!.deliveries = [
       {
         id: "ocorrencia-invalida",
         templateId: "modelo-inexistente",

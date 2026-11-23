@@ -25,6 +25,8 @@ import type {
   ProjectResponsible,
   ProjectServiceSummary,
   ProjectTag,
+  Service,
+  ServiceMutationInput,
 } from "./types";
 
 export const PROJECTS_CHANGED_EVENT = "demanda:projects-changed";
@@ -251,6 +253,13 @@ export async function createProject(
   );
   notifyProjectsChanged();
   return project;
+}
+
+export async function createService(
+  input: ServiceMutationInput,
+  fetcher: FetchLike = fetch,
+): Promise<Service> {
+  return requestJson<Service>(fetcher, "/api/services", jsonRequest("POST", input));
 }
 
 export async function createProjectFromService(

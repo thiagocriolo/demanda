@@ -15,8 +15,8 @@ import {
   agendaEntries,
   businesses,
   projects,
-  tasks,
-  taskSubtasks,
+  deliveries,
+  deliveryTasks,
   users,
   workspaceMembers,
   workspaces,
@@ -160,30 +160,30 @@ async function fixture(database: Database, label = "BE10") {
       },
     ]);
   const projectRows = await database.select().from(projects).where(and(eq(projects.id, projectIds[0]!), eq(projects.workspaceId, workspace.id))).orderBy(asc(projects.name));
-  const taskId = randomUUID();
+  const deliveryId = randomUUID();
   await database
-    .insert(tasks)
+    .insert(deliveries)
     .values({
-      id: taskId,
+      id: deliveryId,
       workspaceId: workspace.id,
       projectId: projectRows[0]!.id,
       businessId: business.id,
       name: `${label} Tarefa`,
       dueDate: "2026-08-12",
     });
-  const [task] = await database.select().from(tasks).where(eq(tasks.id, taskId));
-  if (!task) throw new Error("Tarefa nao criada.");
-  await database.insert(taskSubtasks).values([
+  const [delivery] = await database.select().from(deliveries).where(eq(deliveries.id, deliveryId));
+  if (!delivery) throw new Error("Tarefa nao criada.");
+  await database.insert(deliveryTasks).values([
     {
       workspaceId: workspace.id,
-      taskId: task.id,
+      deliveryId: delivery.id,
       name: "Parte 1",
       durationMinutes: 60,
       sortOrder: 0,
     },
     {
       workspaceId: workspace.id,
-      taskId: task.id,
+      deliveryId: delivery.id,
       name: "Parte 2",
       durationMinutes: 90,
       sortOrder: 1,
@@ -194,7 +194,7 @@ async function fixture(database: Database, label = "BE10") {
     member,
     workspace,
     projects: projectRows,
-    task,
+    delivery,
     ownerContext: context(owner, workspace, "owner"),
     memberContext: context(member, workspace, "member"),
   };
@@ -234,7 +234,7 @@ describe("BE-10: Agenda persistente", () => {
         { workspaceId: requested.workspace.id },
       );
       expect(snapshot.workspaceId).toBe(requested.workspace.id);
-      expect(snapshot.tasks.map(({ id }) => id)).toEqual([requested.task.id]);
+      expect(snapshot.deliveries.map(({ id }) => id)).toEqual([requested.delivery.id]);
       await expect(
         getWorkspaceAgenda(transaction, requested.ownerContext, {
           workspaceId: active.workspace.id,
@@ -250,9 +250,9 @@ describe("BE-10: Agenda persistente", () => {
         "2026-08-10",
         "2026-08-11",
       ]);
-      expect(snapshot.tasks).toMatchObject([
+      expect(snapshot.deliveries).toMatchObject([
         {
-          id: data.task.id,
+          id: data.delivery.id,
           date: "2026-08-12",
           durationMinutes: 150,
           order: 0,
@@ -321,24 +321,24 @@ describe("BE-10: Agenda persistente", () => {
         { date: "2026-09-01", position: 1 },
       ]);
 
-      const taskSnapshot = await moveWorkspaceAgenda(
+      const deliverySnapshot = await moveWorkspaceAgenda(
         transaction,
         data.ownerContext,
         {
-          mode: "tasks",
-          items: initial.tasks.map((item) => ({
+          mode: "deliveries",
+          items: initial.deliveries.map((item) => ({
             ...item,
             date: null,
             order: 0,
           })),
         },
       );
-      expect(taskSnapshot.tasks[0]?.date).toBeNull();
-      const [storedTask] = await transaction
-        .select({ dueDate: tasks.dueDate, version: tasks.version })
-        .from(tasks)
-        .where(eq(tasks.id, data.task.id));
-      expect(storedTask).toMatchObject({ dueDate: null, version: 2 });
+      expect(deliverySnapshot.deliveries[0]?.date).toBeNull();
+      const [storedDelivery] = await transaction
+        .select({ dueDate: deliveries.dueDate, version: deliveries.version })
+        .from(deliveries)
+        .where(eq(deliveries.id, data.delivery.id));
+      expect(storedDelivery).toMatchObject({ dueDate: null, version: 2 });
     }));
 
   it("serializa dois movimentos concorrentes sem duplicar posicoes", async () => {

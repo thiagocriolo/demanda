@@ -19,9 +19,9 @@ import { affectedRows, type Database } from "../db/database";
 import { databaseConstraint } from "../db/helpers";
 import {
   cronogramaBlocks,
-  taskResponsibles,
-  tasks,
-  taskSubtasks,
+  deliveryResponsibles,
+  deliveries,
+  deliveryTasks,
   userPreferences,
   workspaces,
 } from "../db/schema";
@@ -34,9 +34,9 @@ type CronogramaDatabase = Pick<
 >;
 type StoredBlock = typeof cronogramaBlocks.$inferSelect;
 
-type SubtaskRule = {
+type TaskRule = {
   id: string;
-  taskId: string;
+  deliveryId: string;
   name: string;
   sortOrder: number;
   completedAt: Date | null;
@@ -62,12 +62,12 @@ export class CronogramaRuleViolationError extends Error {
   }
 }
 
-export class CronogramaSubtaskNotFoundError extends Error {
+export class CronogramaTaskNotFoundError extends Error {
   readonly status = 404;
 
   constructor() {
-    super("A subtarefa não existe ou não está ativa neste workspace.");
-    this.name = "CronogramaSubtaskNotFoundError";
+    super("A tarefa não existe ou não está ativa neste workspace.");
+    this.name = "CronogramaTaskNotFoundError";
   }
 }
 
@@ -81,7 +81,7 @@ async function lockWorkspace(
     .where(eq(workspaces.id, workspaceId))
     .limit(1)
     .for("update");
-  if (locked.length !== 1) throw new CronogramaSubtaskNotFoundError();
+  if (locked.length !== 1) throw new CronogramaTaskNotFoundError();
 }
 
 async function responsibleMap(
@@ -90,15 +90,15 @@ async function responsibleMap(
 ): Promise<Map<string, string[]>> {
   const rows = await database
     .select({
-      taskId: taskResponsibles.taskId,
-      userId: taskResponsibles.userId,
+      deliveryId: deliveryResponsibles.deliveryId,
+      userId: deliveryResponsibles.userId,
     })
-    .from(taskResponsibles)
-    .where(eq(taskResponsibles.workspaceId, workspaceId))
-    .orderBy(asc(taskResponsibles.sortOrder), asc(taskResponsibles.userId));
+    .from(deliveryResponsibles)
+    .where(eq(deliveryResponsibles.workspaceId, workspaceId))
+    .orderBy(asc(deliveryResponsibles.sortOrder), asc(deliveryResponsibles.userId));
   const result = new Map<string, string[]>();
   for (const row of rows) {
-    result.set(row.taskId, [...(result.get(row.taskId) ?? []), row.userId]);
+    result.set(row.deliveryId, [...(result.get(row.deliveryId) ?? []), row.userId]);
   }
   return result;
 }
@@ -110,8 +110,8 @@ async function readSnapshot(
 ): Promise<CronogramaSnapshot> {
   const predicates = [
     eq(cronogramaBlocks.workspaceId, workspaceId),
-    isNull(tasks.archivedAt),
-    isNull(taskSubtasks.archivedAt),
+    isNull(deliveries.archivedAt),
+    isNull(deliveryTasks.archivedAt),
   ];
   if (query.from)
     predicates.push(gte(cronogramaBlocks.scheduledDate, query.from));
@@ -123,18 +123,18 @@ async function readSnapshot(
     })
     .from(cronogramaBlocks)
     .innerJoin(
-      tasks,
+      deliveries,
       and(
-        eq(tasks.workspaceId, cronogramaBlocks.workspaceId),
-        eq(tasks.id, cronogramaBlocks.taskId),
+        eq(deliveries.workspaceId, cronogramaBlocks.workspaceId),
+        eq(deliveries.id, cronogramaBlocks.deliveryId),
       ),
     )
     .innerJoin(
-      taskSubtasks,
+      deliveryTasks,
       and(
-        eq(taskSubtasks.workspaceId, cronogramaBlocks.workspaceId),
-        eq(taskSubtasks.id, cronogramaBlocks.subtaskId),
-        eq(taskSubtasks.taskId, cronogramaBlocks.taskId),
+        eq(deliveryTasks.workspaceId, cronogramaBlocks.workspaceId),
+        eq(deliveryTasks.id, cronogramaBlocks.taskId),
+        eq(deliveryTasks.deliveryId, cronogramaBlocks.deliveryId),
       ),
     )
     .where(and(...predicates))
@@ -146,7 +146,7 @@ async function readSnapshot(
   const responsibles = await responsibleMap(database, workspaceId);
 
   const items = rows.flatMap(({ block }) => {
-    const responsibleUserIds = responsibles.get(block.taskId) ?? [];
+    const responsibleUserIds = responsibles.get(block.deliveryId) ?? [];
     if (
       query.responsibleUserId &&
       !responsibleUserIds.includes(query.responsibleUserId)
@@ -165,8 +165,8 @@ function toApiBlock(
   return {
     id: block.id,
     workspaceId: block.workspaceId,
+    deliveryId: block.deliveryId,
     taskId: block.taskId,
-    subtaskId: block.subtaskId,
     date: block.scheduledDate,
     startMinutes: block.startMinutes,
     durationMinutes: block.durationMinutes,
@@ -177,37 +177,37 @@ function toApiBlock(
   };
 }
 
-async function activeSubtasks(
+async function activeTasks(
   database: CronogramaDatabase,
   workspaceId: string,
-): Promise<SubtaskRule[]> {
+): Promise<TaskRule[]> {
   return database
     .select({
-      id: taskSubtasks.id,
-      taskId: taskSubtasks.taskId,
-      name: taskSubtasks.name,
-      sortOrder: taskSubtasks.sortOrder,
-      completedAt: taskSubtasks.completedAt,
+      id: deliveryTasks.id,
+      deliveryId: deliveryTasks.deliveryId,
+      name: deliveryTasks.name,
+      sortOrder: deliveryTasks.sortOrder,
+      completedAt: deliveryTasks.completedAt,
     })
-    .from(taskSubtasks)
+    .from(deliveryTasks)
     .innerJoin(
-      tasks,
+      deliveries,
       and(
-        eq(tasks.workspaceId, taskSubtasks.workspaceId),
-        eq(tasks.id, taskSubtasks.taskId),
+        eq(deliveries.workspaceId, deliveryTasks.workspaceId),
+        eq(deliveries.id, deliveryTasks.deliveryId),
       ),
     )
     .where(
       and(
-        eq(taskSubtasks.workspaceId, workspaceId),
-        isNull(taskSubtasks.archivedAt),
-        isNull(tasks.archivedAt),
+        eq(deliveryTasks.workspaceId, workspaceId),
+        isNull(deliveryTasks.archivedAt),
+        isNull(deliveries.archivedAt),
       ),
     )
     .orderBy(
-      asc(taskSubtasks.taskId),
-      asc(taskSubtasks.sortOrder),
-      asc(taskSubtasks.id),
+      asc(deliveryTasks.deliveryId),
+      asc(deliveryTasks.sortOrder),
+      asc(deliveryTasks.id),
     );
 }
 
@@ -219,20 +219,20 @@ async function activeStoredBlocks(
     .select({ block: cronogramaBlocks })
     .from(cronogramaBlocks)
     .innerJoin(
-      tasks,
+      deliveries,
       and(
-        eq(tasks.workspaceId, cronogramaBlocks.workspaceId),
-        eq(tasks.id, cronogramaBlocks.taskId),
-        isNull(tasks.archivedAt),
+        eq(deliveries.workspaceId, cronogramaBlocks.workspaceId),
+        eq(deliveries.id, cronogramaBlocks.deliveryId),
+        isNull(deliveries.archivedAt),
       ),
     )
     .innerJoin(
-      taskSubtasks,
+      deliveryTasks,
       and(
-        eq(taskSubtasks.workspaceId, cronogramaBlocks.workspaceId),
-        eq(taskSubtasks.id, cronogramaBlocks.subtaskId),
-        eq(taskSubtasks.taskId, cronogramaBlocks.taskId),
-        isNull(taskSubtasks.archivedAt),
+        eq(deliveryTasks.workspaceId, cronogramaBlocks.workspaceId),
+        eq(deliveryTasks.id, cronogramaBlocks.taskId),
+        eq(deliveryTasks.deliveryId, cronogramaBlocks.deliveryId),
+        isNull(deliveryTasks.archivedAt),
       ),
     )
     .where(eq(cronogramaBlocks.workspaceId, workspaceId))
@@ -246,40 +246,40 @@ async function globalResponsibleState(
   const rows = await database
     .select({
       block: cronogramaBlocks,
-      userId: taskResponsibles.userId,
+      userId: deliveryResponsibles.userId,
     })
     .from(cronogramaBlocks)
     .innerJoin(
-      tasks,
+      deliveries,
       and(
-        eq(tasks.workspaceId, cronogramaBlocks.workspaceId),
-        eq(tasks.id, cronogramaBlocks.taskId),
-        isNull(tasks.archivedAt),
+        eq(deliveries.workspaceId, cronogramaBlocks.workspaceId),
+        eq(deliveries.id, cronogramaBlocks.deliveryId),
+        isNull(deliveries.archivedAt),
       ),
     )
     .innerJoin(
-      taskSubtasks,
+      deliveryTasks,
       and(
-        eq(taskSubtasks.workspaceId, cronogramaBlocks.workspaceId),
-        eq(taskSubtasks.id, cronogramaBlocks.subtaskId),
-        eq(taskSubtasks.taskId, cronogramaBlocks.taskId),
-        isNull(taskSubtasks.archivedAt),
+        eq(deliveryTasks.workspaceId, cronogramaBlocks.workspaceId),
+        eq(deliveryTasks.id, cronogramaBlocks.taskId),
+        eq(deliveryTasks.deliveryId, cronogramaBlocks.deliveryId),
+        isNull(deliveryTasks.archivedAt),
       ),
     )
     .innerJoin(
-      taskResponsibles,
+      deliveryResponsibles,
       and(
-        eq(taskResponsibles.workspaceId, cronogramaBlocks.workspaceId),
-        eq(taskResponsibles.taskId, cronogramaBlocks.taskId),
+        eq(deliveryResponsibles.workspaceId, cronogramaBlocks.workspaceId),
+        eq(deliveryResponsibles.deliveryId, cronogramaBlocks.deliveryId),
       ),
     );
   const byId = new Map<string, StoredBlock>();
   const responsibles = new Map<string, string[]>();
   for (const row of rows) {
     byId.set(row.block.id, row.block);
-    const assigned = responsibles.get(row.block.taskId) ?? [];
+    const assigned = responsibles.get(row.block.deliveryId) ?? [];
     if (!assigned.includes(row.userId)) assigned.push(row.userId);
-    responsibles.set(row.block.taskId, assigned);
+    responsibles.set(row.block.deliveryId, assigned);
   }
   return { blocks: [...byId.values()], responsibles };
 }
@@ -291,8 +291,8 @@ async function assertGlobalResponsibleOverlap(
   replacementResponsibles: Map<string, string[]>,
 ): Promise<void> {
   const global = await globalResponsibleState(database);
-  for (const [taskId, userIds] of replacementResponsibles) {
-    global.responsibles.set(taskId, userIds);
+  for (const [deliveryId, userIds] of replacementResponsibles) {
+    global.responsibles.set(deliveryId, userIds);
   }
   assertNoResponsibleOverlap(
     [
@@ -319,25 +319,25 @@ function blockEndsBeforeOrAt(left: StoredBlock, right: StoredBlock): boolean {
   );
 }
 
-function assertSequence(blocks: StoredBlock[], subtasks: SubtaskRule[]): void {
-  const blockBySubtask = new Map(
-    blocks.map((block) => [block.subtaskId, block]),
+function assertSequence(blocks: StoredBlock[], tasks: TaskRule[]): void {
+  const blockByTask = new Map(
+    blocks.map((block) => [block.taskId, block]),
   );
-  const byTask = new Map<string, SubtaskRule[]>();
-  for (const subtask of subtasks) {
-    byTask.set(subtask.taskId, [
-      ...(byTask.get(subtask.taskId) ?? []),
-      subtask,
+  const byDelivery = new Map<string, TaskRule[]>();
+  for (const task of tasks) {
+    byDelivery.set(task.deliveryId, [
+      ...(byDelivery.get(task.deliveryId) ?? []),
+      task,
     ]);
   }
-  for (const group of byTask.values()) {
+  for (const group of byDelivery.values()) {
     for (let index = 0; index < group.length; index += 1) {
       const current = group[index]!;
-      const currentBlock = blockBySubtask.get(current.id);
+      const currentBlock = blockByTask.get(current.id);
       if (!currentBlock) continue;
       for (let previousIndex = 0; previousIndex < index; previousIndex += 1) {
         const previous = group[previousIndex]!;
-        const previousBlock = blockBySubtask.get(previous.id);
+        const previousBlock = blockByTask.get(previous.id);
         if (!previousBlock && !previous.completedAt) {
           throw new CronogramaRuleViolationError(
             `Agende "${previous.name}" antes de "${current.name}".`,
@@ -362,7 +362,7 @@ function assertNoResponsibleOverlap(
 ): void {
   const byResponsible = new Map<string, StoredBlock[]>();
   for (const block of blocks) {
-    for (const userId of responsibles.get(block.taskId) ?? []) {
+    for (const userId of responsibles.get(block.deliveryId) ?? []) {
       byResponsible.set(userId, [...(byResponsible.get(userId) ?? []), block]);
     }
   }
@@ -449,20 +449,20 @@ function assertInsideWorkday(
 async function assertRules(
   database: CronogramaDatabase,
   blocks: StoredBlock[],
-  subtasks: SubtaskRule[],
+  tasks: TaskRule[],
   responsibles: Map<string, string[]>,
   workdayBlocks: StoredBlock[] = [],
 ): Promise<void> {
-  assertSequence(blocks, subtasks);
+  assertSequence(blocks, tasks);
   assertNoResponsibleOverlap(blocks, responsibles);
   const users = new Set<string>();
   for (const block of workdayBlocks) {
-    const responsibleUserIds = responsibles.get(block.taskId) ?? [];
+    const responsibleUserIds = responsibles.get(block.deliveryId) ?? [];
     for (const userId of responsibleUserIds) users.add(userId);
   }
   const preferences = await preferencesByUser(database, [...users]);
   for (const block of workdayBlocks) {
-    const responsibleUserIds = responsibles.get(block.taskId) ?? [];
+    const responsibleUserIds = responsibles.get(block.deliveryId) ?? [];
     if (!responsibleUserIds.length) {
       assertInsideWorkday(block, "não atribuído", defaultPersonalSettings());
       continue;
@@ -482,13 +482,13 @@ async function mutationState(
   workspaceId: string,
 ): Promise<{
   blocks: StoredBlock[];
-  subtasks: SubtaskRule[];
+  tasks: TaskRule[];
   responsibles: Map<string, string[]>;
 }> {
   const blocks = await activeStoredBlocks(database, workspaceId);
-  const subtasks = await activeSubtasks(database, workspaceId);
+  const tasks = await activeTasks(database, workspaceId);
   const responsibles = await responsibleMap(database, workspaceId);
-  return { blocks, subtasks, responsibles };
+  return { blocks, tasks, responsibles };
 }
 
 export async function getWorkspaceCronograma(
@@ -512,7 +512,7 @@ export async function getWorkspaceCronograma(
 export async function saveCronogramaBlock(
   database: Database,
   context: RequestAuthorizationContext,
-  subtaskId: string,
+  taskId: string,
   input: CronogramaBlockInput,
 ): Promise<CronogramaSnapshot> {
   const workspaceId = workspaceIdFromContext(context);
@@ -526,19 +526,19 @@ export async function saveCronogramaBlock(
       );
       await lockWorkspace(transaction, workspaceId);
       const state = await mutationState(transaction, workspaceId);
-      const subtask = state.subtasks.find(({ id }) => id === subtaskId);
-      if (!subtask) throw new CronogramaSubtaskNotFoundError();
+      const task = state.tasks.find(({ id }) => id === taskId);
+      if (!task) throw new CronogramaTaskNotFoundError();
       if (
-        !(state.responsibles.get(subtask.taskId) ?? []).includes(
+        !(state.responsibles.get(task.deliveryId) ?? []).includes(
           context.user.id,
         )
       ) {
         throw new CronogramaRuleViolationError(
-          "Somente o responsavel da tarefa pode alocar esta subtarefa no proprio Cronograma.",
+          "Somente o responsavel da tarefa pode alocar esta tarefa no proprio Cronograma.",
         );
       }
       const current = state.blocks.find(
-        (block) => block.subtaskId === subtaskId,
+        (block) => block.taskId === taskId,
       );
       if (
         (!current && input.version !== 0) ||
@@ -560,8 +560,8 @@ export async function saveCronogramaBlock(
         : {
             id: crypto.randomUUID(),
             workspaceId,
-            taskId: subtask.taskId,
-            subtaskId,
+            deliveryId: task.deliveryId,
+            taskId,
             scheduledDate: input.date,
             startMinutes: input.startMinutes,
             durationMinutes: input.durationMinutes,
@@ -570,13 +570,13 @@ export async function saveCronogramaBlock(
             updatedAt: now,
           };
       const nextBlocks = [
-        ...state.blocks.filter((block) => block.subtaskId !== subtaskId),
+        ...state.blocks.filter((block) => block.taskId !== taskId),
         candidate,
       ];
       await assertRules(
         transaction,
         nextBlocks,
-        state.subtasks,
+        state.tasks,
         state.responsibles,
       );
       await assertGlobalResponsibleOverlap(
@@ -607,8 +607,8 @@ export async function saveCronogramaBlock(
       } else {
         await transaction.insert(cronogramaBlocks).values({
           workspaceId,
-          taskId: subtask.taskId,
-          subtaskId,
+          deliveryId: task.deliveryId,
+          taskId,
           scheduledDate: input.date,
           startMinutes: input.startMinutes,
           durationMinutes: input.durationMinutes,
@@ -620,13 +620,13 @@ export async function saveCronogramaBlock(
       }, {
         action: current ? "cronograma.block_changed" : "cronograma.block_created",
         targetType: "cronograma",
-        targetId: current?.id ?? subtaskId,
+        targetId: current?.id ?? taskId,
         changes: [
           { field: "date", before: current?.scheduledDate ?? null, after: input.date },
           { field: "startMinutes", before: current?.startMinutes ?? null, after: input.startMinutes },
           { field: "durationMinutes", before: current?.durationMinutes ?? null, after: input.durationMinutes },
         ].filter((change) => change.before !== change.after),
-        metadata: { taskId: subtask.taskId, subtaskId },
+        metadata: { deliveryId: task.deliveryId, taskId },
       });
       return readSnapshot(transaction, workspaceId, {
         responsibleUserId: context.user.id,
@@ -637,7 +637,7 @@ export async function saveCronogramaBlock(
         databaseConstraint(cause) === "cronograma_blocks_responsible_no_overlap"
       ) {
         throw new CronogramaRuleViolationError(
-          "O responsável já possui outra subtarefa programada nesse horário.",
+          "O responsável já possui outra tarefa programada nesse horário.",
         );
       }
       throw cause;
@@ -647,7 +647,7 @@ export async function saveCronogramaBlock(
 export async function deleteCronogramaBlock(
   database: Database,
   context: RequestAuthorizationContext,
-  subtaskId: string,
+  taskId: string,
   input: CronogramaDeleteInput,
 ): Promise<CronogramaSnapshot> {
   const workspaceId = workspaceIdFromContext(context);
@@ -660,24 +660,24 @@ export async function deleteCronogramaBlock(
     );
     await lockWorkspace(transaction, workspaceId);
     const state = await mutationState(transaction, workspaceId);
-    const current = state.blocks.find((block) => block.subtaskId === subtaskId);
+    const current = state.blocks.find((block) => block.taskId === taskId);
     if (!current || current.version !== input.version) {
       throw new CronogramaVersionConflictError();
     }
     if (
-      !(state.responsibles.get(current.taskId) ?? []).includes(context.user.id)
+      !(state.responsibles.get(current.deliveryId) ?? []).includes(context.user.id)
     ) {
       throw new CronogramaRuleViolationError(
-        "Somente o responsavel da tarefa pode retirar esta subtarefa do proprio Cronograma.",
+        "Somente o responsavel da tarefa pode retirar esta tarefa do proprio Cronograma.",
       );
     }
     const nextBlocks = state.blocks.filter(
-      (block) => block.subtaskId !== subtaskId,
+      (block) => block.taskId !== taskId,
     );
     await assertRules(
       transaction,
       nextBlocks,
-      state.subtasks,
+      state.tasks,
       state.responsibles,
     );
       await assertGlobalResponsibleOverlap(
@@ -708,7 +708,7 @@ export async function deleteCronogramaBlock(
         { field: "startMinutes", before: current.startMinutes, after: null },
         { field: "durationMinutes", before: current.durationMinutes, after: null },
       ],
-      metadata: { taskId: current.taskId, subtaskId },
+      metadata: { deliveryId: current.deliveryId, taskId },
     });
     return readSnapshot(transaction, workspaceId, {
       responsibleUserId: context.user.id,
@@ -733,27 +733,27 @@ export async function reorganizeCronogramaBlocks(
       );
       await lockWorkspace(transaction, workspaceId);
       const state = await mutationState(transaction, workspaceId);
-      const subtaskById = new Map(
-        state.subtasks.map((subtask) => [subtask.id, subtask]),
+      const taskById = new Map(
+        state.tasks.map((task) => [task.id, task]),
       );
-      const currentBySubtaskId = new Map(
-        state.blocks.map((block) => [block.subtaskId, block]),
+      const currentByTaskId = new Map(
+        state.blocks.map((block) => [block.taskId, block]),
       );
       const now = new Date();
 
       const candidates = input.blocks.map((block): StoredBlock => {
-        const subtask = subtaskById.get(block.subtaskId);
-        if (!subtask) throw new CronogramaSubtaskNotFoundError();
+        const task = taskById.get(block.taskId);
+        if (!task) throw new CronogramaTaskNotFoundError();
         if (
-          !(state.responsibles.get(subtask.taskId) ?? []).includes(
+          !(state.responsibles.get(task.deliveryId) ?? []).includes(
             context.user.id,
           )
         ) {
           throw new CronogramaRuleViolationError(
-            "Somente o responsável da tarefa pode reorganizar esta subtarefa.",
+            "Somente o responsável da tarefa pode reorganizar esta tarefa.",
           );
         }
-        const current = currentBySubtaskId.get(block.subtaskId);
+        const current = currentByTaskId.get(block.taskId);
         if (
           (!current && block.version !== 0) ||
           (current && current.version !== block.version)
@@ -772,8 +772,8 @@ export async function reorganizeCronogramaBlocks(
           : {
               id: crypto.randomUUID(),
               workspaceId,
-              taskId: subtask.taskId,
-              subtaskId: subtask.id,
+              deliveryId: task.deliveryId,
+              taskId: task.id,
               scheduledDate: block.date,
               startMinutes: block.startMinutes,
               durationMinutes: block.durationMinutes,
@@ -784,16 +784,16 @@ export async function reorganizeCronogramaBlocks(
       });
 
       const replacedIds = new Set(
-        input.blocks.map(({ subtaskId }) => subtaskId),
+        input.blocks.map(({ taskId }) => taskId),
       );
       const nextBlocks = [
-        ...state.blocks.filter((block) => !replacedIds.has(block.subtaskId)),
+        ...state.blocks.filter((block) => !replacedIds.has(block.taskId)),
         ...candidates,
       ];
       await assertRules(
         transaction,
         nextBlocks,
-        state.subtasks,
+        state.tasks,
         state.responsibles,
         candidates,
       );
@@ -805,7 +805,7 @@ export async function reorganizeCronogramaBlocks(
       );
 
       const existingIds = candidates
-        .filter((candidate) => currentBySubtaskId.has(candidate.subtaskId))
+        .filter((candidate) => currentByTaskId.has(candidate.taskId))
         .map((candidate) => candidate.id);
       if (existingIds.length) {
         await transaction
@@ -819,7 +819,7 @@ export async function reorganizeCronogramaBlocks(
       }
       await transaction.insert(cronogramaBlocks).values(candidates);
       for (const candidate of candidates) {
-        const previous = currentBySubtaskId.get(candidate.subtaskId);
+        const previous = currentByTaskId.get(candidate.taskId);
         await appendDataChangeAuditLog(transaction, {
           userId: context.user.id,
           workspaceId,
@@ -846,7 +846,7 @@ export async function reorganizeCronogramaBlocks(
               after: candidate.durationMinutes,
             },
           ].filter((change) => change.before !== change.after),
-          metadata: { taskId: candidate.taskId, subtaskId: candidate.subtaskId },
+          metadata: { deliveryId: candidate.deliveryId, taskId: candidate.taskId },
         });
       }
 
@@ -859,7 +859,7 @@ export async function reorganizeCronogramaBlocks(
         databaseConstraint(cause) === "cronograma_blocks_responsible_no_overlap"
       ) {
         throw new CronogramaRuleViolationError(
-          "O responsável já possui outra subtarefa programada nesse horário.",
+          "O responsável já possui outra tarefa programada nesse horário.",
         );
       }
       throw cause;

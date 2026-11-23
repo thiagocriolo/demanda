@@ -13,7 +13,7 @@ import { createDatabasePool } from "../../src/lib/server/db/pool";
 import {
   businesses,
   projects,
-  tasks,
+  deliveries,
   users,
   workspaceMembers,
   workspaces,
@@ -83,7 +83,7 @@ async function insertWorkspace(
   return workspace;
 }
 
-async function insertTaskContext(
+async function insertDeliveryContext(
   database: Database,
   workspaceId: string,
   ownerUserId: string,
@@ -110,18 +110,18 @@ async function insertTaskContext(
     });
   const [project] = await database.select().from(projects).where(eq(projects.id, projectId));
   if (!project) throw new Error("Projeto não criado.");
-  const taskId = randomUUID();
-  await database.insert(tasks).values({
-      id: taskId,
+  const deliveryId = randomUUID();
+  await database.insert(deliveries).values({
+      id: deliveryId,
       workspaceId,
       projectId: project.id,
       businessId: business.id,
       name: "Definir direção visual",
       statusKey: "producao",
     });
-  const [task] = await database.select().from(tasks).where(eq(tasks.id, taskId));
-  if (!task) throw new Error("Tarefa não criada.");
-  return { business, project, task };
+  const [delivery] = await database.select().from(deliveries).where(eq(deliveries.id, deliveryId));
+  if (!delivery) throw new Error("Tarefa não criada.");
+  return { business, project, delivery };
 }
 
 function context(
@@ -190,7 +190,7 @@ describe("Ferramentas: Modelos, Usos e Respostas", () => {
         userId: participant.id,
         role: "member",
       });
-      const { task } = await insertTaskContext(
+      const { delivery } = await insertDeliveryContext(
         database,
         workspace.id,
         owner.id,
@@ -213,13 +213,13 @@ describe("Ferramentas: Modelos, Usos e Respostas", () => {
       const use = await createWorkspaceToolUse(database, ownerContext, {
         modelId: model.id,
         name: "Personalidade desejada — Acme",
-        taskId: task.id,
+        deliveryId: delivery.id,
         content: { kind: "intensity" },
         status: "open",
       });
 
       expect(use.context).toMatchObject({
-        task: { id: task.id, name: "Definir direção visual" },
+        delivery: { id: delivery.id, name: "Definir direção visual" },
         project: { name: "Identidade Acme" },
         business: { name: "Cliente Acme" },
       });
@@ -303,7 +303,7 @@ describe("Ferramentas: Modelos, Usos e Respostas", () => {
         ownerB.id,
         "Workspace B",
       );
-      const { task: taskB } = await insertTaskContext(
+      const { delivery: deliveryB } = await insertDeliveryContext(
         database,
         workspaceB.id,
         ownerB.id,
@@ -326,7 +326,7 @@ describe("Ferramentas: Modelos, Usos e Respostas", () => {
         createWorkspaceToolUse(database, contextA, {
           modelId: model.id,
           name: "Uso inválido",
-          taskId: taskB.id,
+          deliveryId: deliveryB.id,
           content: { kind: "intensity" },
           status: "open",
         }),

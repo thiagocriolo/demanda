@@ -1,8 +1,8 @@
 import { isArchivedRecord } from "$lib/entities/storage";
 import {
-  isSubtaskCompleted,
-  parseEntitySubtasks,
-} from "$lib/entities/subtasks";
+  isTaskCompleted,
+  parseEntityTasks,
+} from "$lib/entities/tasks";
 import type { EntityRecord } from "$lib/entities/types";
 import {
   loadActiveWorkspaceId,
@@ -30,7 +30,7 @@ const projectStatuses: Record<string, { label: string; tone: AgendaTone }> = {
   arquivado: { label: "Arquivado", tone: "gray" },
 };
 
-const taskStatuses: Record<string, { label: string; tone: AgendaTone }> = {
+const deliveryStatuses: Record<string, { label: string; tone: AgendaTone }> = {
   planejamento: { label: "Fila", tone: "gray" },
   fila: { label: "A fazer", tone: "blue" },
   conclusao: { label: "Feito", tone: "green" },
@@ -97,13 +97,13 @@ function projectItem(
   };
 }
 
-function taskItem(
+function deliveryItem(
   record: EntityRecord,
   index: number,
   schedule: AgendaPlacement,
   workspaceUsers: WorkspaceUser[],
 ): AgendaItem {
-  const status = taskStatuses[record.status] ?? taskStatuses.planejamento;
+  const status = deliveryStatuses[record.status] ?? deliveryStatuses.planejamento;
   const fallbackPriorities: AgendaItem["priority"][] = [
     "normal",
     "alta",
@@ -111,15 +111,15 @@ function taskItem(
     "baixa",
     "urgente",
   ];
-  const subtasks = parseEntitySubtasks(record);
-  const completed = subtasks.filter(({ status }) =>
-    isSubtaskCompleted(status),
+  const tasks = parseEntityTasks(record);
+  const completed = tasks.filter(({ status }) =>
+    isTaskCompleted(status),
   ).length;
   const responsibleUser = resolveResponsibleUser(record, workspaceUsers);
   return {
     id: record.id,
-    mode: "tasks",
-    title: record.nome || "Tarefa sem nome",
+    mode: "deliveries",
+    title: record.nome || "Entrega sem nome",
     date: schedule.date,
     order: schedule.order,
     version: schedule.version,
@@ -130,7 +130,7 @@ function taskItem(
     relation: record.projeto || "Projeto não informado",
     responsible: record.responsavel || "",
     responsibleAvatarUrl: responsibleUser?.avatarUrl,
-    description: record.descricao || "Tarefa planejada",
+    description: record.descricao || "Entrega planejada",
     durationMinutes:
       schedule.version > 0
         ? schedule.durationMinutes
@@ -144,24 +144,24 @@ function taskItem(
     )
       ? (record.prioridade as AgendaItem["priority"])
       : fallbackPriorities[index % fallbackPriorities.length],
-    progress: subtasks.length
-      ? Math.round((completed / subtasks.length) * 100)
+    progress: tasks.length
+      ? Math.round((completed / tasks.length) * 100)
       : 0,
     completed,
-    total: subtasks.length,
+    total: tasks.length,
   };
 }
 
 export function loadAgendaItems(
   projectRecords: EntityRecord[] = [],
-  taskRecords: EntityRecord[] = [],
+  deliveryRecords: EntityRecord[] = [],
   snapshot?: AgendaSnapshot,
 ): Record<AgendaMode, AgendaItem[]> {
   const projectPlacements = new Map(
     (snapshot?.projects ?? []).map((item) => [item.id, item]),
   );
-  const taskPlacements = new Map(
-    (snapshot?.tasks ?? []).map((item) => [item.id, item]),
+  const deliveryPlacements = new Map(
+    (snapshot?.deliveries ?? []).map((item) => [item.id, item]),
   );
   const activeWorkspaceId = loadActiveWorkspaceId();
   const workspaceUsers = loadWorkspaceUsers();
@@ -174,7 +174,7 @@ export function loadAgendaItems(
       placementFor(projectPlacements, "projects", record, index),
     ),
   );
-  const tasks = taskRecords
+  const deliveries = deliveryRecords
     .filter((record) => {
       if (isArchivedRecord(record)) return false;
       const projectId = record.projetoId || record.project_id || "";
@@ -188,12 +188,12 @@ export function loadAgendaItems(
       return !projectWorkspaceId || projectWorkspaceId === project.workspaceId;
     })
     .map((record, index) =>
-      taskItem(
+      deliveryItem(
         record,
         index,
-        placementFor(taskPlacements, "tasks", record, index),
+        placementFor(deliveryPlacements, "deliveries", record, index),
         workspaceUsers,
       ),
     );
-  return { projects, tasks };
+  return { projects, deliveries };
 }

@@ -13,7 +13,7 @@
   import type { ScheduleEntry, ScheduleTask } from "./types";
 
   let {
-    task,
+    delivery,
     schedule,
     compact = false,
     dragging = false,
@@ -22,7 +22,7 @@
     onpointerstart,
     onopen,
   } = $props<{
-    task: ScheduleTask;
+    delivery: ScheduleTask;
     schedule?: ScheduleEntry;
     compact?: boolean;
     dragging?: boolean;
@@ -45,12 +45,12 @@
   } as const;
 
   let status = $derived(
-    statusDetails[task.status as keyof typeof statusDetails] ??
+    statusDetails[delivery.status as keyof typeof statusDetails] ??
       statusDetails.pendente,
   );
   let StatusIcon = $derived(status.icon);
   let visualLevel = $derived(scheduleCardLevel(schedule?.durationSlots ?? 2));
-  let businessName = $derived(task.negocio?.trim() || "Negócio não informado");
+  let businessName = $derived(delivery.negocio?.trim() || "Negócio não informado");
 
   function handleKeydown(event: KeyboardEvent): void {
     if (muted) return;
@@ -71,11 +71,11 @@
   class:attached={!compact && !!schedule}
   class:dragging
   class:muted
-  class={`task-card tone-${status.tone}`}
+  class={`delivery-card tone-${status.tone}`}
   {style}
-  aria-label={`${task.nome}. Negócio: ${businessName}. Status: ${status.label}`}
+  aria-label={`${delivery.nome}. Negócio: ${businessName}. Status: ${status.label}`}
   aria-disabled={muted}
-  data-task-id={task.id}
+  data-delivery-id={delivery.id}
   data-schedule-card
   data-card-level={!compact && schedule ? visualLevel : undefined}
   data-schedule-lines={!compact ? schedule?.durationSlots : undefined}
@@ -84,7 +84,7 @@
 >
   <div class="card-body">
     <header>
-      <h3>{task.nome}</h3>
+      <h3>{delivery.nome}</h3>
       <span
         class="business"
         title={businessName}
@@ -95,15 +95,15 @@
       </span>
     </header>
 
-    <p class="meta task-name">
+    <p class="meta delivery-name">
       <ListTodo size={13} aria-hidden="true" />
-      <span>{task.taskNome}</span>
+      <span>{delivery.deliveryNome}</span>
     </p>
 
-    {#if task.projeto}
+    {#if delivery.projeto}
       <p class="meta project">
         <FolderKanban size={13} aria-hidden="true" />
-        <span>{task.projeto}</span>
+        <span>{delivery.projeto}</span>
       </p>
     {/if}
 
@@ -112,10 +112,10 @@
       <span>{status.label}</span>
     </p>
 
-    {#if task.descricao}
+    {#if delivery.descricao}
       <p class="meta description">
         <AlignLeft size={13} aria-hidden="true" />
-        <span>{task.descricao}</span>
+        <span>{delivery.descricao}</span>
       </p>
     {/if}
 
@@ -145,7 +145,7 @@
 </button>
 
 <style>
-  .task-card {
+  .delivery-card {
     container: schedule-card / size;
     min-width: 0;
     overflow: hidden;
@@ -163,13 +163,13 @@
       border-color var(--motion-fast),
       background var(--motion-fast);
   }
-  .task-card:hover,
-  .task-card:focus-visible {
+  .delivery-card:hover,
+  .delivery-card:focus-visible {
     z-index: 8 !important;
     border-color: var(--brand-600);
     background: #ffffff;
   }
-  .task-card::before {
+  .delivery-card::before {
     position: absolute;
     z-index: 10;
     right: 0;
@@ -182,7 +182,7 @@
     opacity: 0;
     pointer-events: auto;
   }
-  .task-card::after {
+  .delivery-card::after {
     position: absolute;
     bottom: 4px;
     left: 50%;
@@ -199,30 +199,30 @@
     pointer-events: none;
     transform: translateX(-50%);
   }
-  .task-card:hover::before,
-  .task-card:focus-visible::before {
+  .delivery-card:hover::before,
+  .delivery-card:focus-visible::before {
     opacity: 1;
   }
-  .task-card.dragging {
+  .delivery-card.dragging {
     border-style: dashed;
     opacity: 0.26;
     pointer-events: none;
   }
-  .task-card.muted {
+  .delivery-card.muted {
     border-color: rgba(148, 163, 184, 0.38);
     background: #ffffff;
     cursor: default;
   }
-  .task-card.muted:hover,
-  .task-card.muted:focus-visible {
+  .delivery-card.muted:hover,
+  .delivery-card.muted:focus-visible {
     border-color: rgba(148, 163, 184, 0.38);
     background: #ffffff;
   }
-  .task-card.muted::before,
-  .task-card.muted::after {
+  .delivery-card.muted::before,
+  .delivery-card.muted::after {
     display: none;
   }
-  .task-card.muted .card-body {
+  .delivery-card.muted .card-body {
     opacity: 0.5;
   }
   .card-body {
@@ -355,70 +355,70 @@
     border-color: rgba(93, 172, 131, 0.4);
     background: linear-gradient(145deg, #ffffff, #edf8f2);
   }
-  .task-card.attached {
+  .delivery-card.attached {
     border: 0;
     border-radius: 0;
   }
-  .task-card.attached .meta {
+  .delivery-card.attached .meta {
     min-height: 30px;
     padding: 6px 7px;
     border: 1px solid rgba(148, 163, 184, 0.24);
     border-radius: 5px;
     background: rgba(255, 255, 255, 0.5);
   }
-  .task-card.attached .description {
+  .delivery-card.attached .description {
     align-items: flex-start;
   }
-  .task-card.attached[data-schedule-lines="1"]::after {
+  .delivery-card.attached[data-schedule-lines="1"]::after {
     display: none;
   }
-  .task-card.attached[data-schedule-lines="1"] .card-body {
+  .delivery-card.attached[data-schedule-lines="1"] .card-body {
     position: absolute;
     inset: 0;
     display: flex;
     align-items: center;
     padding: 0 7px;
   }
-  .task-card.attached[data-schedule-lines="1"] header {
+  .delivery-card.attached[data-schedule-lines="1"] header {
     width: 100%;
     align-items: center;
   }
-  .task-card.attached[data-schedule-lines="1"] h3 {
+  .delivery-card.attached[data-schedule-lines="1"] h3 {
     font-size: 11px;
     line-height: 1.15;
     line-clamp: 1;
     -webkit-line-clamp: 1;
   }
-  .task-card.attached .description span {
+  .delivery-card.attached .description span {
     display: -webkit-box;
     white-space: normal;
     line-clamp: 1;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 1;
   }
-  .task-card.attached[data-card-level="3"] .card-body {
+  .delivery-card.attached[data-card-level="3"] .card-body {
     gap: 3px;
     padding: 6px 8px 12px;
   }
-  .task-card.attached[data-card-level="3"] header,
-  .task-card.attached[data-card-level="4"] header {
+  .delivery-card.attached[data-card-level="3"] header,
+  .delivery-card.attached[data-card-level="4"] header {
     align-items: flex-start;
     flex-direction: column;
     gap: 3px;
   }
-  .task-card.attached:is(
+  .delivery-card.attached:is(
       [data-card-level="3"],
       [data-card-level="4"]
     )
     .business {
     max-width: 100%;
   }
-  .task-card.attached[data-card-level="3"] h3 {
+  .delivery-card.attached[data-card-level="3"] h3 {
     font-size: 12px;
     line-clamp: 1;
     -webkit-line-clamp: 1;
   }
-  .task-card.attached[data-card-level="4"] .card-body {
+  .delivery-card.attached[data-card-level="4"] .card-body {
     display: flex;
     min-height: 100%;
     box-sizing: border-box;
@@ -426,7 +426,7 @@
     gap: 5px;
     padding: 8px 9px 11px;
   }
-  .task-card.attached:is(
+  .delivery-card.attached:is(
       [data-card-level="4"],
       [data-card-level="5"],
       [data-card-level="6"],
@@ -438,7 +438,7 @@
     header {
     display: contents;
   }
-  .task-card.attached:is(
+  .delivery-card.attached:is(
       [data-card-level="4"],
       [data-card-level="5"],
       [data-card-level="6"]
@@ -448,7 +448,7 @@
     line-clamp: 1;
     -webkit-line-clamp: 1;
   }
-  .task-card.attached:is([data-card-level="5"], [data-card-level="6"])
+  .delivery-card.attached:is([data-card-level="5"], [data-card-level="6"])
     .card-body {
     display: flex;
     min-height: 100%;
@@ -457,10 +457,10 @@
     gap: 9px;
     padding: 12px 11px 18px;
   }
-  .task-card.attached:is([data-card-level="5"], [data-card-level="6"]) h3 {
+  .delivery-card.attached:is([data-card-level="5"], [data-card-level="6"]) h3 {
     font-size: 16px;
   }
-  .task-card.attached:is([data-card-level="7"], [data-card-level="8"])
+  .delivery-card.attached:is([data-card-level="7"], [data-card-level="8"])
     .card-body {
     display: flex;
     min-height: 100%;
@@ -469,10 +469,10 @@
     gap: 10px;
     padding: 14px 13px 18px;
   }
-  .task-card.attached:is([data-card-level="7"], [data-card-level="8"]) h3 {
+  .delivery-card.attached:is([data-card-level="7"], [data-card-level="8"]) h3 {
     font-size: 18px;
   }
-  .task-card.attached:is([data-card-level="9"], [data-card-level="10"])
+  .delivery-card.attached:is([data-card-level="9"], [data-card-level="10"])
     .card-body {
     display: flex;
     min-height: 100%;
@@ -481,10 +481,10 @@
     gap: 12px;
     padding: 16px 15px 18px;
   }
-  .task-card.attached:is([data-card-level="9"], [data-card-level="10"]) h3 {
+  .delivery-card.attached:is([data-card-level="9"], [data-card-level="10"]) h3 {
     font-size: 20px;
   }
-  .task-card.attached:is(
+  .delivery-card.attached:is(
       [data-card-level="4"],
       [data-card-level="5"],
       [data-card-level="6"],
@@ -493,8 +493,8 @@
       [data-card-level="9"],
       [data-card-level="10"]
     )
-    .task-name,
-  .task-card.attached:is(
+    .delivery-name,
+  .delivery-card.attached:is(
       [data-card-level="4"],
       [data-card-level="5"],
       [data-card-level="6"],
@@ -504,7 +504,7 @@
       [data-card-level="10"]
     )
     .business,
-  .task-card.attached:is(
+  .delivery-card.attached:is(
       [data-card-level="5"],
       [data-card-level="6"],
       [data-card-level="7"],
@@ -513,13 +513,13 @@
       [data-card-level="10"]
     )
     .project,
-  .task-card.attached:is(
+  .delivery-card.attached:is(
       [data-card-level="8"],
       [data-card-level="9"],
       [data-card-level="10"]
     )
     .description,
-  .task-card.attached:is(
+  .delivery-card.attached:is(
       [data-card-level="6"],
       [data-card-level="7"],
       [data-card-level="8"],
@@ -527,7 +527,7 @@
       [data-card-level="10"]
     )
     .status-detail,
-  .task-card.attached:is(
+  .delivery-card.attached:is(
       [data-card-level="7"],
       [data-card-level="8"],
       [data-card-level="9"],
@@ -536,7 +536,7 @@
     footer {
     display: flex;
   }
-  .task-card.attached:is(
+  .delivery-card.attached:is(
       [data-card-level="4"],
       [data-card-level="5"],
       [data-card-level="6"],
@@ -550,7 +550,7 @@
     flex: 0 0 auto;
     order: 1;
   }
-  .task-card.attached:is(
+  .delivery-card.attached:is(
       [data-card-level="4"],
       [data-card-level="5"],
       [data-card-level="6"],
@@ -577,22 +577,22 @@
     font-weight: 400;
     order: 5;
   }
-  .task-card.attached .status-detail {
+  .delivery-card.attached .status-detail {
     order: 2;
   }
-  .task-card.attached .task-name {
+  .delivery-card.attached .delivery-name {
     order: 3;
   }
-  .task-card.attached .project {
+  .delivery-card.attached .project {
     order: 4;
   }
-  .task-card.attached footer {
+  .delivery-card.attached footer {
     order: 6;
   }
-  .task-card.attached .description {
+  .delivery-card.attached .description {
     order: 7;
   }
-  .task-card.attached:is(
+  .delivery-card.attached:is(
       [data-card-level="8"],
       [data-card-level="9"],
       [data-card-level="10"]
@@ -601,13 +601,13 @@
     small {
     display: block;
   }
-  .task-card.attached:is([data-card-level="9"], [data-card-level="10"])
+  .delivery-card.attached:is([data-card-level="9"], [data-card-level="10"])
     .description
     span {
     line-clamp: 2;
     -webkit-line-clamp: 2;
   }
-  .task-card.compact {
+  .delivery-card.compact {
     position: relative;
     width: clamp(204px, 21vw, 258px);
     height: 88px;
@@ -615,14 +615,14 @@
     scroll-snap-align: start;
     border-radius: 9px;
   }
-  .task-card.compact::before,
-  .task-card.compact::after {
+  .delivery-card.compact::before,
+  .delivery-card.compact::after {
     display: none;
   }
-  .task-card.compact .card-body {
+  .delivery-card.compact .card-body {
     padding: 9px;
   }
-  .task-card.compact .project {
+  .delivery-card.compact .project {
     display: flex;
   }
 </style>

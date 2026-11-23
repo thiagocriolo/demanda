@@ -16,7 +16,7 @@ import {
   projectTags,
   services,
   tags,
-  tasks,
+  deliveries,
 } from "../db/schema";
 import {
   InstitutionalProjectProtectedError,
@@ -413,16 +413,16 @@ export async function updateWorkspaceProject(
       };
       if (businessChanged) {
         await transaction
-          .update(tasks)
+          .update(deliveries)
           .set({
-            boardOrder: sql`json_remove(${tasks.boardOrder}, '$.business')`,
-            version: sql`${tasks.version} + 1`,
+            boardOrder: sql`json_remove(${deliveries.boardOrder}, '$.business')`,
+            version: sql`${deliveries.version} + 1`,
             updatedAt: now,
           })
           .where(
             and(
-              eq(tasks.workspaceId, workspaceId),
-              eq(tasks.projectId, projectId),
+              eq(deliveries.workspaceId, workspaceId),
+              eq(deliveries.projectId, projectId),
             ),
           );
       }

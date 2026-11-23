@@ -26,7 +26,7 @@ import type {
   ToolUseStatus,
 } from "../../../tools/types";
 import { users } from "./identity";
-import { tasks } from "./tasks";
+import { deliveries } from "./deliveries";
 import { workspaces } from "./workspace";
 
 export const toolModels = applicationSchema.table(
@@ -99,7 +99,7 @@ export const toolUses = applicationSchema.table(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     modelId: uuid("model_id").notNull(),
-    taskId: uuid("task_id"),
+    deliveryId: uuid("delivery_id"),
     toolKey: varchar("tool_key", { length: 32 }).$type<ToolKey>().notNull(),
     name: varchar("name", { length: 140 }).notNull(),
     configSnapshot: jsonb("config_snapshot").$type<ToolConfig>().notNull(),
@@ -128,9 +128,9 @@ export const toolUses = applicationSchema.table(
       foreignColumns: [toolModels.workspaceId, toolModels.id],
     }).onDelete("restrict"),
     foreignKey({
-      name: "tool_uses_workspace_task_foreign_key",
-      columns: [table.workspaceId, table.taskId],
-      foreignColumns: [tasks.workspaceId, tasks.id],
+      name: "tool_uses_workspace_delivery_foreign_key",
+      columns: [table.workspaceId, table.deliveryId],
+      foreignColumns: [deliveries.workspaceId, deliveries.id],
     }).onDelete("cascade"),
     index("tool_uses_workspace_status_updated_index").on(
       table.workspaceId,
@@ -144,9 +144,9 @@ export const toolUses = applicationSchema.table(
       table.updatedAt,
       table.id,
     ),
-    index("tool_uses_workspace_task_index").on(
+    index("tool_uses_workspace_delivery_index").on(
       table.workspaceId,
-      table.taskId,
+      table.deliveryId,
       table.updatedAt,
     ),
     check(

@@ -83,7 +83,7 @@ export type FeedActivityItem = {
   id: string;
   kind: "activity";
   occurredAt: string;
-  entity: "workspace" | "project" | "task";
+  entity: "workspace" | "project" | "delivery";
   title: string;
   context: string | null;
   actor: SocialAuthor | null;

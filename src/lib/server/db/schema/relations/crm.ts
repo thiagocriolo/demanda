@@ -10,7 +10,7 @@ import {
 } from "../crm";
 import { users } from "../identity";
 import { projects } from "../projects";
-import { tasks } from "../tasks";
+import { deliveries } from "../deliveries";
 import { workspaceMembers, workspaces } from "../workspace";
 
 export const contactsRelations = relations(contacts, ({ one, many }) => ({
@@ -85,7 +85,7 @@ export const businessesRelations = relations(businesses, ({ one, many }) => ({
   responsibles: many(businessResponsibles),
   notes: many(businessNotes),
   projects: many(projects),
-  tasks: many(tasks),
+  deliveries: many(deliveries),
 }));
 
 export const businessResponsiblesRelations = relations(

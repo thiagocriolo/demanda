@@ -2,16 +2,16 @@ import { relations } from "drizzle-orm";
 import { projects, projectServices, projectTags } from "../projects";
 import {
   deliveryTemplateResponsibles,
-  deliveryTemplateSubtasks,
+  deliveryTemplateTasks,
   deliveryTemplateTags,
   deliveryTemplates,
   serviceResponsibles,
   serviceTags,
-  serviceTaskTemplates,
+  serviceDeliveryTemplates,
   services,
   tags,
 } from "../services";
-import { taskTags } from "../tasks";
+import { deliveryTags } from "../deliveries";
 import { workspaceMembers, workspaces } from "../workspace";
 
 export const servicesRelations = relations(services, ({ one, many }) => ({
@@ -24,7 +24,7 @@ export const servicesRelations = relations(services, ({ one, many }) => ({
   projectLinks: many(projectServices),
   sourceProjects: many(projects, { relationName: "projectSourceService" }),
   deliveryTemplates: many(deliveryTemplates),
-  taskTemplates: many(serviceTaskTemplates),
+  deliveryTemplateLinks: many(serviceDeliveryTemplates),
 }));
 
 export const tagsRelations = relations(tags, ({ one, many }) => ({
@@ -34,7 +34,7 @@ export const tagsRelations = relations(tags, ({ one, many }) => ({
   }),
   serviceLinks: many(serviceTags),
   projectLinks: many(projectTags),
-  taskLinks: many(taskTags),
+  deliveryLinks: many(deliveryTags),
   deliveryTemplateLinks: many(deliveryTemplateTags),
 }));
 
@@ -82,48 +82,48 @@ export const deliveryTemplatesRelations = relations(
       fields: [deliveryTemplates.workspaceId, deliveryTemplates.serviceId],
       references: [services.workspaceId, services.id],
     }),
-    subtasks: many(deliveryTemplateSubtasks),
+    tasks: many(deliveryTemplateTasks),
     tags: many(deliveryTemplateTags),
     responsibles: many(deliveryTemplateResponsibles),
-    serviceLinks: many(serviceTaskTemplates),
+    serviceLinks: many(serviceDeliveryTemplates),
   }),
 );
 
-export const serviceTaskTemplatesRelations = relations(
-  serviceTaskTemplates,
+export const serviceDeliveryTemplatesRelations = relations(
+  serviceDeliveryTemplates,
   ({ one }) => ({
     workspace: one(workspaces, {
-      fields: [serviceTaskTemplates.workspaceId],
+      fields: [serviceDeliveryTemplates.workspaceId],
       references: [workspaces.id],
     }),
     service: one(services, {
       fields: [
-        serviceTaskTemplates.workspaceId,
-        serviceTaskTemplates.serviceId,
+        serviceDeliveryTemplates.workspaceId,
+        serviceDeliveryTemplates.serviceId,
       ],
       references: [services.workspaceId, services.id],
     }),
     template: one(deliveryTemplates, {
       fields: [
-        serviceTaskTemplates.workspaceId,
-        serviceTaskTemplates.deliveryTemplateId,
+        serviceDeliveryTemplates.workspaceId,
+        serviceDeliveryTemplates.deliveryTemplateId,
       ],
       references: [deliveryTemplates.workspaceId, deliveryTemplates.id],
     }),
   }),
 );
 
-export const deliveryTemplateSubtasksRelations = relations(
-  deliveryTemplateSubtasks,
+export const deliveryTemplateTasksRelations = relations(
+  deliveryTemplateTasks,
   ({ one }) => ({
     workspace: one(workspaces, {
-      fields: [deliveryTemplateSubtasks.workspaceId],
+      fields: [deliveryTemplateTasks.workspaceId],
       references: [workspaces.id],
     }),
     template: one(deliveryTemplates, {
       fields: [
-        deliveryTemplateSubtasks.workspaceId,
-        deliveryTemplateSubtasks.deliveryTemplateId,
+        deliveryTemplateTasks.workspaceId,
+        deliveryTemplateTasks.deliveryTemplateId,
       ],
       references: [deliveryTemplates.workspaceId, deliveryTemplates.id],
     }),

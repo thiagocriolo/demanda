@@ -60,9 +60,13 @@ function commandLabel(command: RecordCommand): string {
     contact: "Contato",
     business: "Negócio",
     project: "Projeto",
-    task: "Tarefa",
+    delivery: "Entrega",
     service_template: "Modelo de serviço",
     delivery_template: "Modelo de entrega",
+    workspace: "Workspace",
+    service: "Serviço",
+    contract: "Contrato",
+    finance_entry: "Lançamento financeiro",
   } as const;
   return `${labels[command.kind]}: ${command.name}`;
 }
@@ -81,7 +85,8 @@ function isResolutionRequiredError(
 function commandReference(command: RecordCommand): string | undefined {
   if (command.kind === "business") return command.contactRef;
   if (command.kind === "project") return command.businessRef;
-  if (command.kind === "task") return command.projectRef;
+  if (command.kind === "contract") return command.businessRef;
+  if (command.kind === "delivery") return command.projectRef;
   if (command.kind === "delivery_template") return command.serviceTemplateRef;
   return undefined;
 }
@@ -91,7 +96,8 @@ function expectedParentKind(
 ): RecordCommand["kind"] | undefined {
   if (command.kind === "business") return "contact";
   if (command.kind === "project") return "business";
-  if (command.kind === "task") return "project";
+  if (command.kind === "contract") return "business";
+  if (command.kind === "delivery") return "project";
   if (command.kind === "delivery_template") return "service_template";
   return undefined;
 }
@@ -109,7 +115,9 @@ function inferredDependency(
       ? { kind: "contact" as const, name: command.contactName }
       : command.kind === "project" && command.businessName
         ? { kind: "business" as const, name: command.businessName }
-        : command.kind === "task" && command.projectName
+      : command.kind === "contract" && command.businessName
+        ? { kind: "business" as const, name: command.businessName }
+      : command.kind === "delivery" && command.projectName
           ? { kind: "project" as const, name: command.projectName }
           : undefined;
   if (!parent) return undefined;

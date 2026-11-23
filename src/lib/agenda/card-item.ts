@@ -34,7 +34,7 @@ export function toAgendaCardItem(
 
   return {
     id: item.id,
-    kind: "tarefa",
+    kind: "entrega",
     title: item.title,
     status: item.statusLabel,
     statusColor: toneColors[item.tone],

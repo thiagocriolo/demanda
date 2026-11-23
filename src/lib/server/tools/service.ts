@@ -6,7 +6,7 @@ import {
   businesses,
   projects,
   storedFiles,
-  tasks,
+  deliveries,
   toolModels,
   toolResponses,
   toolUses,
@@ -167,7 +167,7 @@ async function listModels(
 type HydratedUseRow = {
   use: typeof toolUses.$inferSelect;
   modelName: string | null;
-  taskName: string | null;
+  deliveryName: string | null;
   projectId: string | null;
   projectName: string | null;
   businessId: string | null;
@@ -177,14 +177,14 @@ type HydratedUseRow = {
 
 function useDto(row: HydratedUseRow): ToolUse {
   const context =
-    row.use.taskId &&
-    row.taskName &&
+    row.use.deliveryId &&
+    row.deliveryName &&
     row.projectId &&
     row.projectName &&
     row.businessId &&
     row.businessName
       ? {
-          task: { id: row.use.taskId, name: row.taskName },
+          delivery: { id: row.use.deliveryId, name: row.deliveryName },
           project: { id: row.projectId, name: row.projectName },
           business: { id: row.businessId, name: row.businessName },
         }
@@ -198,7 +198,7 @@ function useDto(row: HydratedUseRow): ToolUse {
     name: row.use.name,
     configSnapshot: row.use.configSnapshot,
     content: row.use.content,
-    taskId: row.use.taskId,
+    deliveryId: row.use.deliveryId,
     context,
     status: row.use.status,
     responseCount: row.responseCount,
@@ -227,7 +227,7 @@ function useHydrationQuery(database: ToolDatabase, workspaceId: string) {
     .select({
       use: toolUses,
       modelName: toolModels.name,
-      taskName: tasks.name,
+      deliveryName: deliveries.name,
       projectId: projects.id,
       projectName: projects.name,
       businessId: businesses.id,
@@ -243,24 +243,24 @@ function useHydrationQuery(database: ToolDatabase, workspaceId: string) {
       ),
     )
     .leftJoin(
-      tasks,
+      deliveries,
       and(
-        eq(tasks.workspaceId, toolUses.workspaceId),
-        eq(tasks.id, toolUses.taskId),
+        eq(deliveries.workspaceId, toolUses.workspaceId),
+        eq(deliveries.id, toolUses.deliveryId),
       ),
     )
     .leftJoin(
       projects,
       and(
-        eq(projects.workspaceId, tasks.workspaceId),
-        eq(projects.id, tasks.projectId),
+        eq(projects.workspaceId, deliveries.workspaceId),
+        eq(projects.id, deliveries.projectId),
       ),
     )
     .leftJoin(
       businesses,
       and(
-        eq(businesses.workspaceId, tasks.workspaceId),
-        eq(businesses.id, tasks.businessId),
+        eq(businesses.workspaceId, deliveries.workspaceId),
+        eq(businesses.id, deliveries.businessId),
       ),
     )
     .leftJoin(
@@ -591,7 +591,7 @@ export async function createWorkspaceToolUse(
         workspaceId,
         createdByUserId: context.user.id,
         modelId: model.id,
-        taskId: input.taskId,
+        deliveryId: input.deliveryId,
         toolKey: model.toolKey,
         name: input.name,
         configSnapshot: structuredClone(model.config),
@@ -602,9 +602,9 @@ export async function createWorkspaceToolUse(
     if (!created) throw new Error("Uso não criado.");
     return getHydratedUse(database, workspaceId, id);
   } catch (cause) {
-    if (databaseConstraint(cause) === "tool_uses_workspace_task_foreign_key") {
+    if (databaseConstraint(cause) === "tool_uses_workspace_delivery_foreign_key") {
       throw new ToolInputError(
-        "A tarefa selecionada não pertence a este workspace.",
+        "A entrega selecionada não pertence a este workspace.",
       );
     }
     throw cause;
@@ -651,7 +651,7 @@ export async function updateWorkspaceToolUse(
   if (
     current.status === "completed" &&
     (input.name !== current.name ||
-      input.taskId !== current.taskId ||
+      input.deliveryId !== current.deliveryId ||
       JSON.stringify(input.content) !== JSON.stringify(current.content))
   ) {
     throw new ToolStateConflictError(
@@ -674,7 +674,7 @@ export async function updateWorkspaceToolUse(
       .update(toolUses)
       .set({
         name: input.name,
-        taskId: input.taskId,
+        deliveryId: input.deliveryId,
         content: structuredClone(input.content),
         status: input.status,
         completedAt,
@@ -693,9 +693,9 @@ export async function updateWorkspaceToolUse(
     return getHydratedUse(database, workspaceId, useId);
   } catch (cause) {
     if (cause instanceof ToolVersionConflictError) throw cause;
-    if (databaseConstraint(cause) === "tool_uses_workspace_task_foreign_key") {
+    if (databaseConstraint(cause) === "tool_uses_workspace_delivery_foreign_key") {
       throw new ToolInputError(
-        "A tarefa selecionada não pertence a este workspace.",
+        "A entrega selecionada não pertence a este workspace.",
       );
     }
     throw cause;

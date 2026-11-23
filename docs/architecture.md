@@ -73,23 +73,23 @@ corpos estritos, filtros, CRUD e arquivamento idempotente. A rota
 `/api/projects/from-service` bloqueia e valida todas as dependências e cria o
 projeto, os snapshots, vínculos e parcelas em uma única transação. Serviços são
 os modelos de projeto compartilhados; a BE-09 acrescentou sua ordem e versão,
-além dos modelos relacionais de entrega e subtarefa.
+além dos modelos relacionais de entrega e tarefa.
 
-Tarefas formam um agregado em `tasks`, `task_subtasks`, `task_responsibles` e
-`task_tags`. A chave composta `workspace + projeto + negócio` mantém o negócio
+Tarefas formam um agregado em `deliveries`, `delivery_tasks`, `delivery_responsibles` e
+`delivery_tags`. A chave composta `workspace + projeto + negócio` mantém o negócio
 da tarefa coerente com seu projeto, enquanto outras relações compostas limitam
-subtarefas, membros responsáveis e tags ao mesmo tenant. Ordem, duração,
+tarefas, membros responsáveis e tags ao mesmo tenant. Ordem, duração,
 prioridade, status e posição por quadro fazem parte do agregado. A duração de
-uma subtarefa é validada entre 30 e 10.080 minutos, em múltiplos de 30, sem
+uma tarefa é validada entre 30 e 10.080 minutos, em múltiplos de 30, sem
 truncar valores válidos.
 
-As rotas `/api/tasks` e `/api/tasks/[taskId]` aplicam listagem, filtros, CRUD e
+As rotas `/api/deliveries` e `/api/deliveries/[deliveryId]` aplicam listagem, filtros, CRUD e
 arquivamento. O `PUT` do agregado persiste conteúdo, status, relações e
-subtarefas na mesma transação, permitindo concluir ou reabrir pai e filhos
+tarefas na mesma transação, permitindo concluir ou reabrir pai e filhos
 atomicamente; uma falha tardia desfaz tudo. As rotas `PUT` específicas de estado
 continuam disponíveis para transições focadas e idempotentes.
 
-`PUT /api/tasks/board` recebe um lote para as visões por status, prioridade,
+`PUT /api/deliveries/board` recebe um lote para as visões por status, prioridade,
 negócio ou projeto. O serviço bloqueia as tarefas em ordem estável, valida todas
 as versões e relações e só então aplica posições e mudanças de coluna. Se um
 item falhar, a transação sofre rollback integral. Toda alteração de uma tarefa
@@ -101,8 +101,8 @@ pelas demais rotas removem a posição da dimensão que mudou. Se um projeto tro
 de negócio, a mesma transação remove a posição por negócio de todas as tarefas
 vinculadas, inclusive arquivadas, e incrementa suas versões.
 
-A tarefa somente pode ser concluída quando todas as subtarefas ativas estão
-concluídas; uma subtarefa só pode ser reaberta depois da tarefa, e o
+A tarefa somente pode ser concluída quando todas as tarefas ativas estão
+concluídas; uma tarefa só pode ser reaberta depois da tarefa, e o
 arquivamento é separado do status e impede novas alterações. Registros, Pauta e
 o formulário global editam pela API; todas as demais superfícies que exibem
 tarefas também leem dessa fonte server-side.
@@ -116,7 +116,7 @@ ocultos mantenham posições duplicadas.
 
 A Agenda persiste data, duração e posição em `agenda_entries`. O Cronograma
 persiste blocos versionados em `cronograma_blocks`; ambos referenciam projetos,
-tarefas ou subtarefas reais e não duplicam seu conteúdo.
+tarefas ou tarefas reais e não duplicam seu conteúdo.
 
 ## Configurações, catálogos e modelos
 
@@ -127,7 +127,7 @@ A BE-09 divide as configurações em três escopos explícitos:
   jornada, lembretes e apresentação do perfil. O JSON validado vive em
   `user_preferences` e uma alteração nunca afeta outro usuário;
 - **workspace:** status, categorias, prioridades, tags, categorias financeiras,
-  modelos de projeto, entrega e subtarefa. Esses dados usam tabelas relacionais,
+  modelos de projeto, entrega e tarefa. Esses dados usam tabelas relacionais,
   são lidos por todos os membros e alterados somente por `owner` ou `admin`;
 - **dispositivo:** estado transitório e visual da sessão, como expansão da barra
   lateral, drawer, aba ou visualização lembrada. Esses valores podem continuar
@@ -172,14 +172,14 @@ do drawer continuam locais por serem preferências do dispositivo.
 
 ## Cronograma
 
-`cronograma_blocks` guarda um bloco por subtarefa, com data civil, início,
+`cronograma_blocks` guarda um bloco por tarefa, com data civil, início,
 duração e versão. Chaves estrangeiras compostas garantem que workspace, tarefa
-e subtarefa coincidam; constraints limitam a grade a múltiplos de 30 minutos e
+e tarefa coincidam; constraints limitam a grade a múltiplos de 30 minutos e
 impedem que um bloco ultrapasse o fim do dia.
 
 `GET /api/cronograma` aceita intervalo e responsável opcionais. As escritas em
-`/api/cronograma/[subtaskId]` bloqueiam o workspace, conferem a versão e validam
-o estado final completo: subtarefas pendentes seguem sua ordem, responsáveis
+`/api/cronograma/[taskId]` bloqueiam o workspace, conferem a versão e validam
+o estado final completo: tarefas pendentes seguem sua ordem, responsáveis
 não se sobrepõem e cada bloco cabe no mesmo dia. A alocação manual pode sair do
 expediente; somente os blocos alterados pela reorganização automática precisam
 caber nos dias e turnos configurados. Assim, duas requisições concorrentes não

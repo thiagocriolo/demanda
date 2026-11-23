@@ -74,26 +74,26 @@ export const storedFileStatuses = [
 ] as const;
 export type StoredFileStatus = (typeof storedFileStatuses)[number];
 
-export const taskBoardViews = [
+export const deliveryBoardViews = [
   "status",
   "priority",
   "business",
   "project",
 ] as const;
-export type TaskBoardView = (typeof taskBoardViews)[number];
-export type TaskBoardOrder = Partial<Record<TaskBoardView, number>>;
+export type DeliveryBoardView = (typeof deliveryBoardViews)[number];
+export type DeliveryBoardOrder = Partial<Record<DeliveryBoardView, number>>;
 
-export const agendaEntityKinds = ["project", "task"] as const;
+export const agendaEntityKinds = ["project", "delivery"] as const;
 export type AgendaEntityKind = (typeof agendaEntityKinds)[number];
 
 export const workspaceCatalogKinds = [
   "person_status",
   "business_status",
   "project_status",
-  "task_status",
+  "delivery_status",
   "business_category",
-  "task_category",
-  "task_priority",
+  "delivery_category",
+  "delivery_priority",
   "revenue_category",
   "expense_category",
 ] as const;

@@ -15,12 +15,12 @@
   import { onMount, tick, untrack } from "svelte";
   import type {
     DeliveryTemplate,
-    DeliveryTemplateSubtask,
+    DeliveryTemplateTask,
     StyledChoice,
   } from "./types";
   import "./template-modal.css";
 
-  type DraftSubtask = DeliveryTemplateSubtask & { localId: string };
+  type DraftTask = DeliveryTemplateTask & { localId: string };
 
   let {
     record,
@@ -46,7 +46,7 @@
   let name = $state(initialRecord?.name ?? "");
   let category = $state(initialRecord?.category ?? "");
   let briefing = $state(initialRecord?.briefing ?? "");
-  let subtasks = $state<DraftSubtask[]>(initialSubtasks());
+  let tasks = $state<DraftTask[]>(initialTasks());
 
   function normalizedDuration(value?: string): string {
     const parsed = Number(String(value ?? "").replace(",", "."));
@@ -58,12 +58,12 @@
     return Number.isInteger(bounded) ? String(bounded) : bounded.toFixed(1);
   }
 
-  function newSubtask(
-    values: Partial<DeliveryTemplateSubtask> = {},
-  ): DraftSubtask {
+  function newTask(
+    values: Partial<DeliveryTemplateTask> = {},
+  ): DraftTask {
     sequence += 1;
     return {
-      localId: `delivery-template-subtask-${sequence}`,
+      localId: `delivery-template-task-${sequence}`,
       id: values.id ?? "",
       nome: values.nome ?? "",
       duracao: normalizedDuration(values.duracao ?? defaultDuration),
@@ -71,16 +71,16 @@
     };
   }
 
-  function initialSubtasks(): DraftSubtask[] {
-    const saved = initialRecord?.subtasks ?? [];
+  function initialTasks(): DraftTask[] {
+    const saved = initialRecord?.tasks ?? [];
     return saved.length
       ? saved
           .slice(0, 10)
-          .map((subtask: DeliveryTemplateSubtask) => newSubtask(subtask))
-      : [newSubtask()];
+          .map((task: DeliveryTemplateTask) => newTask(task))
+      : [newTask()];
   }
 
-  function completed(subtask: DraftSubtask): boolean {
+  function completed(task: DraftTask): boolean {
     return [
       "concluida",
       "concluido",
@@ -88,44 +88,44 @@
       "done",
       "completed",
     ].includes(
-      subtask.status
+      task.status
         .normalize("NFD")
         .replace(/\p{Diacritic}/gu, "")
         .toLocaleLowerCase("pt-BR"),
     );
   }
 
-  async function addSubtask(): Promise<void> {
-    if (subtasks.length >= 10) return;
-    const subtask = newSubtask();
-    subtasks = [...subtasks, subtask];
+  async function addTask(): Promise<void> {
+    if (tasks.length >= 10) return;
+    const task = newTask();
+    tasks = [...tasks, task];
     await tick();
     formNode
       ?.querySelector<HTMLInputElement>(
-        `[data-subtask-id="${subtask.localId}"] input[type="text"]`,
+        `[data-task-id="${task.localId}"] input[type="text"]`,
       )
       ?.focus();
   }
 
-  async function addSubtaskOnEnter(
+  async function addTaskOnEnter(
     event: KeyboardEvent,
-    subtask: DraftSubtask,
+    task: DraftTask,
   ): Promise<void> {
     if (
       event.key !== "Enter" ||
       event.isComposing ||
-      !subtask.nome.trim() ||
-      subtasks.length >= 10
+      !task.nome.trim() ||
+      tasks.length >= 10
     )
       return;
 
     event.preventDefault();
-    await addSubtask();
+    await addTask();
   }
 
-  function removeSubtask(localId: string): void {
-    if (subtasks.length === 1) subtasks = [newSubtask()];
-    else subtasks = subtasks.filter((subtask) => subtask.localId !== localId);
+  function removeTask(localId: string): void {
+    if (tasks.length === 1) tasks = [newTask()];
+    else tasks = tasks.filter((task) => task.localId !== localId);
   }
 
   onMount(() => {
@@ -142,22 +142,22 @@
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     if (!formNode.reportValidity()) return;
-    const savedSubtasks: DeliveryTemplateSubtask[] = subtasks
+    const savedTasks: DeliveryTemplateTask[] = tasks
       .filter(({ nome }) => nome.trim())
-      .map((subtask) => ({
-        id: subtask.id || crypto.randomUUID(),
-        nome: subtask.nome.trim(),
-        duracao: normalizedDuration(subtask.duracao),
-        status: subtask.status || "pendente",
+      .map((task) => ({
+        id: task.id || crypto.randomUUID(),
+        nome: task.nome.trim(),
+        duracao: normalizedDuration(task.duracao),
+        status: task.status || "pendente",
       }));
     await onsave({
       name: name.trim(),
       category,
       briefing: briefing.trim(),
-      subtasks: JSON.stringify(savedSubtasks),
+      tasks: JSON.stringify(savedTasks),
       duration: String(
-        savedSubtasks.reduce(
-          (total, subtask) => total + Number(subtask.duracao),
+        savedTasks.reduce(
+          (total, task) => total + Number(task.duracao),
           0,
         ) || "",
       ),
@@ -231,46 +231,46 @@
 
         <section
           class="template-modal-section"
-          aria-labelledby="delivery-subtasks-title"
+          aria-labelledby="delivery-tasks-title"
         >
           <div class="template-modal-section-head">
-            <h3 id="delivery-subtasks-title">Subtarefas</h3>
+            <h3 id="delivery-tasks-title">Tarefas</h3>
             <button
               class="template-modal-add"
               type="button"
-              disabled={subtasks.length >= 10}
-              onclick={addSubtask}
+              disabled={tasks.length >= 10}
+              onclick={addTask}
             >
-              <Plus size={16} />{subtasks.length >= 10
-                ? "Limite de 10 subtarefas"
-                : "Adicionar subtarefa"}
+              <Plus size={16} />{tasks.length >= 10
+                ? "Limite de 10 tarefas"
+                : "Adicionar tarefa"}
             </button>
           </div>
 
-          <div class="template-modal-subtasks">
-            {#each subtasks as subtask (subtask.localId)}
+          <div class="template-modal-tasks">
+            {#each tasks as task (task.localId)}
               <div
-                class="template-modal-subtask"
-                data-subtask-id={subtask.localId}
+                class="template-modal-task"
+                data-task-id={task.localId}
               >
                 <label
-                  class:checked={completed(subtask)}
+                  class:checked={completed(task)}
                   class="template-modal-check"
-                  title={completed(subtask)
-                    ? "Subtarefa concluída"
-                    : "Subtarefa pendente"}
+                  title={completed(task)
+                    ? "Tarefa concluída"
+                    : "Tarefa pendente"}
                 >
                   <input
                     type="checkbox"
-                    checked={completed(subtask)}
-                    aria-label="Alternar conclusão da subtarefa"
+                    checked={completed(task)}
+                    aria-label="Alternar conclusão da tarefa"
                     onchange={(event) =>
-                      (subtask.status = event.currentTarget.checked
+                      (task.status = event.currentTarget.checked
                         ? "concluida"
                         : "pendente")}
                   />
                   <span
-                    >{#if completed(subtask)}<Check size={17} />{/if}</span
+                    >{#if completed(task)}<Check size={17} />{/if}</span
                   >
                 </label>
 
@@ -278,36 +278,36 @@
                   <span class="template-modal-icon"><ListTodo size={16} /></span
                   >
                   <input
-                    bind:value={subtask.nome}
+                    bind:value={task.nome}
                     type="text"
                     maxlength="120"
-                    placeholder="Nome da subtarefa"
-                    aria-label="Nome da subtarefa"
-                    onkeydown={(event) => addSubtaskOnEnter(event, subtask)}
+                    placeholder="Nome da tarefa"
+                    aria-label="Nome da tarefa"
+                    onkeydown={(event) => addTaskOnEnter(event, task)}
                   />
                 </div>
 
                 <div class="template-modal-control">
                   <span class="template-modal-icon"><Timer size={16} /></span>
                   <input
-                    bind:value={subtask.duracao}
+                    bind:value={task.duracao}
                     type="number"
                     min="1"
                     max="8"
                     step="0.5"
-                    required={Boolean(subtask.nome.trim())}
+                    required={Boolean(task.nome.trim())}
                     placeholder="Duração"
-                    aria-label="Duração da subtarefa em horas"
+                    aria-label="Duração da tarefa em horas"
                     onchange={() =>
-                      (subtask.duracao = normalizedDuration(subtask.duracao))}
+                      (task.duracao = normalizedDuration(task.duracao))}
                   />
                 </div>
 
                 <button
                   class="template-modal-remove"
                   type="button"
-                  aria-label="Remover subtarefa"
-                  onclick={() => removeSubtask(subtask.localId)}
+                  aria-label="Remover tarefa"
+                  onclick={() => removeTask(task.localId)}
                   ><Trash2 size={17} /></button
                 >
               </div>

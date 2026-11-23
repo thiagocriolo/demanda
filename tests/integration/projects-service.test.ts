@@ -21,7 +21,7 @@ import {
   projectTags,
   services,
   tags,
-  tasks,
+  deliveries,
   users,
   workspaceMembers,
   workspaces,
@@ -47,9 +47,9 @@ import {
   updateWorkspaceService,
 } from "../../src/lib/server/projects/service";
 import {
-  archiveWorkspaceTask,
-  TaskVersionConflictError,
-} from "../../src/lib/server/tasks/service";
+  archiveWorkspaceDelivery,
+  DeliveryVersionConflictError,
+} from "../../src/lib/server/deliveries/service";
 import {
   projectListQuerySchema,
   serviceListQuerySchema,
@@ -294,7 +294,7 @@ describe("BE-07: servicos e projetos", () => {
         business: { id: business.id },
       });
 
-      await database.insert(tasks).values({
+      await database.insert(deliveries).values({
         workspaceId: workspace.id,
         projectId: institutional.id,
         businessId: business.id,
@@ -912,7 +912,7 @@ describe("BE-07: servicos e projetos", () => {
 
   it("sincroniza tarefas quando o projeto muda de negócio", async () => {
     await withRollback(async (database) => {
-      const owner = await insertUser(database, "ProjectTaskOwner");
+      const owner = await insertUser(database, "ProjectDeliveryOwner");
       const workspace = await insertWorkspace(
         database,
         owner.id,
@@ -926,9 +926,9 @@ describe("BE-07: servicos e projetos", () => {
         ownerContext,
         projectInput("Projeto movível", businessA.id, [owner.id]),
       );
-      const oldTaskTimestamp = new Date("2020-01-01T00:00:00.000Z");
+      const oldDeliveryTimestamp = new Date("2020-01-01T00:00:00.000Z");
       await database
-        .insert(tasks)
+        .insert(deliveries)
         .values([
           {
             id: randomUUID(),
@@ -940,8 +940,8 @@ describe("BE-07: servicos e projetos", () => {
             statusKey: "producao",
             boardOrder: { status: 2, business: 5, project: 7 },
             version: 3,
-            createdAt: oldTaskTimestamp,
-            updatedAt: oldTaskTimestamp,
+            createdAt: oldDeliveryTimestamp,
+            updatedAt: oldDeliveryTimestamp,
           },
           {
             id: randomUUID(),
@@ -953,8 +953,8 @@ describe("BE-07: servicos e projetos", () => {
             statusKey: "fila",
             boardOrder: { priority: 1, business: 8 },
             version: 9,
-            createdAt: oldTaskTimestamp,
-            updatedAt: oldTaskTimestamp,
+            createdAt: oldDeliveryTimestamp,
+            updatedAt: oldDeliveryTimestamp,
             archivedAt: new Date(),
           },
         ]);
@@ -967,30 +967,30 @@ describe("BE-07: servicos e projetos", () => {
       );
       expect(updatedProject.business.id).toBe(businessB.id);
 
-      const changedTasks = await database
+      const changedDeliveries = await database
         .select()
-        .from(tasks)
-        .where(eq(tasks.projectId, project.id))
-        .orderBy(asc(tasks.name));
-      expect(changedTasks).toHaveLength(2);
-      const archivedTask = changedTasks[0]!;
-      const activeTask = changedTasks[1]!;
-      expect(activeTask).toMatchObject({
+        .from(deliveries)
+        .where(eq(deliveries.projectId, project.id))
+        .orderBy(asc(deliveries.name));
+      expect(changedDeliveries).toHaveLength(2);
+      const archivedDelivery = changedDeliveries[0]!;
+      const activeDelivery = changedDeliveries[1]!;
+      expect(activeDelivery).toMatchObject({
         businessId: businessB.id,
         version: 4,
       });
-      expect(activeTask.boardOrder).toEqual({ status: 2, project: 7 });
-      expect(archivedTask).toMatchObject({
+      expect(activeDelivery.boardOrder).toEqual({ status: 2, project: 7 });
+      expect(archivedDelivery).toMatchObject({
         businessId: businessB.id,
         version: 10,
       });
-      expect(archivedTask.boardOrder).toEqual({ priority: 1 });
-      expect(activeTask.updatedAt.getTime()).toBeGreaterThan(
-        oldTaskTimestamp.getTime(),
+      expect(archivedDelivery.boardOrder).toEqual({ priority: 1 });
+      expect(activeDelivery.updatedAt.getTime()).toBeGreaterThan(
+        oldDeliveryTimestamp.getTime(),
       );
       await expect(
-        archiveWorkspaceTask(database, ownerContext, activeTask.id, 3),
-      ).rejects.toBeInstanceOf(TaskVersionConflictError);
+        archiveWorkspaceDelivery(database, ownerContext, activeDelivery.id, 3),
+      ).rejects.toBeInstanceOf(DeliveryVersionConflictError);
 
       await updateWorkspaceProject(
         database,
@@ -998,12 +998,12 @@ describe("BE-07: servicos e projetos", () => {
         project.id,
         projectInput("Mesmo negócio", businessB.id, [owner.id]),
       );
-      const unchangedTasks = await database
+      const unchangedDeliveries = await database
         .select()
-        .from(tasks)
-        .where(eq(tasks.projectId, project.id))
-        .orderBy(asc(tasks.name));
-      expect(unchangedTasks).toEqual(changedTasks);
+        .from(deliveries)
+        .where(eq(deliveries.projectId, project.id))
+        .orderBy(asc(deliveries.name));
+      expect(unchangedDeliveries).toEqual(changedDeliveries);
     });
   });
 

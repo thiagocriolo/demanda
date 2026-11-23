@@ -88,7 +88,7 @@
     },
     {
       id: "entregas-exemplo-1",
-      kind: "tarefa",
+      kind: "entrega",
       title: "Manual de identidade",
       status: "Fazendo",
       statusColor: "#f59e0b",
@@ -103,7 +103,7 @@
   let {
     level,
     items = defaultItems,
-    ariaLabel = "Cards de pessoa, negócio, projeto e tarefa",
+    ariaLabel = "Cards de pessoa, negócio, projeto e entrega",
     single = false,
     interactive = true,
     createKey,
@@ -156,7 +156,7 @@
     if (kind === "negocio") return "negócio";
     if (kind === "contrato") return "contrato";
     if (kind === "projeto") return "projeto";
-    return "tarefa";
+    return "entrega";
   }
 
   function initials(name: string): string {
@@ -261,7 +261,7 @@
             >
               <span class="icon">
                 {#if item.kind === "pessoa"}<Check size={11} />
-                {:else if item.kind === "tarefa"}<LoaderCircle size={11} />
+                {:else if item.kind === "entrega"}<LoaderCircle size={11} />
                 {:else}<Play size={11} />{/if}
               </span>
               <span class="wc-card-status__label">{item.status}</span>
@@ -301,7 +301,7 @@
             </span>
             <span class="wc-card-counter">
               <span class="icon"><CheckSquare size={15} /></span>
-              <span class="wc-card-counter__label">Tarefas</span><strong
+              <span class="wc-card-counter__label">Entregas</span><strong
                 >{item.counts?.[2] ?? 0}</strong
               >
             </span>
@@ -335,7 +335,7 @@
             </span>
             <span class="wc-card-counter">
               <span class="icon"><CheckSquare size={15} /></span>
-              <span class="wc-card-counter__label">Tarefas</span><strong
+              <span class="wc-card-counter__label">Entregas</span><strong
                 >{item.counts?.[1] ?? 0}</strong
               >
             </span>
@@ -394,7 +394,7 @@
             {:else}
             <span class="wc-card-counter wc-card-counter--ratio">
               <span class="icon"><CheckSquare size={15} /></span>
-              <span class="wc-card-counter__label">Tarefas</span><strong
+              <span class="wc-card-counter__label">Entregas</span><strong
                 >{item.counts?.[0] ?? "0/0"}</strong
               >
             </span>
@@ -421,31 +421,31 @@
               <span>{item.relation}</span>
             </p>
           </div>
-          <footer class="wc-card-footer wc-card-footer--task">
+          <footer class="wc-card-footer wc-card-footer--delivery">
             <span
-              class="wc-card-task-responsibles"
+              class="wc-card-delivery-responsibles"
               aria-label={`Responsável: ${item.responsible || "Não informado"}`}
             >
               <span
-                class="wc-card-task-responsibles__avatars"
+                class="wc-card-delivery-responsibles__avatars"
                 aria-hidden="true"
               >
                 {#if item.responsible}
                   {#if item.responsibleAvatarUrl}
                     <img
-                      class="wc-card-task-responsible-avatar"
+                      class="wc-card-delivery-responsible-avatar"
                       src={item.responsibleAvatarUrl}
                       style={responsibleAvatarStyle(item.responsibleAvatarUrl)}
                       alt=""
                     />
                   {:else}
-                    <span class="wc-card-task-responsible-avatar"
+                    <span class="wc-card-delivery-responsible-avatar"
                       >{initials(item.responsible)}</span
                     >
                   {/if}
                 {/if}
               </span>
-              <span class="wc-card-task-responsibles__summary"
+              <span class="wc-card-delivery-responsibles__summary"
                 >{item.responsible || "Sem responsável"}</span
               >
             </span>
@@ -669,7 +669,7 @@
     text-transform: uppercase;
   }
 
-  img.wc-card-task-responsible-avatar {
+  img.wc-card-delivery-responsible-avatar {
     background: var(
       --wc-card-responsible-avatar-background,
       var(--state-neutral-soft)
@@ -838,7 +838,7 @@
     grid-template-columns: minmax(0, 2fr) minmax(0, 4fr);
   }
 
-  .wc-card-footer.wc-card-footer--task {
+  .wc-card-footer.wc-card-footer--delivery {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
@@ -877,7 +877,7 @@
     white-space: nowrap;
   }
 
-  .wc-card-task-responsibles {
+  .wc-card-delivery-responsibles {
     min-width: 0;
     min-height: var(--card-counter-height);
     overflow: hidden;
@@ -887,13 +887,13 @@
     gap: 7px;
   }
 
-  .wc-card-task-responsibles__avatars {
+  .wc-card-delivery-responsibles__avatars {
     display: inline-flex;
     flex: 0 0 auto;
     align-items: center;
   }
 
-  .wc-card-task-responsible-avatar {
+  .wc-card-delivery-responsible-avatar {
     position: relative;
     z-index: 2;
     width: 30px;
@@ -916,12 +916,12 @@
     line-height: 1;
   }
 
-  .wc-card-task-responsible-avatar:first-child {
+  .wc-card-delivery-responsible-avatar:first-child {
     z-index: 3;
     margin-left: 0;
   }
 
-  .wc-card-task-responsibles__summary {
+  .wc-card-delivery-responsibles__summary {
     min-width: 0;
     overflow: hidden;
     font-size: var(--card-counter-font-size);
@@ -931,14 +931,14 @@
     white-space: nowrap;
   }
 
-  .wc-card-footer--task .wc-card-counter--ratio {
+  .wc-card-footer--delivery .wc-card-counter--ratio {
     width: fit-content;
     min-width: 58px;
     justify-self: end;
     justify-content: center;
   }
 
-  .wc-card-footer--task .wc-card-counter--ratio strong {
+  .wc-card-footer--delivery .wc-card-counter--ratio strong {
     margin-left: 0;
   }
 

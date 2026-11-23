@@ -1,4 +1,5 @@
 import { error, json } from "@sveltejs/kit";
+import { randomUUID } from "node:crypto";
 import { and, asc, count, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { RequestHandler } from "./$types";
@@ -38,10 +39,7 @@ async function findContract(
   const [result] = await database
     .select({ contract: contracts, businessName: businesses.name })
     .from(contracts)
-    .innerJoin(
-      businesses,
-      eq(businesses.id, contracts.businessId),
-    )
+    .innerJoin(businesses, eq(businesses.id, contracts.businessId))
     .where(
       and(
         eq(contracts.ownerUserId, ownerUserId),
@@ -113,10 +111,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
     error(400, "Dados financeiros do contrato inválidos.");
   try {
     const database = getDatabase();
-    const existing = await findContract(
-      params.contractId,
-      context.user.id,
-    );
+    const existing = await findContract(params.contractId, context.user.id);
     if (!existing) error(404, "Contrato não encontrado.");
     const workspace = await requireWorkspacePermissionForUpdate(
       database,
@@ -154,6 +149,46 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
             eq(contracts.id, params.contractId),
           ),
         );
+      if (parsed.data.contractType === "recurring") {
+        const [institutional] = await transaction
+          .select({ id: projects.id })
+          .from(projects)
+          .where(
+            and(
+              eq(projects.workspaceId, workspace.workspace.id),
+              eq(projects.contractId, params.contractId),
+              eq(projects.isInstitutional, true),
+            ),
+          )
+          .limit(1);
+        if (institutional) {
+          await transaction
+            .update(projects)
+            .set({
+              startDate: parsed.data.startDate,
+              endDate: parsed.data.endDate,
+              contractType: "recurring",
+              updatedAt,
+            })
+            .where(eq(projects.id, institutional.id));
+        } else {
+          await transaction.insert(projects).values({
+            id: randomUUID(),
+            workspaceId: workspace.workspace.id,
+            businessId: parsed.data.businessId,
+            contractId: params.contractId,
+            isInstitutional: true,
+            name: "Institucional",
+            statusKey: "execucao",
+            startDate: parsed.data.startDate,
+            endDate: parsed.data.endDate,
+            engagementType: "personal",
+            contractType: "recurring",
+            createdAt: updatedAt,
+            updatedAt,
+          });
+        }
+      }
       await transaction
         .delete(contractInstallments)
         .where(
@@ -163,18 +198,16 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
           ),
         );
       if (parsed.data.installments.length)
-        await transaction
-          .insert(contractInstallments)
-          .values(
-            parsed.data.installments.map((item) => ({
-              workspaceId: workspace.workspace.id,
-              contractId: params.contractId,
-              number: item.number,
-              dueDate: item.dueDate,
-              amountCents: item.amountCents,
-              statusKey: item.status || null,
-            })),
-          );
+        await transaction.insert(contractInstallments).values(
+          parsed.data.installments.map((item) => ({
+            workspaceId: workspace.workspace.id,
+            contractId: params.contractId,
+            number: item.number,
+            dueDate: item.dueDate,
+            amountCents: item.amountCents,
+            statusKey: item.status || null,
+          })),
+        );
     });
     const updated = await findContract(
       params.contractId,
@@ -204,10 +237,7 @@ export const PATCH: RequestHandler = async ({ locals, params }) => {
       context,
       "workspace:write",
     );
-    const existing = await findContract(
-      params.contractId,
-      context.user.id,
-    );
+    const existing = await findContract(params.contractId, context.user.id);
     if (!existing) error(404, "Contrato não encontrado.");
     if (!existing?.contract.archivedAt) {
       const now = new Date();
@@ -234,10 +264,7 @@ export const DELETE: RequestHandler = async ({ locals, params, request }) => {
   if (!parsed.success) error(400, "OpÃ§Ã£o de exclusÃ£o invÃ¡lida.");
   try {
     const database = getDatabase();
-    const existing = await findContract(
-      params.contractId,
-      context.user.id,
-    );
+    const existing = await findContract(params.contractId, context.user.id);
     if (!existing) error(404, "Contrato não encontrado.");
     const workspace = await requireWorkspacePermissionForUpdate(
       database,

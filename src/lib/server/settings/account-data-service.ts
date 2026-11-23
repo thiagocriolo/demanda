@@ -25,20 +25,20 @@ import {
   contracts,
   cronogramaBlocks,
   deliveryTemplateResponsibles,
-  deliveryTemplateSubtasks,
+  deliveryTemplateTasks,
   deliveryTemplateTags,
   deliveryTemplates,
   financialEntries,
-  personalTasks,
+  personalDeliveries,
   projectInstallments,
   projectResponsibles,
   projectServices,
   projectTags,
-  projectTaskRoutines,
+  projectDeliveryRoutines,
   projects,
   serviceResponsibles,
   serviceTags,
-  serviceTaskTemplates,
+  serviceDeliveryTemplates,
   services,
   socialCommentLikes,
   socialPostBlocks,
@@ -47,11 +47,11 @@ import {
   socialPosts,
   storedFiles,
   tags,
-  taskComments,
-  taskResponsibles,
-  taskSubtasks,
-  taskTags,
-  tasks,
+  deliveryComments,
+  deliveryResponsibles,
+  deliveryTasks,
+  deliveryTags,
+  deliveries,
   toolModels,
   toolResponses,
   toolUses,
@@ -301,7 +301,7 @@ export async function resetAccountData(
         ),
       );
 
-    await scoped.delete(personalTasks).where(eq(personalTasks.userId, userId));
+    await scoped.delete(personalDeliveries).where(eq(personalDeliveries.userId, userId));
     await scoped
       .delete(userPreferences)
       .where(eq(userPreferences.userId, userId));
@@ -444,18 +444,18 @@ async function deleteOwnedDomainData(
     : [];
   const projectIds = projectRows.map(({ id }) => id);
 
-  const routineConditions = [eq(projectTaskRoutines.responsibleUserId, userId)];
+  const routineConditions = [eq(projectDeliveryRoutines.responsibleUserId, userId)];
   if (ownedWorkspaceIds.length > 0)
     routineConditions.push(
-      inArray(projectTaskRoutines.workspaceId, ownedWorkspaceIds),
+      inArray(projectDeliveryRoutines.workspaceId, ownedWorkspaceIds),
     );
   if (projectIds.length > 0)
-    routineConditions.push(inArray(projectTaskRoutines.projectId, projectIds));
+    routineConditions.push(inArray(projectDeliveryRoutines.projectId, projectIds));
   const routineRows = await runOptionalTableOperation(
     () =>
       database
-        .select({ id: projectTaskRoutines.id })
-        .from(projectTaskRoutines)
+        .select({ id: projectDeliveryRoutines.id })
+        .from(projectDeliveryRoutines)
         .where(or(...routineConditions)),
     [],
   );
@@ -485,28 +485,28 @@ async function deleteOwnedDomainData(
   }
   await byOwnedWorkspaces(projectInstallments);
 
-  await byOwnedWorkspaces(taskComments);
-  await byOwnedWorkspaces(taskResponsibles);
-  await byOwnedWorkspaces(taskTags);
-  await byOwnedWorkspaces(taskSubtasks);
+  await byOwnedWorkspaces(deliveryComments);
+  await byOwnedWorkspaces(deliveryResponsibles);
+  await byOwnedWorkspaces(deliveryTags);
+  await byOwnedWorkspaces(deliveryTasks);
 
-  const taskConditions = [];
+  const deliveryConditions = [];
   if (ownedWorkspaceIds.length > 0)
-    taskConditions.push(inArray(tasks.workspaceId, ownedWorkspaceIds));
+    deliveryConditions.push(inArray(deliveries.workspaceId, ownedWorkspaceIds));
   if (projectIds.length > 0)
-    taskConditions.push(inArray(tasks.projectId, projectIds));
+    deliveryConditions.push(inArray(deliveries.projectId, projectIds));
   if (routineIds.length > 0)
-    taskConditions.push(inArray(tasks.projectRoutineId, routineIds));
-  if (taskConditions.length > 0) {
-    await database.delete(tasks).where(or(...taskConditions));
+    deliveryConditions.push(inArray(deliveries.projectRoutineId, routineIds));
+  if (deliveryConditions.length > 0) {
+    await database.delete(deliveries).where(or(...deliveryConditions));
   }
 
   if (routineIds.length > 0) {
     await runOptionalTableOperation(
       () =>
         database
-          .delete(projectTaskRoutines)
-          .where(inArray(projectTaskRoutines.id, routineIds)),
+          .delete(projectDeliveryRoutines)
+          .where(inArray(projectDeliveryRoutines.id, routineIds)),
       undefined,
     );
   }
@@ -575,8 +575,8 @@ async function deleteOwnedDomainData(
     await database.delete(contacts).where(inArray(contacts.id, contactIds));
   }
 
-  await byOwnedWorkspaces(serviceTaskTemplates);
-  await byOwnedWorkspaces(deliveryTemplateSubtasks);
+  await byOwnedWorkspaces(serviceDeliveryTemplates);
+  await byOwnedWorkspaces(deliveryTemplateTasks);
   await byOwnedWorkspaces(deliveryTemplateTags);
   await byOwnedWorkspaces(deliveryTemplateResponsibles);
   await byOwnedWorkspaces(deliveryTemplates);

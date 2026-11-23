@@ -8,7 +8,7 @@ export type StyledChoice = Choice & {
   color: string;
 };
 
-export type TemplateTask = {
+export type TemplateDelivery = {
   id: string;
   templateId: string;
   name: string;
@@ -49,10 +49,10 @@ export type ServiceTemplate = {
   paymentMethod: string;
   paymentTerms: string;
   financeNotes: string;
-  tasks: TemplateTask[];
+  deliveries: TemplateDelivery[];
 };
 
-export type DeliveryTemplateSubtask = {
+export type DeliveryTemplateTask = {
   id: string;
   nome: string;
   duracao: string;
@@ -68,7 +68,7 @@ export type DeliveryTemplate = {
   name: string;
   category: string;
   briefing: string;
-  subtasks: DeliveryTemplateSubtask[];
+  tasks: DeliveryTemplateTask[];
   status: string;
   priority: string;
   tags: string;
@@ -107,11 +107,11 @@ export type SettingsState = {
   workspaceShowProjectPreviews: boolean;
   workspaceShowCollaborators: boolean;
   workspaceIncludeArchivedProjects: boolean;
-  recordsDefaultTab: "pessoas" | "negocios" | "projetos" | "tarefas";
+  recordsDefaultTab: "pessoas" | "negocios" | "projetos" | "entregas";
   recordsOrderBy: "updated" | "name_asc" | "name_desc";
   recordsShowArchived: boolean;
   recordsCardLevel: number;
-  defaultTaskDuration: string;
+  defaultDeliveryDuration: string;
   pautaScope: string;
   pautaGroupBy: string;
   pautaOrderBy: string;
@@ -119,7 +119,7 @@ export type SettingsState = {
   pautaShowArchived: boolean;
   pautaShowCardDetails: boolean;
   agendaDefaultView: string;
-  agendaDefaultMode: "projects" | "tasks";
+  agendaDefaultMode: "projects" | "deliveries";
   agendaDrawerDefault: "expanded" | "collapsed";
   agendaShowWeekends: boolean;
   agendaRememberLastView: boolean;
@@ -128,8 +128,8 @@ export type SettingsState = {
   cronogramaDays: "weekdays" | "saturday";
   cronogramaShowCurrentTime: boolean;
   workdayShifts: WorkShift[];
-  taskReminderMinutes: string;
-  notifyTaskReminders: boolean;
+  deliveryReminderMinutes: string;
+  notifyDeliveryReminders: boolean;
   financeDefaultTab: "painel" | "receitas" | "despesas";
   financeInitialPeriod: "current" | "last";
   financePlanningMonths: "3" | "6" | "12";
@@ -157,10 +157,10 @@ export type SettingsState = {
   personStatuses: StyledChoice[];
   businessStatuses: StyledChoice[];
   projectStatuses: StyledChoice[];
-  taskStatuses: StyledChoice[];
+  deliveryStatuses: StyledChoice[];
   businessCategories: StyledChoice[];
-  taskCategories: StyledChoice[];
-  taskPriorities: Choice[];
+  deliveryCategories: StyledChoice[];
+  deliveryPriorities: Choice[];
   tags: string[];
   revenueCategories: StyledChoice[];
   expenseCategories: StyledChoice[];
@@ -174,10 +174,10 @@ export const workspaceSettingsKeys = [
   "personStatuses",
   "businessStatuses",
   "projectStatuses",
-  "taskStatuses",
+  "deliveryStatuses",
   "businessCategories",
-  "taskCategories",
-  "taskPriorities",
+  "deliveryCategories",
+  "deliveryPriorities",
   "tags",
   "revenueCategories",
   "expenseCategories",

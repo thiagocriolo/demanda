@@ -12,14 +12,17 @@ export const commandResourceSchema = z.enum([
   "contact",
   "business",
   "project",
-  "task",
+  "delivery",
   "service_template",
   "delivery_template",
+  "service",
+  "contract",
+  "finance_entry",
   "workspace",
   "workspace_member",
   "agenda_item",
   "schedule_block",
-  "task_board",
+  "delivery_board",
 ]);
 export type CommandResource = z.infer<typeof commandResourceSchema>;
 

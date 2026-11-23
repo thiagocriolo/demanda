@@ -16,8 +16,8 @@ const twoBranches: QueuedRecordCommand[] = [
     command: { kind: "project", name: "Site A", businessName: "Agência A" },
   },
   {
-    id: "task-a",
-    command: { kind: "task", name: "Wireframe A", projectName: "Site A" },
+    id: "delivery-a",
+    command: { kind: "delivery", name: "Wireframe A", projectName: "Site A" },
   },
   { id: "contact-b", command: { kind: "contact", name: "Bruno" } },
   {
@@ -37,7 +37,7 @@ describe("compileRecordCommandQueue", () => {
       { id: "contact-a", dependsOn: [] },
       { id: "business-a", dependsOn: ["contact-a"] },
       { id: "project-a", dependsOn: ["business-a"] },
-      { id: "task-a", dependsOn: ["project-a"] },
+      { id: "delivery-a", dependsOn: ["project-a"] },
       { id: "contact-b", dependsOn: [] },
       { id: "business-b", dependsOn: ["contact-b"] },
     ]);
@@ -160,7 +160,7 @@ describe("executeCompiledRecordCommandQueue", () => {
       { id: "contact-a", status: "succeeded" },
       { id: "business-a", status: "succeeded" },
       { id: "project-a", status: "succeeded" },
-      { id: "task-a", status: "failed" },
+      { id: "delivery-a", status: "failed" },
       { id: "contact-b", status: "succeeded" },
       { id: "business-b", status: "succeeded" },
     ]);
@@ -178,7 +178,7 @@ describe("executeCompiledRecordCommandQueue", () => {
     expect(result.progress.find(({ id }) => id === "project-a")?.status).toBe(
       "blocked",
     );
-    expect(result.progress.find(({ id }) => id === "task-a")?.status).toBe(
+    expect(result.progress.find(({ id }) => id === "delivery-a")?.status).toBe(
       "blocked",
     );
     expect(result.progress.find(({ id }) => id === "business-b")?.status).toBe(
@@ -194,8 +194,8 @@ describe("executeCompiledRecordCommandQueue", () => {
           command: { kind: "project", name: "Site", businessName: "A" },
         },
         {
-          id: "task",
-          command: { kind: "task", name: "Home", projectRef: "project" },
+          id: "delivery",
+          command: { kind: "delivery", name: "Home", projectRef: "project" },
         },
       ]),
       async (command) => {
@@ -213,7 +213,7 @@ describe("executeCompiledRecordCommandQueue", () => {
     expect(result.progress.find(({ id }) => id === "project")?.status).toBe(
       "needs_resolution",
     );
-    expect(result.progress.find(({ id }) => id === "task")?.status).toBe(
+    expect(result.progress.find(({ id }) => id === "delivery")?.status).toBe(
       "blocked",
     );
   });

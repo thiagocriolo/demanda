@@ -194,7 +194,7 @@ export const toolUseCreateSchema = z
     workspaceId: identifier.optional(),
     modelId: identifier,
     name: trimmed(140),
-    taskId: identifier.nullable(),
+    deliveryId: identifier.nullable(),
     content: toolUseContentSchema,
     status: z.enum(["draft", "open"]),
   })
@@ -203,7 +203,7 @@ export const toolUseCreateSchema = z
 export const toolUseUpdateSchema = z
   .object({
     name: trimmed(140),
-    taskId: identifier.nullable(),
+    deliveryId: identifier.nullable(),
     content: toolUseContentSchema,
     status: z.enum(["draft", "open", "completed", "archived"]),
     version: z.number().int().positive(),

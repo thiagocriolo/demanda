@@ -55,6 +55,16 @@ describe("validacao de negocios", () => {
     ).toBe(false);
   });
 
+  it("rejeita a etapa legado novo", () => {
+    expect(
+      businessMutationSchema.safeParse({ ...validMutation(), stage: "novo" })
+        .success,
+    ).toBe(false);
+    expect(businessListQuerySchema.safeParse({ stage: "novo" }).success).toBe(
+      false,
+    );
+  });
+
   it("exige entre um e vinte responsaveis unicos", () => {
     expect(
       businessMutationSchema.safeParse({

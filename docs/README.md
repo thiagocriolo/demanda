@@ -20,7 +20,7 @@ npm run build
 
 O projeto já inclui MySQL, migrations, autenticação, autorização por
 workspace e persistência compartilhada de Pessoas/Contatos, Negócios, Serviços,
-Projetos, Tarefas, Subtarefas, catálogos e modelos. Preferências pessoais e
+Projetos, Tarefas, Tarefas, catálogos e modelos. Preferências pessoais e
 configurações compartilhadas também usam APIs versionadas. Todas as superfícies
 leem tarefas pela API; Agenda, Cronograma e Financeiro também persistem seus
 dados no servidor. O Financeiro usa valores decimais, séries parceladas ou
@@ -36,8 +36,8 @@ começa com dados novos e usa apenas as APIs e o banco atuais.
 
 O `PUT` agregado de uma tarefa salva conteúdo e status na mesma transação. A
 Pauta reindexa as colunas ativas completas, mesmo sob filtros, e envia a
-reordenação versionada em lote para `/api/tasks/board`; qualquer conflito desfaz
-o lote inteiro. Subtarefas aceitam de 30 a 10.080 minutos, sem truncar valores
+reordenação versionada em lote para `/api/deliveries/board`; qualquer conflito desfaz
+o lote inteiro. Tarefas aceitam de 30 a 10.080 minutos, sem truncar valores
 válidos. Uma tarefa mantém visibilidade e edição quando seu projeto ou negócio
 já vinculado é arquivado, embora novos vínculos com pais arquivados sejam
 rejeitados.

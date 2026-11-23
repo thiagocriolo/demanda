@@ -7,14 +7,14 @@ export const GLOBAL_FILTERS_CONTEXT = Symbol("global-filters");
 export class GlobalFiltersState {
   responsibleIds = $state<string[]>([]);
   businessCategoryKeys = $state<string[]>([]);
-  taskCategoryKeys = $state<string[]>([]);
+  deliveryCategoryKeys = $state<string[]>([]);
   users = $state<WorkspaceUser[]>([]);
   businessCategories = $state<StyledChoice[]>([]);
-  taskCategories = $state<StyledChoice[]>([]);
+  deliveryCategories = $state<StyledChoice[]>([]);
 
   constructor(settings: {
     businessCategories: StyledChoice[];
-    taskCategories: StyledChoice[];
+    deliveryCategories: StyledChoice[];
   }) {
     this.setCatalogs(settings);
   }
@@ -23,16 +23,16 @@ export class GlobalFiltersState {
     return (
       this.responsibleIds.length +
       this.businessCategoryKeys.length +
-      this.taskCategoryKeys.length
+      this.deliveryCategoryKeys.length
     );
   }
 
   setCatalogs(settings: {
     businessCategories: StyledChoice[];
-    taskCategories: StyledChoice[];
+    deliveryCategories: StyledChoice[];
   }): void {
     this.businessCategories = settings.businessCategories;
-    this.taskCategories = settings.taskCategories;
+    this.deliveryCategories = settings.deliveryCategories;
   }
 
   setUsers(users: WorkspaceUser[]): void {
@@ -42,7 +42,7 @@ export class GlobalFiltersState {
   clear(): void {
     this.responsibleIds = [];
     this.businessCategoryKeys = [];
-    this.taskCategoryKeys = [];
+    this.deliveryCategoryKeys = [];
   }
 }
 

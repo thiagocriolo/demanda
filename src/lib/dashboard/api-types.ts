@@ -6,17 +6,17 @@ export type DashboardSnapshot = {
   period: DashboardPeriod;
   range: { from: string; to: string };
   metrics: {
-    overdueTasks: number;
+    overdueDeliveries: number;
     overdueProjects: number;
-    activeTasks: number;
+    activeDeliveries: number;
     activeProjects: number;
     overduePayments: number;
-    todayTasks: number;
-    periodTasks: number;
+    todayDeliveries: number;
+    periodDeliveries: number;
     todayProjects: number;
     periodProjects: number;
-    completedTasks: number;
-    upcomingTasks: number;
+    completedDeliveries: number;
+    upcomingDeliveries: number;
     plannedMinutes: number;
   };
   finance: {
@@ -26,12 +26,12 @@ export type DashboardSnapshot = {
   };
   workload: {
     date: string;
-    taskCount: number;
+    deliveryCount: number;
     plannedMinutes: number;
   }[];
   todaySchedule: {
     id: string;
-    kind: "project" | "task";
+    kind: "project" | "delivery";
     title: string;
     context: string;
     startMinutes: number | null;
@@ -52,7 +52,7 @@ export type DashboardSnapshot = {
 };
 
 export type GlobalSearchScope =
-  "all" | "contact" | "business" | "project" | "task";
+  "all" | "contact" | "business" | "project" | "delivery";
 
 export type GlobalSearchResult = {
   kind: Exclude<GlobalSearchScope, "all">;

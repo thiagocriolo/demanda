@@ -10,7 +10,7 @@
   import { businessRecordsDomain } from "$lib/records/domains/businesses";
   import { contactRecordsDomain } from "$lib/records/domains/contacts";
   import { projectRecordsDomain } from "$lib/records/domains/projects";
-  import { taskRecordsDomain } from "$lib/records/domains/tasks";
+  import { deliveryRecordsDomain } from "$lib/records/domains/deliveries";
   import {
     createInitialPaginatedRecordsState,
     createPaginatedRecordsController,
@@ -41,21 +41,21 @@
     negocios: "todos",
     contratos: "todos",
     projetos: "todos",
-    tarefas: "todos",
+    entregas: "todos",
   });
   let queries = $state<Record<RecordsTab, string>>({
     pessoas: "",
     negocios: "",
     contratos: "",
     projetos: "",
-    tarefas: "",
+    entregas: "",
   });
   let records = $state<Record<RecordsTab, EntityRecord[]>>({
     pessoas: [],
     negocios: [],
     contratos: [],
     projetos: [],
-    tarefas: [],
+    entregas: [],
   });
   let recordsOrderBy = $state<RecordsOrderBy>("updated");
   let recordsShowArchived = $state(false);
@@ -97,15 +97,15 @@
   let projectsInitialized = $state(false);
   let lastProjectFilterKey = "";
   let projectsAbortController: AbortController | undefined;
-  let tasksPage = $state(1);
-  let tasksTotal = $state(0);
-  let tasksTotalPages = $state(1);
-  let tasksLoading = $state(false);
-  let tasksError = $state("");
-  let tasksFacets = $state({ ...taskRecordsDomain.initialFacets });
-  let tasksInitialized = $state(false);
-  let lastTaskFilterKey = "";
-  let tasksAbortController: AbortController | undefined;
+  let deliveriesPage = $state(1);
+  let deliveriesTotal = $state(0);
+  let deliveriesTotalPages = $state(1);
+  let deliveriesLoading = $state(false);
+  let deliveriesError = $state("");
+  let deliveriesFacets = $state({ ...deliveryRecordsDomain.initialFacets });
+  let deliveriesInitialized = $state(false);
+  let lastDeliveryFilterKey = "";
+  let deliveriesAbortController: AbortController | undefined;
   let loadMoreSentinel = $state<HTMLDivElement>();
 
   let activeConfig = $derived(tabConfigs[activeTab]);
@@ -125,7 +125,7 @@
       );
     if (activeTab === "projetos")
       return projectRecordsDomain.filterOptions(activeConfig, projectsFacets);
-    return taskRecordsDomain.filterOptions(activeConfig, tasksFacets);
+    return deliveryRecordsDomain.filterOptions(activeConfig, deliveriesFacets);
   });
   let visibleRecords = $derived(scopedRecords);
   let cards = $derived(
@@ -140,7 +140,7 @@
                 record,
                 workspaceUsers,
               )
-            : taskRecordsDomain.toCard(activeConfig, record, workspaceUsers),
+            : deliveryRecordsDomain.toCard(activeConfig, record, workspaceUsers),
     ),
   );
   let activeLoading = $derived(
@@ -150,7 +150,7 @@
         ? businessesLoading
         : activeTab === "projetos"
           ? projectsLoading
-          : tasksLoading,
+          : deliveriesLoading,
   );
   let activeError = $derived(
     activeTab === "pessoas"
@@ -159,7 +159,7 @@
         ? businessesError
         : activeTab === "projetos"
           ? projectsError
-          : tasksError,
+          : deliveriesError,
   );
   let activeHasMore = $derived(
     activeTab === "pessoas"
@@ -168,7 +168,7 @@
         ? businessesPage < businessesTotalPages
         : activeTab === "projetos"
           ? projectsPage < projectsTotalPages
-          : tasksPage < tasksTotalPages,
+          : deliveriesPage < deliveriesTotalPages,
   );
   function mergeRecords(
     current: EntityRecord[],
@@ -191,8 +191,8 @@
       projectsLoading = true;
       projectsPage += 1;
     } else {
-      tasksLoading = true;
-      tasksPage += 1;
+      deliveriesLoading = true;
+      deliveriesPage += 1;
     }
   }
 
@@ -302,44 +302,44 @@
     }
   }
 
-  async function reloadTasks(): Promise<void> {
-    tasksAbortController?.abort();
+  async function reloadDeliveries(): Promise<void> {
+    deliveriesAbortController?.abort();
     const controller = new AbortController();
-    const requestedPage = tasksPage;
-    tasksAbortController = controller;
-    tasksLoading = true;
-    tasksError = "";
-    if (requestedPage === 1) records.tarefas = [];
+    const requestedPage = deliveriesPage;
+    deliveriesAbortController = controller;
+    deliveriesLoading = true;
+    deliveriesError = "";
+    if (requestedPage === 1) records.entregas = [];
 
     try {
-      const result = await taskRecordsDomain.list({
+      const result = await deliveryRecordsDomain.list({
         page: requestedPage,
         pageSize: recordsPageSize,
-        query: queries.tarefas,
-        filter: filters.tarefas,
+        query: queries.entregas,
+        filter: filters.entregas,
         orderBy: recordsOrderBy,
         showArchived: recordsShowArchived,
         signal: controller.signal,
       });
       if (controller.signal.aborted) return;
       if (result.totalPages > 0 && requestedPage > result.totalPages) {
-        tasksPage = result.totalPages;
+        deliveriesPage = result.totalPages;
         return;
       }
       const incoming = result.items;
-      records.tarefas =
+      records.entregas =
         requestedPage === 1
           ? incoming
-          : mergeRecords(records.tarefas, incoming);
-      tasksTotal = result.total;
-      tasksTotalPages = Math.max(1, result.totalPages);
-      tasksFacets = result.facets;
+          : mergeRecords(records.entregas, incoming);
+      deliveriesTotal = result.total;
+      deliveriesTotalPages = Math.max(1, result.totalPages);
+      deliveriesFacets = result.facets;
     } catch (cause) {
       if (controller.signal.aborted) return;
-      tasksError = taskRecordsDomain.errorMessage(cause);
-      if (requestedPage === 1) records.tarefas = [];
+      deliveriesError = deliveryRecordsDomain.errorMessage(cause);
+      if (requestedPage === 1) records.entregas = [];
     } finally {
-      if (tasksAbortController === controller) tasksLoading = false;
+      if (deliveriesAbortController === controller) deliveriesLoading = false;
     }
   }
 
@@ -369,7 +369,7 @@
       if (contactsInitialized) void reloadContacts();
       if (businessesInitialized) void reloadBusinesses();
       if (projectsInitialized) void reloadProjects();
-      if (tasksInitialized) void reloadTasks();
+      if (deliveriesInitialized) void reloadDeliveries();
     };
     refreshWorkspace();
     const stopContacts = contactRecordsDomain.observe(
@@ -381,21 +381,21 @@
     const stopProjects = projectRecordsDomain.observe(
       () => void reloadProjects(),
     );
-    const stopTasks = taskRecordsDomain.observe(() => void reloadTasks());
+    const stopDeliveries = deliveryRecordsDomain.observe(() => void reloadDeliveries());
     const stopWorkspaces = observeWorkspaces(refreshWorkspace);
     contactsInitialized = true;
     businessesInitialized = true;
     projectsInitialized = true;
-    tasksInitialized = true;
+    deliveriesInitialized = true;
     return () => {
       contactsController.dispose();
       businessesAbortController?.abort();
       projectsAbortController?.abort();
-      tasksAbortController?.abort();
+      deliveriesAbortController?.abort();
       stopContacts();
       stopBusinesses();
       stopProjects();
-      stopTasks();
+      stopDeliveries();
       stopWorkspaces();
     };
   });
@@ -429,25 +429,25 @@
 
   $effect(() => {
     const filterKey = JSON.stringify({
-      query: queries.tarefas.trim(),
-      filter: filters.tarefas,
+      query: queries.entregas.trim(),
+      filter: filters.entregas,
       orderBy: recordsOrderBy,
       showArchived: recordsShowArchived,
     });
-    const page = tasksPage;
-    if (!tasksInitialized || activeTab !== "tarefas") return;
-    if (lastTaskFilterKey && lastTaskFilterKey !== filterKey) {
-      lastTaskFilterKey = filterKey;
-      if (tasksPage !== 1) {
-        tasksPage = 1;
+    const page = deliveriesPage;
+    if (!deliveriesInitialized || activeTab !== "entregas") return;
+    if (lastDeliveryFilterKey && lastDeliveryFilterKey !== filterKey) {
+      lastDeliveryFilterKey = filterKey;
+      if (deliveriesPage !== 1) {
+        deliveriesPage = 1;
         return;
       }
     } else {
-      lastTaskFilterKey = filterKey;
+      lastDeliveryFilterKey = filterKey;
     }
     const timeout = window.setTimeout(
-      () => void reloadTasks(),
-      queries.tarefas.trim() ? 250 : 0,
+      () => void reloadDeliveries(),
+      queries.entregas.trim() ? 250 : 0,
     );
     return () => window.clearTimeout(timeout);
   });
@@ -578,17 +578,17 @@
     <div class="empty-state" aria-live="polite">
       <strong>Carregando projetos…</strong>
     </div>
-  {:else if activeTab === "tarefas" && tasksError && !cards.length}
+  {:else if activeTab === "entregas" && deliveriesError && !cards.length}
     <div class="empty-state" role="alert">
-      <strong>Não foi possível carregar as tarefas</strong>
-      <p>{tasksError}</p>
-      <button type="button" onclick={() => void reloadTasks()}
+      <strong>Não foi possível carregar as entregas</strong>
+      <p>{deliveriesError}</p>
+      <button type="button" onclick={() => void reloadDeliveries()}
         >Tentar novamente</button
       >
     </div>
-  {:else if activeTab === "tarefas" && tasksLoading && !cards.length}
+  {:else if activeTab === "entregas" && deliveriesLoading && !cards.length}
     <div class="empty-state" aria-live="polite">
-      <strong>Carregando tarefas…</strong>
+      <strong>Carregando entregas…</strong>
     </div>
   {:else}
     <EntityCardList

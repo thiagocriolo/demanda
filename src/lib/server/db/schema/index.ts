@@ -9,7 +9,7 @@ export * from "./services";
 export * from "./contracts";
 export * from "./projects";
 export * from "./finance";
-export * from "./tasks";
+export * from "./deliveries";
 export * from "./tools";
 export * from "./schedule";
 
@@ -19,6 +19,6 @@ export * from "./relations/social";
 export * from "./relations/crm";
 export * from "./relations/services";
 export * from "./relations/projects";
-export * from "./relations/tasks";
+export * from "./relations/deliveries";
 export * from "./relations/tools";
 export * from "./relations/schedule";

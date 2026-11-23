@@ -184,7 +184,7 @@ export const projectSeeds = expectCount(
   50,
 );
 
-const taskActions = [
+const deliveryActions = [
   "Consolidar briefing",
   "Mapear referências",
   "Validar escopo",
@@ -196,7 +196,7 @@ const taskActions = [
   "Obter aprovação",
   "Organizar entrega",
 ];
-const subtaskActions = [
+const taskActions = [
   "Reunir insumos",
   "Analisar requisitos",
   "Definir abordagem",
@@ -208,7 +208,7 @@ const subtaskActions = [
   "Documentar resultado",
   "Concluir entrega",
 ];
-const taskCategories = [
+const deliveryCategories = [
   "reuniao",
   "planejamento",
   "criacao",
@@ -216,24 +216,24 @@ const taskCategories = [
   "veiculacao",
   "outro",
 ];
-const taskPriorities = ["baixa", "normal", "alta", "emergente", "urgente"];
+const deliveryPriorities = ["baixa", "normal", "alta", "emergente", "urgente"];
 
-type SerializedSubtask = {
+type SerializedTask = {
   id: string;
   nome: string;
   duracao: string;
   status: string;
 };
 
-function taskSubtasks(taskIndex: number): SerializedSubtask[] {
-  const count = (taskIndex % 10) + 1;
-  const allCompleted = taskIndex % 11 === 0;
+function deliveryTasks(deliveryIndex: number): SerializedTask[] {
+  const count = (deliveryIndex % 10) + 1;
+  const allCompleted = deliveryIndex % 11 === 0;
   const completedBeforeCurrent = allCompleted
     ? count
-    : Math.min(count - 1, taskIndex % 3);
+    : Math.min(count - 1, deliveryIndex % 3);
   return Array.from({ length: count }, (_, sequence) => ({
-    id: `subtarefa-${sequence + 1}`,
-    nome: `${String(sequence + 1).padStart(2, "0")} · ${subtaskActions[sequence]}`,
+    id: `tarefa-${sequence + 1}`,
+    nome: `${String(sequence + 1).padStart(2, "0")} · ${taskActions[sequence]}`,
     duracao: String(1 + (sequence % 4) * 0.5),
     status:
       allCompleted || sequence < completedBeforeCurrent
@@ -242,25 +242,25 @@ function taskSubtasks(taskIndex: number): SerializedSubtask[] {
   }));
 }
 
-const taskSeedsGenerated: EntitySeed[] = [];
+const deliverySeedsGenerated: EntitySeed[] = [];
 for (const [projectIndex, project] of projectSeeds.entries()) {
-  const taskCount = (projectIndex % 5) + 2;
+  const deliveryCount = (projectIndex % 5) + 2;
   for (
     let sequenceInProject = 0;
-    sequenceInProject < taskCount;
+    sequenceInProject < deliveryCount;
     sequenceInProject += 1
   ) {
-    const taskIndex = taskSeedsGenerated.length;
-    const subtasks = taskSubtasks(taskIndex);
-    const allCompleted = subtasks.every(({ status }) => status === "concluida");
-    const dueDate = taskIndex % 5 === 0 ? "" : dateAfter(7 + taskIndex);
+    const deliveryIndex = deliverySeedsGenerated.length;
+    const tasks = deliveryTasks(deliveryIndex);
+    const allCompleted = tasks.every(({ status }) => status === "concluida");
+    const dueDate = deliveryIndex % 5 === 0 ? "" : dateAfter(7 + deliveryIndex);
     const projectContext = projectContexts[projectIndex];
-    const duration = subtasks.reduce(
-      (total, subtask) => total + Number(subtask.duracao),
+    const duration = tasks.reduce(
+      (total, task) => total + Number(task.duracao),
       0,
     );
-    taskSeedsGenerated.push({
-      nome: `${taskActions[taskIndex % taskActions.length]} — ${project.nome}`,
+    deliverySeedsGenerated.push({
+      nome: `${deliveryActions[deliveryIndex % deliveryActions.length]} — ${project.nome}`,
       negocioId: `negocios-exemplo-${projectContext.businessIndex + 1}`,
       negocio: businessSeeds[projectContext.businessIndex].nome,
       projetoId: `projetos-exemplo-${projectIndex + 1}`,
@@ -275,22 +275,22 @@ for (const [projectIndex, project] of projectSeeds.entries()) {
       data: dueDate,
       status: allCompleted
         ? "conclusao"
-        : taskIndex % 3 === 0
+        : deliveryIndex % 3 === 0
           ? "producao"
-          : taskIndex % 3 === 1
+          : deliveryIndex % 3 === 1
             ? "fila"
             : "planejamento",
-      categoria: taskCategories[taskIndex % taskCategories.length],
-      prioridade: taskPriorities[taskIndex % taskPriorities.length],
-      descricao: `Tarefa ${sequenceInProject + 1} de ${taskCount} do projeto ${project.nome}.`,
+      categoria: deliveryCategories[deliveryIndex % deliveryCategories.length],
+      prioridade: deliveryPriorities[deliveryIndex % deliveryPriorities.length],
+      descricao: `Tarefa ${sequenceInProject + 1} de ${deliveryCount} do projeto ${project.nome}.`,
       duracao: String(duration),
       duration: String(duration),
-      subtarefas: JSON.stringify(subtasks),
+      tarefas: JSON.stringify(tasks),
     });
   }
 }
 
-export const taskSeeds = expectCount("tarefas", taskSeedsGenerated, 200);
+export const deliverySeeds = expectCount("tarefas", deliverySeedsGenerated, 200);
 
 function assertRelationRange(
   label: string,
@@ -325,22 +325,22 @@ function validateSeedRelations(): void {
     4,
   );
 
-  const tasksByProject = new Map<string, number>();
-  for (const task of taskSeeds) {
-    tasksByProject.set(
-      task.projetoId,
-      (tasksByProject.get(task.projetoId) ?? 0) + 1,
+  const deliveriesByProject = new Map<string, number>();
+  for (const delivery of deliverySeeds) {
+    deliveriesByProject.set(
+      delivery.projetoId,
+      (deliveriesByProject.get(delivery.projetoId) ?? 0) + 1,
     );
-    const subtasks = JSON.parse(task.subtarefas) as unknown[];
-    if (subtasks.length < 1 || subtasks.length > 10) {
+    const tasks = JSON.parse(delivery.tarefas) as unknown[];
+    if (tasks.length < 1 || tasks.length > 10) {
       throw new Error(
-        `Seed de subtarefas: ${task.nome} possui ${subtasks.length}; esperado entre 1 e 10.`,
+        `Seed de tarefas: ${delivery.nome} possui ${tasks.length}; esperado entre 1 e 10.`,
       );
     }
   }
   assertRelationRange(
     "tarefas por projeto",
-    tasksByProject,
+    deliveriesByProject,
     projectSeeds.map((_, index) => `projetos-exemplo-${index + 1}`),
     2,
     6,

@@ -16,11 +16,11 @@
     projectToEntityRecord,
   } from "$lib/projects/client";
   import {
-    listAllTasks,
-    observeTasks,
-    TaskApiError,
-    taskToEntityRecord,
-  } from "$lib/tasks/client";
+    listAllDeliveries,
+    observeDeliveries,
+    DeliveryApiError,
+    deliveryToEntityRecord,
+  } from "$lib/deliveries/client";
   import {
     currentSettings,
     loadSettingsFromServer,
@@ -75,10 +75,10 @@
 
   let itemsByMode = $state<Record<AgendaMode, AgendaItem[]>>({
     projects: [],
-    tasks: [],
+    deliveries: [],
   });
   let projectRecords = $state<EntityRecord[]>([]);
-  let taskRecords = $state<EntityRecord[]>([]);
+  let deliveryRecords = $state<EntityRecord[]>([]);
   let businessRecords = $state<EntityRecord[]>([]);
   let businessesLoading = $state(false);
   let businessesError = $state("");
@@ -86,13 +86,13 @@
   let projectsLoading = $state(false);
   let projectsError = $state("");
   let projectsAbortController: AbortController | undefined;
-  let tasksLoading = $state(false);
-  let tasksError = $state("");
-  let tasksAbortController: AbortController | undefined;
+  let deliveriesLoading = $state(false);
+  let deliveriesError = $state("");
+  let deliveriesAbortController: AbortController | undefined;
   let agendaSnapshot = $state<AgendaSnapshot>({
     workspaceId: "",
     projects: [],
-    tasks: [],
+    deliveries: [],
   });
   let agendaLoading = $state(false);
   let agendaError = $state("");
@@ -186,7 +186,7 @@
   }
 
   function sourceRecord(item: AgendaItem): EntityRecord | undefined {
-    const records = item.mode === "tasks" ? taskRecords : projectRecords;
+    const records = item.mode === "deliveries" ? deliveryRecords : projectRecords;
     return records.find((record) => record.id === item.id);
   }
 
@@ -228,11 +228,11 @@
     const businessMatches =
       globalFilters.businessCategoryKeys.length === 0 ||
       globalFilters.businessCategoryKeys.includes(businessCategoryFor(record));
-    const taskMatches =
+    const deliveryMatches =
       item.mode === "projects" ||
-      globalFilters.taskCategoryKeys.length === 0 ||
-      globalFilters.taskCategoryKeys.includes(record.categoria || record.stage);
-    return responsibleMatches && businessMatches && taskMatches;
+      globalFilters.deliveryCategoryKeys.length === 0 ||
+      globalFilters.deliveryCategoryKeys.includes(record.categoria || record.stage);
+    return responsibleMatches && businessMatches && deliveryMatches;
   }
 
   function itemsForDate(date: string): AgendaItem[] {
@@ -394,7 +394,7 @@
   }
 
   function rebuildAgenda(): void {
-    itemsByMode = loadAgendaItems(projectRecords, taskRecords, agendaSnapshot);
+    itemsByMode = loadAgendaItems(projectRecords, deliveryRecords, agendaSnapshot);
   }
 
   async function reloadAgenda(): Promise<void> {
@@ -437,33 +437,33 @@
     }
   }
 
-  async function reloadTasks(): Promise<void> {
-    tasksAbortController?.abort();
+  async function reloadDeliveries(): Promise<void> {
+    deliveriesAbortController?.abort();
     const controller = new AbortController();
-    tasksAbortController = controller;
-    tasksLoading = true;
-    tasksError = "";
+    deliveriesAbortController = controller;
+    deliveriesLoading = true;
+    deliveriesError = "";
     try {
-      const tasks = await listAllTasks({ signal: controller.signal });
+      const deliveries = await listAllDeliveries({ signal: controller.signal });
       if (controller.signal.aborted) return;
-      taskRecords = tasks.map(taskToEntityRecord);
+      deliveryRecords = deliveries.map(deliveryToEntityRecord);
       if (
-        selectedItem?.mode === "tasks" &&
-        !taskRecords.some((task) => task.id === selectedItem?.id)
+        selectedItem?.mode === "deliveries" &&
+        !deliveryRecords.some((delivery) => delivery.id === selectedItem?.id)
       ) {
         selectedItem = null;
       }
       rebuildAgenda();
     } catch (cause) {
       if (controller.signal.aborted) return;
-      taskRecords = [];
-      tasksError =
-        cause instanceof TaskApiError
+      deliveryRecords = [];
+      deliveriesError =
+        cause instanceof DeliveryApiError
           ? cause.message
-          : "Não foi possível carregar as tarefas.";
+          : "Não foi possível carregar as entregas.";
       rebuildAgenda();
     } finally {
-      if (tasksAbortController === controller) tasksLoading = false;
+      if (deliveriesAbortController === controller) deliveriesLoading = false;
     }
   }
 
@@ -621,7 +621,7 @@
       month: "monthly",
     }[settings.agendaDefaultView] as AgendaView | undefined;
     const defaultMode: AgendaMode =
-      settings.agendaDefaultMode === "tasks" ? "tasks" : "projects";
+      settings.agendaDefaultMode === "deliveries" ? "deliveries" : "projects";
     const defaultView = preferredView ?? "daily";
     rememberLastView = settings.agendaRememberLastView;
     showWeekends = settings.agendaShowWeekends;
@@ -630,7 +630,7 @@
     const requestedView = query.get("view");
     mode =
       rememberLastView &&
-      (requestedMode === "projects" || requestedMode === "tasks")
+      (requestedMode === "projects" || requestedMode === "deliveries")
         ? requestedMode
         : defaultMode;
     view =
@@ -661,26 +661,26 @@
     void reloadAgenda();
     void reloadBusinesses();
     void reloadProjects();
-    void reloadTasks();
+    void reloadDeliveries();
     initialized = true;
-    const stopTasks = observeTasks(() => void reloadTasks());
+    const stopDeliveries = observeDeliveries(() => void reloadDeliveries());
     const stopBusinesses = observeBusinesses(() => void reloadBusinesses());
     const stopProjects = observeProjects(() => void reloadProjects());
     const stopWorkspaces = observeWorkspaces(() => {
       globalFilters.setUsers(loadWorkspaceUsers());
       selectedItem = null;
-      agendaSnapshot = { workspaceId: "", projects: [], tasks: [] };
+      agendaSnapshot = { workspaceId: "", projects: [], deliveries: [] };
       rebuildAgenda();
       void reloadAgenda();
       void reloadBusinesses();
       void reloadProjects();
-      void reloadTasks();
+      void reloadDeliveries();
     });
     return () => {
       businessesAbortController?.abort();
       projectsAbortController?.abort();
-      tasksAbortController?.abort();
-      stopTasks();
+      deliveriesAbortController?.abort();
+      stopDeliveries();
       stopBusinesses();
       stopProjects();
       stopWorkspaces();
@@ -701,7 +701,7 @@
   aria-label="Agenda"
   aria-busy={businessesLoading ||
     projectsLoading ||
-    tasksLoading ||
+    deliveriesLoading ||
     agendaLoading}
 >
   {#if agendaError}
@@ -728,10 +728,10 @@
       >
     </div>
   {/if}
-  {#if tasksError}
+  {#if deliveriesError}
     <div class="project-load-error" role="alert">
-      <span>{tasksError}</span>
-      <button type="button" onclick={() => void reloadTasks()}
+      <span>{deliveriesError}</span>
+      <button type="button" onclick={() => void reloadDeliveries()}
         >Tentar novamente</button
       >
     </div>
@@ -747,11 +747,11 @@
           ><FolderKanban size={16} /><span>Projetos</span></button
         >
         <button
-          class:active={mode === "tasks"}
+          class:active={mode === "deliveries"}
           type="button"
-          aria-pressed={mode === "tasks"}
-          onclick={() => selectMode("tasks")}
-          ><ListTodo size={16} /><span>Tarefas</span></button
+          aria-pressed={mode === "deliveries"}
+          onclick={() => selectMode("deliveries")}
+          ><ListTodo size={16} /><span>Entregas</span></button
         >
       </div>
 
@@ -796,7 +796,7 @@
       >
       <span
         >{boardCount}
-        {mode === "tasks" ? "tarefas" : "projetos"} neste período</span
+        {mode === "deliveries" ? "entregas" : "projetos"} neste período</span
       >
     </div>
 
@@ -891,7 +891,7 @@
                     <span class="month-day">{fromIso(date).getDate()}</span>
                     <span
                       >{cellItems.length}
-                      {mode === "tasks" ? "tarefas" : "projetos"}</span
+                      {mode === "deliveries" ? "entregas" : "projetos"}</span
                     >
                   </header>
                   <div class="month-items">
@@ -935,18 +935,18 @@
 
       {#if initialized}
         <CardDrawer
-          ariaLabel={`${mode === "tasks" ? "Tarefas" : "Projetos"} não agendados`}
-          title={mode === "tasks"
-            ? "Tarefas a programar"
+          ariaLabel={`${mode === "deliveries" ? "Entregas" : "Projetos"} não agendados`}
+          title={mode === "deliveries"
+            ? "Entregas a programar"
             : "Projetos a programar"}
           description="Estes itens não têm data de entrega. Arraste para um dia ou solte aqui para remover o prazo."
-          icon={mode === "tasks" ? ListTodo : FolderKanban}
+          icon={mode === "deliveries" ? ListTodo : FolderKanban}
           items={unscheduledItems}
           getKey={(item) => item.id}
           open={drawerOpen}
           isDropTarget={drawerDropTarget}
-          countLabel={mode === "tasks"
-            ? "tarefas não agendadas"
+          countLabel={mode === "deliveries"
+            ? "entregas não agendadas"
             : "projetos não agendados"}
           toggleAriaLabel={drawerOpen
             ? "Recolher itens não agendados"
@@ -1001,12 +1001,12 @@
     >
       <header>
         <span class={`dialog-icon tone-${selectedItem.tone}`}>
-          {#if selectedItem.mode === "tasks"}<ListTodo
+          {#if selectedItem.mode === "deliveries"}<ListTodo
               size={18}
             />{:else}<FolderKanban size={18} />{/if}
         </span>
         <div>
-          <span>{selectedItem.mode === "tasks" ? "Tarefa" : "Projeto"}</span>
+          <span>{selectedItem.mode === "deliveries" ? "Entrega" : "Projeto"}</span>
           <h2 id="agenda-dialog-title">{selectedItem.title}</h2>
         </div>
         <button
@@ -1020,14 +1020,14 @@
         <p>{selectedItem.description}</p>
         <dl>
           <div>
-            <dt>{selectedItem.mode === "tasks" ? "Projeto" : "Cliente"}</dt>
+            <dt>{selectedItem.mode === "deliveries" ? "Projeto" : "Cliente"}</dt>
             <dd>{selectedItem.client}</dd>
           </div>
           <div>
             <dt>Responsável</dt>
             <dd>{selectedItem.relation}</dd>
           </div>
-          {#if selectedItem.mode === "tasks"}<div>
+          {#if selectedItem.mode === "deliveries"}<div>
               <dt>Duração</dt>
               <dd>{Math.round(selectedItem.durationMinutes / 30) / 2} horas</dd>
             </div>{/if}

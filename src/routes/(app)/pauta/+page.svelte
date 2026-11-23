@@ -7,7 +7,7 @@
     listAllActiveBusinesses,
     observeBusinesses,
   } from "$lib/businesses/client";
-  import TaskForm, { type TaskFormMode } from "$lib/entities/TaskForm.svelte";
+  import DeliveryForm, { type DeliveryFormMode } from "$lib/entities/DeliveryForm.svelte";
   import { isArchivedRecord } from "$lib/entities/storage";
   import type { EntityRecord } from "$lib/entities/types";
   import {
@@ -23,16 +23,16 @@
   } from "$lib/settings/client";
   import { defaultSettings } from "$lib/settings/defaults";
   import {
-    createTask,
-    entityValuesToTaskCreateInput,
-    listAllTasks,
-    observeTasks,
-    TaskApiError,
-    taskToEntityRecord,
-    taskVersionFromRecord,
-    updateTaskBoard,
-    updateTaskFromEntityValues,
-  } from "$lib/tasks/client";
+    createDelivery,
+    entityValuesToDeliveryCreateInput,
+    listAllDeliveries,
+    observeDeliveries,
+    DeliveryApiError,
+    deliveryToEntityRecord,
+    deliveryVersionFromRecord,
+    updateDeliveryBoard,
+    updateDeliveryFromEntityValues,
+  } from "$lib/deliveries/client";
   import CardDropPlaceholder from "$lib/dnd/CardDropPlaceholder.svelte";
   import { cardDropBeforeId } from "$lib/dnd/card-drop-position";
   import EntityCard from "$lib/ui/EntityCard.svelte";
@@ -119,10 +119,10 @@
   let projectsLoading = $state(false);
   let projectsError = $state("");
   let projectsAbortController: AbortController | undefined;
-  let tasksLoading = $state(false);
-  let tasksError = $state("");
-  let tasksAbortController: AbortController | undefined;
-  let taskRequestPending = $state(false);
+  let deliveriesLoading = $state(false);
+  let deliveriesError = $state("");
+  let deliveriesAbortController: AbortController | undefined;
+  let deliveryRequestPending = $state(false);
   let projectWorkspaceId = $state("");
   let localWorkspaceUsers = $state<WorkspaceUser[]>([CURRENT_USER]);
   let serverWorkspaceUsers = $state<WorkspaceUser[]>([]);
@@ -133,11 +133,11 @@
   let showArchived = $state(false);
   let query = $state("");
   let formOpen = $state(false);
-  let selectedTask = $state<EntityRecord | undefined>();
-  let taskFormMode = $state<TaskFormMode>("create");
-  let draggedTaskId = $state<string | undefined>();
+  let selectedDelivery = $state<EntityRecord | undefined>();
+  let deliveryFormMode = $state<DeliveryFormMode>("create");
+  let draggedDeliveryId = $state<string | undefined>();
   let dragTargetId = $state<string | undefined>();
-  let dragBeforeTaskId = $state<string | undefined>();
+  let dragBeforeDeliveryId = $state<string | undefined>();
   let dropPlaceholderHeight = $state(92);
   let boardElement = $state<HTMLDivElement>();
   let boardPan = $state<{
@@ -150,7 +150,7 @@
 
   let responsibleFilters = $derived(globalFilters.responsibleIds);
   let businessCategoryFilters = $derived(globalFilters.businessCategoryKeys);
-  let taskCategoryFilters = $derived(globalFilters.taskCategoryKeys);
+  let deliveryCategoryFilters = $derived(globalFilters.deliveryCategoryKeys);
   let workspaceUsers = $derived.by(() => {
     const users = [...serverWorkspaceUsers, ...localWorkspaceUsers];
     return users.filter(
@@ -163,7 +163,7 @@
   });
   let scopedRecords = $derived(
     allRecords.filter((record) => {
-      const belongsToParticipatingProject = taskIsVisibleInProjectScope(record);
+      const belongsToParticipatingProject = deliveryIsVisibleInProjectScope(record);
       const archived = isArchivedRecord(record);
       const done = (record.status || "planejamento") === "conclusao";
       const searchText = [
@@ -187,29 +187,29 @@
       const businessMatches =
         businessCategoryFilters.length === 0 ||
         businessCategoryFilters.includes(businessCategory);
-      const taskMatches =
-        taskCategoryFilters.length === 0 ||
-        taskCategoryFilters.includes(record.categoria || record.stage || "");
+      const deliveryMatches =
+        deliveryCategoryFilters.length === 0 ||
+        deliveryCategoryFilters.includes(record.categoria || record.stage || "");
       return (
         belongsToParticipatingProject &&
         (viewMode === "status" || showArchived || !archived) &&
         (showDone || !done) &&
         responsibleMatches &&
         businessMatches &&
-        taskMatches &&
+        deliveryMatches &&
         searchText.includes(query.trim().toLocaleLowerCase("pt-BR"))
       );
     }),
   );
   let columns = $derived(buildColumns(scopedRecords, viewMode));
 
-  function taskIsVisibleInProjectScope(record: EntityRecord): boolean {
+  function deliveryIsVisibleInProjectScope(record: EntityRecord): boolean {
     const projectId = record.projetoId || record.project_id || "";
     const project = projectId
       ? projectRecords.find((candidate) => candidate.id === projectId)
       : undefined;
     if (projectId && !project) {
-      // The task snapshot is already tenant-scoped by the server. Its current
+      // The delivery snapshot is already tenant-scoped by the server. Its current
       // project may be archived and therefore absent from the active catalog.
       return belongsToWorkspace(record, activeWorkspaceId);
     }
@@ -240,28 +240,28 @@
     );
   }
 
-  async function reloadTasks(): Promise<void> {
-    tasksAbortController?.abort();
+  async function reloadDeliveries(): Promise<void> {
+    deliveriesAbortController?.abort();
     const controller = new AbortController();
-    tasksAbortController = controller;
-    tasksLoading = true;
-    tasksError = "";
+    deliveriesAbortController = controller;
+    deliveriesLoading = true;
+    deliveriesError = "";
     try {
-      const tasks = await listAllTasks({
+      const deliveries = await listAllDeliveries({
         archived: "include",
         signal: controller.signal,
       });
       if (controller.signal.aborted) return;
-      allRecords = tasks.map(taskToEntityRecord);
+      allRecords = deliveries.map(deliveryToEntityRecord);
     } catch (cause) {
       if (controller.signal.aborted) return;
-      tasksError =
-        cause instanceof TaskApiError
+      deliveriesError =
+        cause instanceof DeliveryApiError
           ? cause.message
-          : "Não foi possível carregar as tarefas.";
+          : "Não foi possível carregar as entregas.";
       allRecords = [];
     } finally {
-      if (tasksAbortController === controller) tasksLoading = false;
+      if (deliveriesAbortController === controller) deliveriesLoading = false;
     }
   }
 
@@ -373,26 +373,26 @@
       })
       .catch(() => undefined);
     refreshWorkspace();
-    void reloadTasks();
+    void reloadDeliveries();
     void reloadBusinesses();
     void reloadProjects();
 
-    const stopTasks = observeTasks(() => {
-      if (!taskRequestPending) void reloadTasks();
+    const stopDeliveries = observeDeliveries(() => {
+      if (!deliveryRequestPending) void reloadDeliveries();
     });
     const stopBusinesses = observeBusinesses(() => void reloadBusinesses());
     const stopProjects = observeProjects(() => void reloadProjects());
     const stopWorkspaces = observeWorkspaces(() => {
       refreshWorkspace();
-      void reloadTasks();
+      void reloadDeliveries();
       void reloadBusinesses();
       void reloadProjects();
     });
     return () => {
       businessesAbortController?.abort();
       projectsAbortController?.abort();
-      tasksAbortController?.abort();
-      stopTasks();
+      deliveriesAbortController?.abort();
+      stopDeliveries();
       stopBusinesses();
       stopProjects();
       stopWorkspaces();
@@ -428,7 +428,7 @@
     return business?.categoria || business?.category || "";
   }
 
-  function compareTasks(left: EntityRecord, right: EntityRecord): number {
+  function compareDeliveries(left: EntityRecord, right: EntityRecord): number {
     const leftManualOrder = pautaOrder(left, viewMode);
     const rightManualOrder = pautaOrder(right, viewMode);
     if (leftManualOrder !== undefined || rightManualOrder !== undefined) {
@@ -505,7 +505,7 @@
         .filter(
           (record) => recordColumnValue(record, mode) === definition.value,
         )
-        .sort(compareTasks),
+        .sort(compareDeliveries),
     }));
   }
 
@@ -514,7 +514,7 @@
     mode: ViewMode,
   ): ColumnDefinition[] {
     if (mode === "status") {
-      return settings.taskStatuses.map(({ key, label, color }) => ({
+      return settings.deliveryStatuses.map(({ key, label, color }) => ({
         id: `status:${key}`,
         value: key,
         title: label,
@@ -523,7 +523,7 @@
       }));
     }
     if (mode === "priority") {
-      return [...settings.taskPriorities].reverse().map(({ key, label }) => ({
+      return [...settings.deliveryPriorities].reverse().map(({ key, label }) => ({
         id: `priority:${key}`,
         value: key,
         title: label,
@@ -584,7 +584,7 @@
   }
 
   function statusMeta(record: EntityRecord): { label: string; color: string } {
-    const status = settings.taskStatuses.find(
+    const status = settings.deliveryStatuses.find(
       ({ key }) => key === (record.status || "planejamento"),
     );
     return {
@@ -593,9 +593,9 @@
     };
   }
 
-  function subtaskProgress(record: EntityRecord): string {
+  function taskProgress(record: EntityRecord): string {
     try {
-      const parsed: unknown = JSON.parse(record.subtarefas || "[]");
+      const parsed: unknown = JSON.parse(record.tarefas || "[]");
       if (!Array.isArray(parsed)) return "0/0";
       const completed = parsed.filter((item) => {
         if (!item || typeof item !== "object") return false;
@@ -615,20 +615,20 @@
     return workspaceUsers.find((user) => user.id === id);
   }
 
-  function toTaskCard(record: EntityRecord): EntityCardItem {
+  function toDeliveryCard(record: EntityRecord): EntityCardItem {
     const status = statusMeta(record);
     return {
       id: record.id,
-      kind: "tarefa",
-      title: record.nome || "Tarefa sem nome",
+      kind: "entrega",
+      title: record.nome || "Entrega sem nome",
       status: status.label,
       statusColor: status.color,
       primary: record.negocio || record.cliente || "Cliente não informado",
       secondary: record.projeto || "Projeto não informado",
-      relation: record.categoria || record.descricao || "Tarefa planejada",
+      relation: record.categoria || record.descricao || "Entrega planejada",
       responsible: record.responsavel || "Sem responsável",
       responsibleAvatarUrl: responsibleUser(record)?.avatarUrl,
-      steps: subtaskProgress(record),
+      steps: taskProgress(record),
     };
   }
 
@@ -648,39 +648,39 @@
     return Flag;
   }
 
-  function beginDrag(event: DragEvent, taskId: string): void {
-    draggedTaskId = taskId;
+  function beginDrag(event: DragEvent, deliveryId: string): void {
+    draggedDeliveryId = deliveryId;
     dragTargetId = undefined;
-    dragBeforeTaskId = undefined;
+    dragBeforeDeliveryId = undefined;
     dropPlaceholderHeight = (
       event.currentTarget as HTMLElement
     ).getBoundingClientRect().height;
-    event.dataTransfer?.setData("text/plain", taskId);
+    event.dataTransfer?.setData("text/plain", deliveryId);
     if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
   }
 
   function endDrag(): void {
-    draggedTaskId = undefined;
+    draggedDeliveryId = undefined;
     dragTargetId = undefined;
-    dragBeforeTaskId = undefined;
+    dragBeforeDeliveryId = undefined;
   }
 
-  function updateTaskDropTarget(event: DragEvent, column: PautaColumn): void {
+  function updateDeliveryDropTarget(event: DragEvent, column: PautaColumn): void {
     event.preventDefault();
     dragTargetId = column.id;
-    dragBeforeTaskId = cardDropBeforeId(
+    dragBeforeDeliveryId = cardDropBeforeId(
       event,
       event.currentTarget as HTMLElement,
       {
-        cardSelector: "[data-pauta-task]",
-        idAttribute: "data-pauta-task",
-        excludeId: draggedTaskId,
+        cardSelector: "[data-pauta-delivery]",
+        idAttribute: "data-pauta-delivery",
+        excludeId: draggedDeliveryId,
       },
     );
     if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
   }
 
-  function leaveTaskDropTarget(event: DragEvent, column: PautaColumn): void {
+  function leaveDeliveryDropTarget(event: DragEvent, column: PautaColumn): void {
     const columnElement = event.currentTarget as HTMLElement;
     if (
       event.relatedTarget instanceof Node &&
@@ -695,32 +695,32 @@
       event.clientY <= bounds.bottom;
     if (pointerIsInside || dragTargetId !== column.id) return;
     dragTargetId = undefined;
-    dragBeforeTaskId = undefined;
+    dragBeforeDeliveryId = undefined;
   }
 
-  function dropTask(event: DragEvent, column: PautaColumn): void {
+  function dropDelivery(event: DragEvent, column: PautaColumn): void {
     event.preventDefault();
-    const taskId =
-      draggedTaskId || event.dataTransfer?.getData("text/plain") || "";
-    if (!taskId) return;
-    void moveTask(
-      taskId,
+    const deliveryId =
+      draggedDeliveryId || event.dataTransfer?.getData("text/plain") || "";
+    if (!deliveryId) return;
+    void moveDelivery(
+      deliveryId,
       column,
-      dragTargetId === column.id ? dragBeforeTaskId : undefined,
+      dragTargetId === column.id ? dragBeforeDeliveryId : undefined,
     );
     endDrag();
   }
 
-  async function moveTask(
-    taskId: string,
+  async function moveDelivery(
+    deliveryId: string,
     column: PautaColumn,
     beforeId?: string,
   ): Promise<void> {
-    if (taskRequestPending) return;
-    const moved = allRecords.find((record) => record.id === taskId);
-    if (!moved || beforeId === taskId) return;
+    if (deliveryRequestPending) return;
+    const moved = allRecords.find((record) => record.id === deliveryId);
+    if (!moved || beforeId === deliveryId) return;
     if (isArchivedRecord(moved)) {
-      tasksError = "Tarefas arquivadas n\u00e3o podem ser reordenadas.";
+      deliveriesError = "Entregas arquivadas n\u00e3o podem ser reordenadas.";
       return;
     }
     if (
@@ -733,19 +733,19 @@
 
     const sourceValue = recordColumnValue(moved, viewMode);
     if (viewMode === "client" && sourceValue !== column.value) {
-      tasksError =
-        "Para trocar o negócio, mova a tarefa pela visão de projeto ou edite o formulário.";
+      deliveriesError =
+        "Para trocar o negócio, mova a entrega pela visão de projeto ou edite o formulário.";
       return;
     }
     // Reindex the complete active source/target columns, not only the cards
-    // currently visible through search and filters. This prevents hidden tasks
+    // currently visible through search and filters. This prevents hidden deliveries
     // from retaining duplicate positions.
     const activeBoardRecords = allRecords.filter(
       (record) => !isArchivedRecord(record),
     );
     const sourceItems = activeBoardRecords
       .filter((record) => recordColumnValue(record, viewMode) === sourceValue)
-      .sort(compareTasks);
+      .sort(compareDeliveries);
     const targetItems =
       sourceValue === column.value
         ? sourceItems
@@ -753,21 +753,21 @@
             .filter(
               (record) => recordColumnValue(record, viewMode) === column.value,
             )
-            .sort(compareTasks);
+            .sort(compareDeliveries);
     const targetIds = targetItems
-      .filter((record) => record.id !== taskId)
+      .filter((record) => record.id !== deliveryId)
       .map((record) => record.id);
     const beforeIndex = beforeId ? targetIds.indexOf(beforeId) : -1;
     targetIds.splice(
       beforeIndex >= 0 ? beforeIndex : targetIds.length,
       0,
-      taskId,
+      deliveryId,
     );
 
     const orderById = new Map<string, number>();
     if (sourceValue !== column.value) {
       sourceItems
-        .filter((record) => record.id !== taskId)
+        .filter((record) => record.id !== deliveryId)
         .forEach((record, index) => orderById.set(record.id, index));
     }
     targetIds.forEach((id, index) => orderById.set(id, index));
@@ -776,7 +776,7 @@
     const previousRecords = allRecords;
     const nextRecords = allRecords.map((record) => {
       let next = record;
-      if (record.id === taskId && sourceValue !== column.value) {
+      if (record.id === deliveryId && sourceValue !== column.value) {
         if (viewMode === "status") {
           next = { ...record, status: column.value, updatedAt: timestamp };
         } else if (viewMode === "priority") {
@@ -832,36 +832,36 @@
     );
 
     allRecords = nextRecords;
-    taskRequestPending = true;
-    tasksError = "";
+    deliveryRequestPending = true;
+    deliveriesError = "";
     try {
-      await updateTaskBoard({
+      await updateDeliveryBoard({
         view: viewMode === "client" ? "business" : viewMode,
-        // Every task in both columns participates in the version check, even
+        // Every delivery in both columns participates in the version check, even
         // when its position stayed the same. Concurrent appends then contend
         // on the same board snapshot instead of creating duplicate positions.
         updates: affectedRecords.map((affected) => {
           const previous = previousRecords.find(({ id }) => id === affected.id);
-          if (!previous) throw new Error("Original task not found.");
+          if (!previous) throw new Error("Original delivery not found.");
           const position = pautaOrder(affected, viewMode);
           if (position === undefined)
-            throw new Error("Task position not found.");
+            throw new Error("Delivery position not found.");
           return {
             id: affected.id,
-            version: taskVersionFromRecord(previous),
+            version: deliveryVersionFromRecord(previous),
             position,
             columnKey: recordColumnValue(affected, viewMode),
           };
         }),
       });
     } catch (cause) {
-      tasksError =
-        cause instanceof TaskApiError
+      deliveriesError =
+        cause instanceof DeliveryApiError
           ? cause.message
-          : "Não foi possível mover a tarefa.";
+          : "Não foi possível mover a entrega.";
     } finally {
-      taskRequestPending = false;
-      await reloadTasks();
+      deliveryRequestPending = false;
+      await reloadDeliveries();
     }
   }
 
@@ -928,42 +928,42 @@
   }
 
   function openCreate(): void {
-    selectedTask = undefined;
-    taskFormMode = "create";
+    selectedDelivery = undefined;
+    deliveryFormMode = "create";
     formOpen = true;
   }
 
-  function openTask(record: EntityRecord): void {
-    selectedTask = record;
-    taskFormMode = "view";
+  function openDelivery(record: EntityRecord): void {
+    selectedDelivery = record;
+    deliveryFormMode = "view";
     formOpen = true;
   }
 
   function closeForm(): void {
     formOpen = false;
-    selectedTask = undefined;
-    taskFormMode = "create";
+    selectedDelivery = undefined;
+    deliveryFormMode = "create";
   }
 
-  async function saveTask(values: Record<string, string>): Promise<void> {
-    if (taskRequestPending) return;
-    taskRequestPending = true;
-    tasksError = "";
+  async function saveDelivery(values: Record<string, string>): Promise<void> {
+    if (deliveryRequestPending) return;
+    deliveryRequestPending = true;
+    deliveriesError = "";
     try {
-      if (selectedTask) {
-        await updateTaskFromEntityValues(selectedTask.id, values, selectedTask);
+      if (selectedDelivery) {
+        await updateDeliveryFromEntityValues(selectedDelivery.id, values, selectedDelivery);
       } else {
-        await createTask(entityValuesToTaskCreateInput(values));
+        await createDelivery(entityValuesToDeliveryCreateInput(values));
       }
       closeForm();
     } catch (cause) {
-      tasksError =
-        cause instanceof TaskApiError
+      deliveriesError =
+        cause instanceof DeliveryApiError
           ? cause.message
-          : "Não foi possível salvar a tarefa.";
+          : "Não foi possível salvar a entrega.";
     } finally {
-      taskRequestPending = false;
-      await reloadTasks();
+      deliveryRequestPending = false;
+      await reloadDeliveries();
     }
   }
 </script>
@@ -978,17 +978,17 @@
 
 <section
   class="pauta-page"
-  aria-label="Pauta de tarefas"
+  aria-label="Pauta de entregas"
   aria-busy={businessesLoading ||
     projectsLoading ||
-    tasksLoading ||
-    taskRequestPending}
+    deliveriesLoading ||
+    deliveryRequestPending}
 >
   <div class="pauta-toolbar">
-    {#if tasksError}
+    {#if deliveriesError}
       <div class="business-load-error" role="alert">
-        <span>{tasksError}</span>
-        <button type="button" onclick={() => void reloadTasks()}
+        <span>{deliveriesError}</span>
+        <button type="button" onclick={() => void reloadDeliveries()}
           >Tentar novamente</button
         >
       </div>
@@ -1029,8 +1029,8 @@
 
     <label class="search-field">
       <Search size={16} aria-hidden="true" />
-      <span class="sr-only">Buscar tarefas</span>
-      <input bind:value={query} type="search" placeholder="Buscar tarefa" />
+      <span class="sr-only">Buscar entregas</span>
+      <input bind:value={query} type="search" placeholder="Buscar entrega" />
       {#if query}
         <button
           type="button"
@@ -1061,9 +1061,9 @@
             style={`--column-color: ${column.color}`}
             aria-label={`${column.meta}: ${column.title}`}
             data-pauta-column={column.id}
-            ondragover={(event) => updateTaskDropTarget(event, column)}
-            ondragleave={(event) => leaveTaskDropTarget(event, column)}
-            ondrop={(event) => dropTask(event, column)}
+            ondragover={(event) => updateDeliveryDropTarget(event, column)}
+            ondragleave={(event) => leaveDeliveryDropTarget(event, column)}
+            ondrop={(event) => dropDelivery(event, column)}
           >
             <header
               class="column-header"
@@ -1083,41 +1083,41 @@
             </header>
 
             <div class="column-cards">
-              {#each column.items as task (task.id)}
-                {#if dragTargetId === column.id && dragBeforeTaskId === task.id}
+              {#each column.items as delivery (delivery.id)}
+                {#if dragTargetId === column.id && dragBeforeDeliveryId === delivery.id}
                   <CardDropPlaceholder height={dropPlaceholderHeight} />
                 {/if}
                 <div
-                  class:dragging={draggedTaskId === task.id}
-                  class="task-card-wrap"
-                  data-pauta-task={task.id}
+                  class:dragging={draggedDeliveryId === delivery.id}
+                  class="delivery-card-wrap"
+                  data-pauta-delivery={delivery.id}
                   draggable="true"
                   role="button"
                   tabindex="0"
-                  aria-label={`Abrir tarefa ${task.nome || "sem nome"}`}
-                  ondragstart={(event) => beginDrag(event, task.id)}
+                  aria-label={`Abrir entrega ${delivery.nome || "sem nome"}`}
+                  ondragstart={(event) => beginDrag(event, delivery.id)}
                   ondragend={endDrag}
-                  onclick={() => openTask(task)}
+                  onclick={() => openDelivery(delivery)}
                   onkeydown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      openTask(task);
+                      openDelivery(delivery);
                     }
                   }}
                 >
                   <EntityCard
-                    item={toTaskCard(task)}
+                    item={toDeliveryCard(delivery)}
                     level={5}
                     interactive={false}
                   />
                 </div>
               {/each}
-              {#if dragTargetId === column.id && dragBeforeTaskId === undefined}
+              {#if dragTargetId === column.id && dragBeforeDeliveryId === undefined}
                 <CardDropPlaceholder height={dropPlaceholderHeight} />
               {:else if column.items.length === 0}
                 <div class="column-empty">
                   <ListTodo size={18} aria-hidden="true" />
-                  <span>Solte uma tarefa aqui</span>
+                  <span>Solte uma entrega aqui</span>
                 </div>
               {/if}
             </div>
@@ -1128,30 +1128,30 @@
   {:else}
     <div class="empty-board">
       <ListTodo size={25} aria-hidden="true" />
-      <strong>Nenhuma tarefa encontrada</strong>
-      <span>Crie uma tarefa ou ajuste a busca para preencher a pauta.</span>
+      <strong>Nenhuma entrega encontrada</strong>
+      <span>Crie uma entrega ou ajuste a busca para preencher a pauta.</span>
       <button type="button" onclick={openCreate}
-        ><Plus size={16} />Nova tarefa</button
+        ><Plus size={16} />Nova entrega</button
       >
     </div>
   {/if}
 </section>
 
 {#if formOpen}
-  {#key `${selectedTask?.id ?? "new"}:${taskFormMode}`}
-    <TaskForm
+  {#key `${selectedDelivery?.id ?? "new"}:${deliveryFormMode}`}
+    <DeliveryForm
       config={deliveryConfig}
-      record={selectedTask}
-      mode={taskFormMode}
+      record={selectedDelivery}
+      mode={deliveryFormMode}
       oncancel={closeForm}
-      onsave={saveTask}
-      onedit={() => (taskFormMode = "edit")}
+      onsave={saveDelivery}
+      onedit={() => (deliveryFormMode = "edit")}
       onaddtool={() => {
-        if (!selectedTask) return;
-        const taskId = selectedTask.id;
+        if (!selectedDelivery) return;
+        const deliveryId = selectedDelivery.id;
         closeForm();
         void goto(
-          `/ferramentas?novoUso=1&taskId=${encodeURIComponent(taskId)}`,
+          `/ferramentas?novoUso=1&deliveryId=${encodeURIComponent(deliveryId)}`,
         );
       }}
     />
@@ -1470,7 +1470,7 @@
     scrollbar-width: thin;
   }
 
-  .task-card-wrap {
+  .delivery-card-wrap {
     min-width: 0;
     border-radius: 16px;
     outline: 0;
@@ -1480,25 +1480,25 @@
       transform var(--motion-fast);
   }
 
-  .task-card-wrap:active {
+  .delivery-card-wrap:active {
     cursor: grabbing;
   }
 
-  .task-card-wrap:focus-visible {
+  .delivery-card-wrap:focus-visible {
     box-shadow: var(--focus-ring);
   }
 
-  .task-card-wrap.dragging {
+  .delivery-card-wrap.dragging {
     opacity: 0.35;
     transform: scale(0.98);
   }
 
-  .task-card-wrap :global(.wc-card-item) {
+  .delivery-card-wrap :global(.wc-card-item) {
     cursor: inherit;
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
   }
 
-  .task-card-wrap:hover :global(.wc-card-item) {
+  .delivery-card-wrap:hover :global(.wc-card-item) {
     box-shadow: 0 5px 14px rgba(15, 23, 42, 0.08);
   }
 

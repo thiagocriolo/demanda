@@ -20,7 +20,7 @@
     currentSettings,
     loadSettingsFromServer,
   } from "$lib/settings/client";
-  import { listAllTasks, TaskApiError } from "$lib/tasks/client";
+  import { listAllDeliveries, DeliveryApiError } from "$lib/deliveries/client";
   import GlobalSelector, {
     type GlobalSelectorItem,
   } from "$lib/ui/GlobalSelector.svelte";
@@ -50,7 +50,7 @@
 
   type ProjectFormMode = "create" | "view" | "edit";
 
-  type ProjectTaskDraft = {
+  type ProjectDeliveryDraft = {
     id: string;
     name: string;
   };
@@ -65,7 +65,7 @@
     dataInicio: string;
     dataFim: string;
     briefing: string;
-    tasks: ProjectTaskDraft[];
+    deliveries: ProjectDeliveryDraft[];
   };
 
   let {
@@ -76,7 +76,7 @@
     onedit,
     onarchive,
     ondelete,
-    onaddtask,
+    onadddelivery,
   } = $props<{
     record?: EntityRecord;
     mode?: ProjectFormMode;
@@ -85,7 +85,7 @@
     onedit?: () => void;
     onarchive?: () => void;
     ondelete?: () => void;
-    onaddtask?: (values: Record<string, string>) => void;
+    onadddelivery?: (values: Record<string, string>) => void;
   }>();
 
   let formNode: HTMLFormElement | undefined;
@@ -107,9 +107,9 @@
   let contractsLoading = $state(true);
   let contractsError = $state("");
   let contractsRequest: AbortController | undefined;
-  let projectTasksLoading = $state(false);
-  let projectTasksError = $state("");
-  let projectTasksRequest: AbortController | undefined;
+  let projectDeliveriesLoading = $state(false);
+  let projectDeliveriesError = $state("");
+  let projectDeliveriesRequest: AbortController | undefined;
   let statusOptions = $state<{ key: string; label: string }[]>([]);
   let resolvedMode = $derived(mode ?? (record ? "edit" : "create"));
   let viewOnly = $derived(resolvedMode === "view");
@@ -240,7 +240,7 @@
     }
 
     void loadContracts();
-    void loadRelatedTasks();
+    void loadRelatedDeliveries();
     if (resolvedMode !== "create" && record?.workspaceId) {
       void loadOptions(record.workspaceId);
     }
@@ -262,23 +262,23 @@
     return () => {
       contractsRequest?.abort();
       optionsRequest?.abort();
-      projectTasksRequest?.abort();
+      projectDeliveriesRequest?.abort();
       document.body.style.overflow = previousOverflow;
     };
   });
 
-  async function loadRelatedTasks(): Promise<void> {
+  async function loadRelatedDeliveries(): Promise<void> {
     if (!record?.id) {
-      form.tasks = [];
+      form.deliveries = [];
       return;
     }
-    projectTasksRequest?.abort();
+    projectDeliveriesRequest?.abort();
     const request = new AbortController();
-    projectTasksRequest = request;
-    projectTasksLoading = true;
-    projectTasksError = "";
+    projectDeliveriesRequest = request;
+    projectDeliveriesLoading = true;
+    projectDeliveriesError = "";
     try {
-      const relatedTasks = await listAllTasks({
+      const relatedDeliveries = await listAllDeliveries({
         workspaceId: record.workspaceId || undefined,
         projectId: record.id,
         archived: "include",
@@ -286,19 +286,19 @@
         signal: request.signal,
       });
       if (request.signal.aborted) return;
-      form.tasks = relatedTasks.map((task) => ({
-        id: task.id,
-        name: task.name,
+      form.deliveries = relatedDeliveries.map((delivery) => ({
+        id: delivery.id,
+        name: delivery.name,
       }));
     } catch (cause) {
       if (request.signal.aborted) return;
-      form.tasks = [];
-      projectTasksError =
-        cause instanceof TaskApiError
+      form.deliveries = [];
+      projectDeliveriesError =
+        cause instanceof DeliveryApiError
           ? cause.message
-          : "Não foi possível carregar as tarefas do projeto.";
+          : "Não foi possível carregar as entregas do projeto.";
     } finally {
-      if (projectTasksRequest === request) projectTasksLoading = false;
+      if (projectDeliveriesRequest === request) projectDeliveriesLoading = false;
     }
   }
 
@@ -489,7 +489,7 @@
       dataInicio: displayDate(first(record, "dataInicio", "start_date")),
       dataFim: displayDate(first(record, "dataFim", "delivery_date", "prazo")),
       briefing: first(record, "briefing", "description", "descricao"),
-      tasks: [],
+      deliveries: [],
     };
   }
 
@@ -727,9 +727,9 @@
       responsibleUserIds: "[]",
       is_institutional: "0",
     };
-    const addTaskAfterSave =
-      (event.submitter as HTMLElement | null)?.dataset.action === "add-task";
-    if (addTaskAfterSave && onaddtask) onaddtask(values);
+    const addDeliveryAfterSave =
+      (event.submitter as HTMLElement | null)?.dataset.action === "add-delivery";
+    if (addDeliveryAfterSave && onadddelivery) onadddelivery(values);
     else onsave(values);
   }
 </script>
@@ -987,58 +987,58 @@
         </section>
 
         <section
-          class="section task-section"
-          aria-labelledby="project-tasks-title"
+          class="section delivery-section"
+          aria-labelledby="project-deliveries-title"
         >
           <div class="section-head">
-            <h3 id="project-tasks-title" class="title-with-icon">
+            <h3 id="project-deliveries-title" class="title-with-icon">
               <ListChecks size={17} strokeWidth={1.8} aria-hidden="true" />
-              <span>Tarefas</span>
+              <span>Entregas</span>
             </h3>
-            <div class="task-actions">
-              <span class="count" aria-label={`${form.tasks.length} tarefas`}>
-                {form.tasks.length}
+            <div class="delivery-actions">
+              <span class="count" aria-label={`${form.deliveries.length} entregas`}>
+                {form.deliveries.length}
               </span>
-              {#if !viewOnly && onaddtask}
-                <button class="add-task" type="submit" data-action="add-task">
+              {#if !viewOnly && onadddelivery}
+                <button class="add-delivery" type="submit" data-action="add-delivery">
                   <Plus size={16} strokeWidth={2} />
-                  <span>Adicionar tarefa</span>
+                  <span>Adicionar entrega</span>
                 </button>
               {/if}
             </div>
           </div>
 
-          <p class="task-note">
-            As tarefas são carregadas do servidor e só podem ser alteradas na
-            área de tarefas.
+          <p class="delivery-note">
+            As entregas são carregadas do servidor e só podem ser alteradas na
+            área de entregas.
           </p>
 
-          <div class="task-list" aria-live="polite">
-            {#if projectTasksLoading}
-              <div class="task-empty">Carregando tarefas…</div>
-            {:else if projectTasksError}
-              <div class="task-empty" role="alert">
-                {projectTasksError}
-                <button type="button" onclick={() => void loadRelatedTasks()}>
+          <div class="delivery-list" aria-live="polite">
+            {#if projectDeliveriesLoading}
+              <div class="delivery-empty">Carregando entregas…</div>
+            {:else if projectDeliveriesError}
+              <div class="delivery-empty" role="alert">
+                {projectDeliveriesError}
+                <button type="button" onclick={() => void loadRelatedDeliveries()}>
                   Tentar novamente
                 </button>
               </div>
-            {:else if form.tasks.length}
-              {#each form.tasks as task (task.id)}
-                <div class="task-row">
+            {:else if form.deliveries.length}
+              {#each form.deliveries as delivery (delivery.id)}
+                <div class="delivery-row">
                   <ListChecks size={15} strokeWidth={1.8} aria-hidden="true" />
                   <input
-                    data-task-id={task.id}
+                    data-delivery-id={delivery.id}
                     maxlength="140"
                     disabled
-                    aria-label="Nome da tarefa"
-                    placeholder="Nome da tarefa"
-                    value={task.name}
+                    aria-label="Nome da entrega"
+                    placeholder="Nome da entrega"
+                    value={delivery.name}
                   />
                 </div>
               {/each}
             {:else}
-              <div class="task-empty">Sem tarefas neste projeto.</div>
+              <div class="delivery-empty">Sem entregas neste projeto.</div>
             {/if}
           </div>
         </section>
@@ -1411,7 +1411,7 @@
     resize: none;
   }
 
-  .add-task {
+  .add-delivery {
     display: inline-flex;
     min-height: 38px;
     align-items: center;
@@ -1427,12 +1427,12 @@
     font-weight: 600;
   }
 
-  .add-task:hover {
+  .add-delivery:hover {
     background: var(--surface-hover);
   }
 
   .section-head,
-  .task-actions,
+  .delivery-actions,
   .title-with-icon {
     display: flex;
     align-items: center;
@@ -1451,7 +1451,7 @@
     color: var(--muted);
   }
 
-  .task-actions {
+  .delivery-actions {
     gap: 10px;
   }
 
@@ -1470,19 +1470,19 @@
     font-weight: 600;
   }
 
-  .task-list {
+  .delivery-list {
     display: grid;
     gap: 8px;
   }
 
-  .task-note {
+  .delivery-note {
     margin: 0;
     color: var(--muted);
     font-size: var(--text-xs);
     line-height: 1.45;
   }
 
-  .task-empty {
+  .delivery-empty {
     padding: 18px;
     border: 1px dashed var(--border);
     border-radius: var(--radius-xl);
@@ -1492,7 +1492,7 @@
     font-size: var(--text-sm);
   }
 
-  .task-row {
+  .delivery-row {
     display: grid;
     grid-template-columns: 18px minmax(0, 1fr);
     min-height: 48px;
@@ -1505,12 +1505,12 @@
     background: var(--panel);
   }
 
-  .task-row:focus-within {
+  .delivery-row:focus-within {
     border-color: var(--primary);
     box-shadow: none;
   }
 
-  .task-row input:disabled {
+  .delivery-row input:disabled {
     color: var(--text);
     opacity: 1;
     cursor: default;
@@ -1661,7 +1661,7 @@
       flex-direction: column;
     }
 
-    .task-actions {
+    .delivery-actions {
       justify-content: space-between;
     }
 
@@ -1694,7 +1694,7 @@
       grid-column: 1 / -1;
     }
 
-    .task-actions {
+    .delivery-actions {
       align-items: stretch;
       flex-direction: column;
     }
@@ -1703,7 +1703,7 @@
       align-self: flex-start;
     }
 
-    .add-task {
+    .add-delivery {
       width: 100%;
     }
   }

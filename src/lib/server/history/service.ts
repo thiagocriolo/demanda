@@ -9,16 +9,16 @@ import { auditLogs, users } from "../db/schema";
 import type { HistoryQuery } from "./validation";
 
 const typesByModule = {
+  deliveries: ["delivery"],
   tasks: ["task"],
-  subtasks: ["subtask"],
   cronograma: ["cronograma"],
   agenda: ["agenda"],
   projects: ["project"],
 } as const;
 
 const labels: Record<string, string> = {
+  delivery: "Tarefa",
   task: "Tarefa",
-  subtask: "Subtarefa",
   project: "Projeto",
   agenda: "Agenda",
   cronograma: "Cronograma",

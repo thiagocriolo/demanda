@@ -115,11 +115,11 @@ export const personalSettingsSchema = z
     workspaceShowProjectPreviews: z.boolean(),
     workspaceShowCollaborators: z.boolean(),
     workspaceIncludeArchivedProjects: z.boolean(),
-    recordsDefaultTab: z.enum(["pessoas", "negocios", "projetos", "tarefas"]),
+    recordsDefaultTab: z.enum(["pessoas", "negocios", "projetos", "entregas"]),
     recordsOrderBy: z.enum(["updated", "name_asc", "name_desc"]),
     recordsShowArchived: z.boolean(),
     recordsCardLevel: z.number().int().min(1).max(10),
-    defaultTaskDuration: z.string().regex(/^(?:0\.5|\d{1,3}(?:\.5)?)$/u),
+    defaultDeliveryDuration: z.string().regex(/^(?:0\.5|\d{1,3}(?:\.5)?)$/u),
     pautaScope: collapsedText(64),
     pautaGroupBy: collapsedText(64),
     pautaOrderBy: collapsedText(64),
@@ -127,7 +127,7 @@ export const personalSettingsSchema = z
     pautaShowArchived: z.boolean(),
     pautaShowCardDetails: z.boolean(),
     agendaDefaultView: collapsedText(32),
-    agendaDefaultMode: z.enum(["projects", "tasks"]),
+    agendaDefaultMode: z.enum(["projects", "deliveries"]),
     agendaDrawerDefault: z.enum(["expanded", "collapsed"]),
     agendaShowWeekends: z.boolean(),
     agendaRememberLastView: z.boolean(),
@@ -136,8 +136,8 @@ export const personalSettingsSchema = z
     cronogramaDays: z.enum(["weekdays", "saturday"]),
     cronogramaShowCurrentTime: z.boolean(),
     workdayShifts,
-    taskReminderMinutes: z.string().regex(/^\d{1,5}$/u),
-    notifyTaskReminders: z.boolean(),
+    deliveryReminderMinutes: z.string().regex(/^\d{1,5}$/u),
+    notifyDeliveryReminders: z.boolean(),
     financeDefaultTab: z.enum(["painel", "receitas", "despesas"]),
     financeInitialPeriod: z.enum(["current", "last"]),
     financePlanningMonths: z.enum(["3", "6", "12"]),
@@ -196,7 +196,7 @@ const tagLabels = z
     }
   });
 
-const templateTaskSchema = z
+const templateDeliverySchema = z
   .object({
     id: identifier,
     templateId: identifier,
@@ -206,9 +206,9 @@ const templateTaskSchema = z
     recurrenceDays: z.array(z.number().int()).max(31).optional(),
   })
   .strict()
-  .superRefine((task, context) => {
-    const frequency = task.frequency ?? "one_off";
-    const days = task.recurrenceDays ?? [];
+  .superRefine((delivery, context) => {
+    const frequency = delivery.frequency ?? "one_off";
+    const days = delivery.recurrenceDays ?? [];
     if (new Set(days).size !== days.length) {
       context.addIssue({
         code: "custom",
@@ -231,17 +231,17 @@ const templateTaskSchema = z
       });
     }
     if (frequency === "custom") {
-      if (!task.customUnit || !days.length) {
+      if (!delivery.customUnit || !days.length) {
         context.addIssue({
           code: "custom",
           path: ["recurrenceDays"],
           message: "Configure os dias da recorrência personalizada.",
         });
       }
-      const maximum = task.customUnit === "week" ? 6 : 31;
+      const maximum = delivery.customUnit === "week" ? 6 : 31;
       if (
         days.some(
-          (day) => day < (task.customUnit === "week" ? 0 : 1) || day > maximum,
+          (day) => day < (delivery.customUnit === "week" ? 0 : 1) || day > maximum,
         )
       ) {
         context.addIssue({
@@ -282,11 +282,11 @@ const serviceTemplateSchema = z
     paymentMethod: optionalText(120),
     paymentTerms: optionalText(2_000),
     financeNotes: optionalText(4_000),
-    tasks: z.array(templateTaskSchema).max(100),
+    deliveries: z.array(templateDeliverySchema).max(100),
   })
   .strict();
 
-const deliveryTemplateSubtaskSchema = z
+const deliveryTemplateTaskSchema = z
   .object({
     id: identifier,
     nome: collapsedText(140),
@@ -307,7 +307,7 @@ const deliveryTemplateSchema = z
     name: collapsedText(140),
     category: z.union([normalizedKey, z.literal("")]),
     briefing: optionalText(10_000),
-    subtasks: z.array(deliveryTemplateSubtaskSchema).max(100),
+    tasks: z.array(deliveryTemplateTaskSchema).max(100),
     status: normalizedKey,
     priority: normalizedKey,
     tags: optionalText(1_000),
@@ -336,7 +336,7 @@ const requiredKeys = {
     "concluido",
     "arquivado",
   ],
-  taskStatuses: ["planejamento", "fila", "producao", "conclusao", "arquivado"],
+  deliveryStatuses: ["planejamento", "fila", "producao", "conclusao", "arquivado"],
 } as const;
 
 export const workspaceSettingsSchema = z
@@ -344,10 +344,10 @@ export const workspaceSettingsSchema = z
     personStatuses: styledChoices(5, 5),
     businessStatuses: styledChoices(5, 5),
     projectStatuses: styledChoices(5, 5),
-    taskStatuses: styledChoices(5, 5),
+    deliveryStatuses: styledChoices(5, 5),
     businessCategories: styledChoices(1, 10),
-    taskCategories: styledChoices(1, 30),
-    taskPriorities: choices(1, 20),
+    deliveryCategories: styledChoices(1, 30),
+    deliveryPriorities: choices(1, 20),
     tags: tagLabels,
     revenueCategories: styledChoices(1, 30),
     expenseCategories: styledChoices(1, 30),
@@ -379,17 +379,17 @@ export const workspaceSettingsSchema = z
         message: "A categoria 'outro' é obrigatória.",
       });
     }
-    if (!value.taskCategories.some(({ key }) => key === "outro")) {
+    if (!value.deliveryCategories.some(({ key }) => key === "outro")) {
       context.addIssue({
         code: "custom",
-        path: ["taskCategories"],
+        path: ["deliveryCategories"],
         message: "A categoria 'outro' é obrigatória.",
       });
     }
-    if (!value.taskPriorities.some(({ key }) => key === "normal")) {
+    if (!value.deliveryPriorities.some(({ key }) => key === "normal")) {
       context.addIssue({
         code: "custom",
-        path: ["taskPriorities"],
+        path: ["deliveryPriorities"],
         message: "A prioridade normal é obrigatória.",
       });
     }
@@ -418,11 +418,11 @@ export const workspaceSettingsSchema = z
     const projectStatusKeys = new Set(
       value.projectStatuses.map(({ key }) => key),
     );
-    const taskStatusKeys = new Set(value.taskStatuses.map(({ key }) => key));
-    const taskCategoryKeys = new Set(
-      value.taskCategories.map(({ key }) => key),
+    const deliveryStatusKeys = new Set(value.deliveryStatuses.map(({ key }) => key));
+    const deliveryCategoryKeys = new Set(
+      value.deliveryCategories.map(({ key }) => key),
     );
-    const priorityKeys = new Set(value.taskPriorities.map(({ key }) => key));
+    const priorityKeys = new Set(value.deliveryPriorities.map(({ key }) => key));
     for (const [index, template] of value.serviceTemplates.entries()) {
       if (
         template.status === "arquivado" ||
@@ -438,25 +438,25 @@ export const workspaceSettingsSchema = z
 
     const serviceIds = new Set(value.serviceTemplates.map(({ id }) => id));
     const deliveryIds = new Set(value.deliveryTemplates.map(({ id }) => id));
-    const taskOccurrenceIds = new Set<string>();
+    const deliveryOccurrenceIds = new Set<string>();
     for (const [serviceIndex, template] of value.serviceTemplates.entries()) {
-      for (const [taskIndex, task] of template.tasks.entries()) {
-        if (taskOccurrenceIds.has(task.id)) {
+      for (const [deliveryIndex, delivery] of template.deliveries.entries()) {
+        if (deliveryOccurrenceIds.has(delivery.id)) {
           context.addIssue({
             code: "custom",
-            path: ["serviceTemplates", serviceIndex, "tasks", taskIndex, "id"],
+            path: ["serviceTemplates", serviceIndex, "deliveries", deliveryIndex, "id"],
             message: "IDs de ocorrências de tarefa devem ser únicos.",
           });
         }
-        taskOccurrenceIds.add(task.id);
-        if (!deliveryIds.has(task.templateId)) {
+        deliveryOccurrenceIds.add(delivery.id);
+        if (!deliveryIds.has(delivery.templateId)) {
           context.addIssue({
             code: "custom",
             path: [
               "serviceTemplates",
               serviceIndex,
-              "tasks",
-              taskIndex,
+              "deliveries",
+              deliveryIndex,
               "templateId",
             ],
             message: "O modelo de tarefa selecionado não existe.",
@@ -477,7 +477,7 @@ export const workspaceSettingsSchema = z
       }
       if (
         template.status === "arquivado" ||
-        !taskStatusKeys.has(template.status)
+        !deliveryStatusKeys.has(template.status)
       ) {
         context.addIssue({
           code: "custom",
@@ -485,7 +485,7 @@ export const workspaceSettingsSchema = z
           message: "O status padrão da entrega não é válido.",
         });
       }
-      if (template.category && !taskCategoryKeys.has(template.category)) {
+      if (template.category && !deliveryCategoryKeys.has(template.category)) {
         context.addIssue({
           code: "custom",
           path: ["deliveryTemplates", index, "category"],
@@ -499,27 +499,27 @@ export const workspaceSettingsSchema = z
           message: "A prioridade da entrega não existe no catálogo.",
         });
       }
-      const subtaskIds = new Set<string>();
-      for (const [subtaskIndex, subtask] of template.subtasks.entries()) {
-        if (subtaskIds.has(subtask.id)) {
+      const taskIds = new Set<string>();
+      for (const [taskIndex, task] of template.tasks.entries()) {
+        if (taskIds.has(task.id)) {
           context.addIssue({
             code: "custom",
-            path: ["deliveryTemplates", index, "subtasks", subtaskIndex, "id"],
-            message: "IDs de subtarefas devem ser únicos no modelo.",
+            path: ["deliveryTemplates", index, "tasks", taskIndex, "id"],
+            message: "IDs de tarefas devem ser únicos no modelo.",
           });
         }
-        subtaskIds.add(subtask.id);
-        if (subtask.status !== "pendente" && subtask.status !== "concluida") {
+        taskIds.add(task.id);
+        if (task.status !== "pendente" && task.status !== "concluida") {
           context.addIssue({
             code: "custom",
             path: [
               "deliveryTemplates",
               index,
-              "subtasks",
-              subtaskIndex,
+              "tasks",
+              taskIndex,
               "status",
             ],
-            message: "O status padrão da subtarefa não é válido.",
+            message: "O status padrão da tarefa não é válido.",
           });
         }
       }

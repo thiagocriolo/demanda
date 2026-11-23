@@ -1,4 +1,4 @@
-import { isSubtaskCompleted } from "../entities/subtasks";
+import { isTaskCompleted } from "../entities/tasks";
 import type { WorkShift } from "../settings/types";
 import { findScheduleConflict, findSequenceConflict } from "./conflicts";
 import {
@@ -11,8 +11,8 @@ import {
 import type { ScheduleEntry, ScheduleMap, ScheduleTask } from "./types";
 
 export type AutoScheduleInput = {
-  tasks: ScheduleTask[];
-  candidateTaskIds: Iterable<string>;
+  deliveries: ScheduleTask[];
+  candidateDeliveryIds: Iterable<string>;
   schedules: ScheduleMap;
   days: string[];
   shifts: WorkShift[];
@@ -21,9 +21,9 @@ export type AutoScheduleInput = {
 
 export type AutoScheduleResult = {
   schedule: ScheduleMap;
-  changedTaskIds: string[];
-  scheduledTaskIds: string[];
-  unscheduledTaskIds: string[];
+  changedDeliveryIds: string[];
+  scheduledDeliveryIds: string[];
+  unscheduledDeliveryIds: string[];
 };
 
 const PRIORITY_WEIGHT: Record<string, number> = {
@@ -72,9 +72,9 @@ function dayDistance(left: string, right: string): number {
  * trabalho já iniciado, prioridade declarada e tempo de espera têm pesos
  * decrescentes nessa ordem.
  */
-export function autoScheduleScore(task: ScheduleTask, today: string): number {
-  const dueDate = dateOnly(task.dueDate);
-  const requestedDate = dateOnly(task.requestedDate || task.createdAt);
+export function autoScheduleScore(delivery: ScheduleTask, today: string): number {
+  const dueDate = dateOnly(delivery.dueDate);
+  const requestedDate = dateOnly(delivery.requestedDate || delivery.createdAt);
   const daysToDue = dueDate ? dayDistance(dueDate, today) : undefined;
   const waitingDays = requestedDate
     ? Math.max(0, dayDistance(today, requestedDate))
@@ -88,14 +88,14 @@ export function autoScheduleScore(task: ScheduleTask, today: string): number {
 
   return (
     deadlineWeight +
-    (STATUS_WEIGHT[normalized(task.taskStatus)] ?? 0) +
-    (PRIORITY_WEIGHT[normalized(task.priority)] ?? PRIORITY_WEIGHT.normal) +
+    (STATUS_WEIGHT[normalized(delivery.deliveryStatus)] ?? 0) +
+    (PRIORITY_WEIGHT[normalized(delivery.priority)] ?? PRIORITY_WEIGHT.normal) +
     Math.min(180, waitingDays * 3)
   );
 }
 
-function durationSlots(task: ScheduleTask): number {
-  const parsed = Math.round(Number(task.duracao) * (60 / MINUTES_PER_SLOT));
+function durationSlots(delivery: ScheduleTask): number {
+  const parsed = Math.round(Number(delivery.duracao) * (60 / MINUTES_PER_SLOT));
   if (!Number.isFinite(parsed)) return 2;
   return Math.max(1, Math.min(MAX_DURATION_SLOTS, parsed));
 }
@@ -130,7 +130,7 @@ function entriesEqual(
   );
 }
 
-function taskComparator(today: string) {
+function deliveryComparator(today: string) {
   return (left: ScheduleTask, right: ScheduleTask): number => {
     const scoreDifference =
       autoScheduleScore(right, today) - autoScheduleScore(left, today);
@@ -145,25 +145,25 @@ function taskComparator(today: string) {
       ).localeCompare(
         dateOnly(right.requestedDate || right.createdAt) ?? "9999-12-31",
       ) ||
-      left.taskId.localeCompare(right.taskId) ||
+      left.deliveryId.localeCompare(right.deliveryId) ||
       left.sequence - right.sequence ||
       left.id.localeCompare(right.id)
     );
   };
 }
 
-function placeTask(
-  task: ScheduleTask,
-  allTasks: ScheduleTask[],
+function placeDelivery(
+  delivery: ScheduleTask,
+  allDeliveries: ScheduleTask[],
   schedule: ScheduleMap,
   days: string[],
   shifts: Array<{ start: number; end: number }>,
   today: string,
   currentMinutes: number,
 ): ScheduleEntry | undefined {
-  const slots = durationSlots(task);
+  const slots = durationSlots(delivery);
   const durationMinutes = slots * MINUTES_PER_SLOT;
-  const requestedDate = dateOnly(task.requestedDate || task.createdAt);
+  const requestedDate = dateOnly(delivery.requestedDate || delivery.createdAt);
 
   for (const date of days) {
     if (date < today || (requestedDate && date < requestedDate)) continue;
@@ -183,8 +183,8 @@ function placeTask(
           durationSlots: slots,
         };
         if (
-          !findScheduleConflict(task, candidate, allTasks, schedule) &&
-          !findSequenceConflict(task, candidate, allTasks, schedule)
+          !findScheduleConflict(delivery, candidate, allDeliveries, schedule) &&
+          !findSequenceConflict(delivery, candidate, allDeliveries, schedule)
         ) {
           return candidate;
         }
@@ -195,7 +195,7 @@ function placeTask(
 
 function plan(
   candidates: ScheduleTask[],
-  allTasks: ScheduleTask[],
+  allDeliveries: ScheduleTask[],
   base: ScheduleMap,
   days: string[],
   shifts: Array<{ start: number; end: number }>,
@@ -204,10 +204,10 @@ function plan(
 ): { schedule: ScheduleMap; scheduledIds: string[] } {
   const schedule = { ...base };
   const scheduledIds: string[] = [];
-  for (const task of candidates) {
-    const entry = placeTask(
-      task,
-      allTasks,
+  for (const delivery of candidates) {
+    const entry = placeDelivery(
+      delivery,
+      allDeliveries,
       schedule,
       days,
       shifts,
@@ -215,8 +215,8 @@ function plan(
       currentMinutes,
     );
     if (!entry) continue;
-    schedule[task.id] = entry;
-    scheduledIds.push(task.id);
+    schedule[delivery.id] = entry;
+    scheduledIds.push(delivery.id);
   }
   return { schedule, scheduledIds };
 }
@@ -230,45 +230,45 @@ export function autoScheduleWeek(input: AutoScheduleInput): AutoScheduleResult {
   const today = isoDate(now);
   const days = [...new Set(input.days)].sort();
   const daySet = new Set(days);
-  const candidateIds = new Set(input.candidateTaskIds);
+  const candidateIds = new Set(input.candidateDeliveryIds);
   const shifts = normalizedShifts(input.shifts);
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
   if (!days.length || !shifts.length) {
     return {
       schedule: { ...input.schedules },
-      changedTaskIds: [],
-      scheduledTaskIds: [],
-      unscheduledTaskIds: [...candidateIds],
+      changedDeliveryIds: [],
+      scheduledDeliveryIds: [],
+      unscheduledDeliveryIds: [...candidateIds],
     };
   }
 
-  const candidates = input.tasks
+  const candidates = input.deliveries
     .filter(
-      (task) => candidateIds.has(task.id) && !isSubtaskCompleted(task.status),
+      (delivery) => candidateIds.has(delivery.id) && !isTaskCompleted(delivery.status),
     )
-    .sort(taskComparator(today));
+    .sort(deliveryComparator(today));
   const movableIds = new Set(
     candidates
-      .filter((task) => {
-        const entry = input.schedules[task.id];
+      .filter((delivery) => {
+        const entry = input.schedules[delivery.id];
         return !entry || daySet.has(entry.date);
       })
-      .map((task) => task.id),
+      .map((delivery) => delivery.id),
   );
-  const movable = candidates.filter((task) => movableIds.has(task.id));
+  const movable = candidates.filter((delivery) => movableIds.has(delivery.id));
   const originalScheduledIds = movable
-    .filter((task) => !!input.schedules[task.id])
-    .map((task) => task.id);
+    .filter((delivery) => !!input.schedules[delivery.id])
+    .map((delivery) => delivery.id);
   const fixed = Object.fromEntries(
     Object.entries(input.schedules).filter(
-      ([taskId]) => !movableIds.has(taskId),
+      ([deliveryId]) => !movableIds.has(deliveryId),
     ),
   );
 
   let result = plan(
     movable,
-    input.tasks,
+    input.deliveries,
     fixed,
     days,
     shifts,
@@ -279,14 +279,14 @@ export function autoScheduleWeek(input: AutoScheduleInput): AutoScheduleResult {
   // Em uma combinação rara de durações, a heurística gulosa pode fragmentar
   // a jornada. Nesse caso, preserva todos os blocos manuais já existentes e
   // usa apenas os espaços livres para novos cards.
-  if (originalScheduledIds.some((taskId) => !result.schedule[taskId])) {
+  if (originalScheduledIds.some((deliveryId) => !result.schedule[deliveryId])) {
     const preserved = { ...fixed };
-    for (const taskId of originalScheduledIds) {
-      preserved[taskId] = input.schedules[taskId]!;
+    for (const deliveryId of originalScheduledIds) {
+      preserved[deliveryId] = input.schedules[deliveryId]!;
     }
     result = plan(
-      movable.filter((task) => !input.schedules[task.id]),
-      input.tasks,
+      movable.filter((delivery) => !input.schedules[delivery.id]),
+      input.deliveries,
       preserved,
       days,
       shifts,
@@ -296,20 +296,20 @@ export function autoScheduleWeek(input: AutoScheduleInput): AutoScheduleResult {
     result.scheduledIds.push(...originalScheduledIds);
   }
 
-  const scheduledTaskIds = movable
-    .filter((task) => !!result.schedule[task.id])
-    .map((task) => task.id);
-  const unscheduledTaskIds = movable
-    .filter((task) => !result.schedule[task.id])
-    .map((task) => task.id);
-  const changedTaskIds = scheduledTaskIds.filter(
-    (taskId) => !entriesEqual(input.schedules[taskId], result.schedule[taskId]),
+  const scheduledDeliveryIds = movable
+    .filter((delivery) => !!result.schedule[delivery.id])
+    .map((delivery) => delivery.id);
+  const unscheduledDeliveryIds = movable
+    .filter((delivery) => !result.schedule[delivery.id])
+    .map((delivery) => delivery.id);
+  const changedDeliveryIds = scheduledDeliveryIds.filter(
+    (deliveryId) => !entriesEqual(input.schedules[deliveryId], result.schedule[deliveryId]),
   );
 
   return {
     schedule: result.schedule,
-    changedTaskIds,
-    scheduledTaskIds,
-    unscheduledTaskIds,
+    changedDeliveryIds,
+    scheduledDeliveryIds,
+    unscheduledDeliveryIds,
   };
 }

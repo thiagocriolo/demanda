@@ -19,9 +19,7 @@ import {
   throwAuthorizationHttpError,
 } from "$lib/server/authorization/http";
 import { readRequestInput } from "$lib/server/authorization/request-input";
-import {
-  requireWorkspacePermissionForUpdate,
-} from "$lib/server/authorization/workspace-context";
+import { requireWorkspacePermissionForUpdate } from "$lib/server/authorization/workspace-context";
 import { getDatabase } from "$lib/server/db";
 import { escapeLikeMySql } from "$lib/server/db/helpers";
 import {
@@ -70,7 +68,7 @@ export function _validInstallments(
   input: z.infer<typeof _contractMutationSchema>,
 ): boolean {
   if (input.contractType === "recurring")
-    return input.installments.length === 0;
+    return input.installments.length === 0 && input.startDate !== null;
   if (input.amountCents > 0 && !input.installments.length) return false;
   if (
     input.installments.length &&
@@ -136,9 +134,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     const database = getDatabase();
     const query = parsed.data;
     const pattern = query.query ? `%${escapeLikeMySql(query.query)}%` : null;
-    const conditions = [
-      eq(contracts.ownerUserId, context.user.id),
-    ];
+    const conditions = [eq(contracts.ownerUserId, context.user.id)];
     if (query.workspaceId)
       conditions.push(eq(contracts.workspaceId, query.workspaceId));
     if (query.archived === "exclude")
@@ -162,10 +158,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
       database
         .select({ contract: contracts, businessName: businesses.name })
         .from(contracts)
-        .innerJoin(
-          businesses,
-          eq(businesses.id, contracts.businessId),
-        )
+        .innerJoin(businesses, eq(businesses.id, contracts.businessId))
         .where(and(...conditions))
         .orderBy(...ordering)
         .limit(query.pageSize)
@@ -188,9 +181,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
       ? await database
           .select()
           .from(contractInstallments)
-          .where(
-            inArray(contractInstallments.contractId, ids),
-          )
+          .where(inArray(contractInstallments.contractId, ids))
           .orderBy(asc(contractInstallments.number))
       : [];
     const projectCounts = ids.length
@@ -281,8 +272,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       )
       .limit(1);
     if (!business) error(400, "Selecione um negócio da sua biblioteca.");
-    const { installments: installmentValues, workspaceId: _, ...input } =
-      parsed.data;
+    const {
+      installments: installmentValues,
+      workspaceId: _,
+      ...input
+    } = parsed.data;
     const now = new Date();
     const contract = {
       id: randomUUID(),
@@ -298,19 +292,36 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     };
     await database.transaction(async (transaction) => {
       await transaction.insert(contracts).values(contract);
+      // A recurring agreement always owns one system-managed operational
+      // project. Deliveries are added to this project and renewed by cycle.
+      if (contract.contractType === "recurring") {
+        await transaction.insert(projects).values({
+          id: randomUUID(),
+          workspaceId: contract.workspaceId,
+          businessId: contract.businessId,
+          contractId: contract.id,
+          isInstitutional: true,
+          name: "Institucional",
+          statusKey: "execucao",
+          startDate: contract.startDate,
+          endDate: contract.endDate,
+          engagementType: "personal",
+          contractType: "recurring",
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
       if (installmentValues.length)
-        await transaction
-          .insert(contractInstallments)
-          .values(
-            installmentValues.map((item) => ({
-              workspaceId: contract.workspaceId,
-              contractId: contract.id,
-              number: item.number,
-              dueDate: item.dueDate,
-              amountCents: item.amountCents,
-              statusKey: item.status || null,
-            })),
-          );
+        await transaction.insert(contractInstallments).values(
+          installmentValues.map((item) => ({
+            workspaceId: contract.workspaceId,
+            contractId: contract.id,
+            number: item.number,
+            dueDate: item.dueDate,
+            amountCents: item.amountCents,
+            statusKey: item.status || null,
+          })),
+        );
     });
     const installments = await database
       .select()

@@ -10,7 +10,7 @@ describe("records page configuration", () => {
     expect(recordsTabFromPath("/clientes/contatos")).toBe("pessoas");
     expect(recordsTabFromPath("/clientes/neg%C3%B3cios/")).toBe("negocios");
     expect(recordsTabFromPath("/clientes/projetos")).toBe("projetos");
-    expect(recordsTabFromPath("/clientes/tarefas")).toBe("tarefas");
+    expect(recordsTabFromPath("/clientes/entregas")).toBe("entregas");
     expect(recordsTabFromPath("/clientes/desconhecido")).toBeUndefined();
   });
 
@@ -22,7 +22,7 @@ describe("records page configuration", () => {
       "negocios",
       "contratos",
       "projetos",
-      "tarefas",
+      "entregas",
     ]);
   });
 });

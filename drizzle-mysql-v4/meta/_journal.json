@@ -134,6 +134,27 @@
       "when": 1794400000012,
       "tag": "0018_remove_legacy_import_records",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1794400000013,
+      "tag": "0019_deliveries_and_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1794400000014,
+      "tag": "0020_rename_delivery_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1794400000015,
+      "tag": "0021_rename_delivery_foreign_keys",
+      "breakpoints": true
     }
   ]
 }

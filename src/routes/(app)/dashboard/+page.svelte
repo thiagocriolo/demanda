@@ -27,14 +27,14 @@
     loadCronogramaSnapshot,
     scheduleMapFromSnapshot,
   } from "$lib/cronograma/client";
-  import { toScheduleSubtasks } from "$lib/cronograma/subtasks";
+  import { toScheduleTasks } from "$lib/cronograma/tasks";
   import {
-    createPersonalTask,
-    deletePersonalTask,
-    listPersonalTasks,
-    updatePersonalTask,
-    type PersonalTask,
-  } from "$lib/personal-tasks/client";
+    createPersonalDelivery,
+    deletePersonalDelivery,
+    listPersonalDeliveries,
+    updatePersonalDelivery,
+    type PersonalDelivery,
+  } from "$lib/personal-deliveries/client";
   import type { ScheduleMap, ScheduleTask } from "$lib/cronograma/types";
   import type { EntityRecord } from "$lib/entities/types";
   import {
@@ -59,11 +59,11 @@
     projectToEntityRecord,
   } from "$lib/projects/client";
   import {
-    listAllTasks,
-    observeTasks,
-    TaskApiError,
-    taskToEntityRecord,
-  } from "$lib/tasks/client";
+    listAllDeliveries,
+    observeDeliveries,
+    DeliveryApiError,
+    deliveryToEntityRecord,
+  } from "$lib/deliveries/client";
   import {
     buildSchedulePreview,
     formatDuration,
@@ -102,7 +102,7 @@
     icon: Component;
     href: string;
   };
-  const PERSONAL_TASK_TITLE_MAX_LENGTH = 80;
+  const PERSONAL_DELIVERY_TITLE_MAX_LENGTH = 80;
   const tabs: { id: DashboardTab; label: string }[] = [
     { id: "entregas", label: "Entregas" },
     { id: "operacao", label: "Operação" },
@@ -111,20 +111,20 @@
   ];
 
   let projects = $state<EntityRecord[]>([]);
-  let tasks = $state<EntityRecord[]>([]);
-  let scheduleTasks = $state<ScheduleTask[]>([]);
+  let deliveries = $state<EntityRecord[]>([]);
+  let scheduleDeliveries = $state<ScheduleTask[]>([]);
   let schedule = $state<ScheduleMap>({});
   let financeEntries = $state<FinanceEntry[]>([]);
   let activeWorkspaceId = $state(PERSONAL_WORKSPACE_ID);
   let activeTab = $state<DashboardTab>("entregas");
-  let personalTasks = $state<PersonalTask[]>([]);
-  let personalTaskTitle = $state("");
+  let personalDeliveries = $state<PersonalDelivery[]>([]);
+  let personalDeliveryTitle = $state("");
   let projectsLoading = $state(false);
   let projectsError = $state("");
   let projectsRequest: AbortController | undefined;
-  let tasksLoading = $state(false);
-  let tasksError = $state("");
-  let tasksRequest: AbortController | undefined;
+  let deliveriesLoading = $state(false);
+  let deliveriesError = $state("");
+  let deliveriesRequest: AbortController | undefined;
   let pendingInvitations = $state<IncomingWorkspaceInvitation[]>([]);
   let acceptingInvitationId = $state("");
   let invitationMessage = $state("");
@@ -139,27 +139,27 @@
     return (record.workspaceId ?? PERSONAL_WORKSPACE_ID) === activeWorkspaceId;
   }
 
-  async function addPersonalTask(event: SubmitEvent): Promise<void> {
+  async function addPersonalDelivery(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    const title = personalTaskTitle.trim();
+    const title = personalDeliveryTitle.trim();
     if (!title) return;
-    const task = await createPersonalTask(title);
-    personalTasks = [...personalTasks, task];
-    personalTaskTitle = "";
+    const delivery = await createPersonalDelivery(title);
+    personalDeliveries = [...personalDeliveries, delivery];
+    personalDeliveryTitle = "";
   }
 
-  async function togglePersonalTask(id: string): Promise<void> {
-    const current = personalTasks.find((task) => task.id === id);
+  async function togglePersonalDelivery(id: string): Promise<void> {
+    const current = personalDeliveries.find((delivery) => delivery.id === id);
     if (!current) return;
-    const updated = await updatePersonalTask(id, !current.done);
-    personalTasks = personalTasks.map((task) =>
-      task.id === id ? updated : task,
+    const updated = await updatePersonalDelivery(id, !current.done);
+    personalDeliveries = personalDeliveries.map((delivery) =>
+      delivery.id === id ? updated : delivery,
     );
   }
 
-  async function removePersonalTask(id: string): Promise<void> {
-    await deletePersonalTask(id);
-    personalTasks = personalTasks.filter((task) => task.id !== id);
+  async function removePersonalDelivery(id: string): Promise<void> {
+    await deletePersonalDelivery(id);
+    personalDeliveries = personalDeliveries.filter((delivery) => delivery.id !== id);
   }
 
   function isDashboardTab(value: string | null): value is DashboardTab {
@@ -174,7 +174,7 @@
   }
 
   function refreshLocalRecords(): void {
-    scheduleTasks = toScheduleSubtasks(tasks);
+    scheduleDeliveries = toScheduleTasks(deliveries);
   }
 
   function refreshPendingInvitations(): void {
@@ -209,32 +209,32 @@
     }
   }
 
-  async function reloadTasks(): Promise<void> {
-    tasksRequest?.abort();
+  async function reloadDeliveries(): Promise<void> {
+    deliveriesRequest?.abort();
     const request = new AbortController();
-    tasksRequest = request;
-    tasksLoading = true;
-    tasksError = "";
+    deliveriesRequest = request;
+    deliveriesLoading = true;
+    deliveriesError = "";
     try {
-      const [apiTasks, cronograma] = await Promise.all([
-        listAllTasks({ signal: request.signal }),
+      const [apiDeliveries, cronograma] = await Promise.all([
+        listAllDeliveries({ signal: request.signal }),
         loadCronogramaSnapshot(),
       ]);
       if (request.signal.aborted) return;
-      tasks = apiTasks.map(taskToEntityRecord).filter(inWorkspace);
+      deliveries = apiDeliveries.map(deliveryToEntityRecord).filter(inWorkspace);
       schedule = scheduleMapFromSnapshot(cronograma);
       refreshLocalRecords();
     } catch (cause) {
       if (request.signal.aborted) return;
-      tasks = [];
+      deliveries = [];
       schedule = {};
-      tasksError =
-        cause instanceof TaskApiError || cause instanceof CronogramaApiError
+      deliveriesError =
+        cause instanceof DeliveryApiError || cause instanceof CronogramaApiError
           ? cause.message
           : "Não foi possível carregar as tarefas e o Cronograma.";
       refreshLocalRecords();
     } finally {
-      if (tasksRequest === request) tasksLoading = false;
+      if (deliveriesRequest === request) deliveriesLoading = false;
     }
   }
 
@@ -270,8 +270,8 @@
   onMount(() => {
     activeWorkspaceId = loadActiveWorkspaceId();
     refreshPendingInvitations();
-    void listPersonalTasks()
-      .then((items) => (personalTasks = items))
+    void listPersonalDeliveries()
+      .then((items) => (personalDeliveries = items))
       .catch(() => undefined);
     const requestedTab = new URLSearchParams(window.location.search).get(
       "dashboard_control",
@@ -279,34 +279,34 @@
     if (isDashboardTab(requestedTab)) activeTab = requestedTab;
     refreshLocalRecords();
     void reloadProjects();
-    void reloadTasks();
+    void reloadDeliveries();
     void reloadFinance();
-    const stopTasks = observeTasks(() => void reloadTasks());
+    const stopDeliveries = observeDeliveries(() => void reloadDeliveries());
     const stopProjects = observeProjects(() => void reloadProjects());
     const stopWorkspaces = observeWorkspaces(() => {
       activeWorkspaceId = loadActiveWorkspaceId();
       refreshPendingInvitations();
       refreshLocalRecords();
       void reloadProjects();
-      void reloadTasks();
+      void reloadDeliveries();
       void reloadFinance();
     });
     return () => {
       projectsRequest?.abort();
-      tasksRequest?.abort();
-      stopTasks();
+      deliveriesRequest?.abort();
+      stopDeliveries();
       stopProjects();
       stopWorkspaces();
     };
   });
 
-  const openTasks = $derived(tasks.filter((task) => !isComplete(task)));
+  const openDeliveries = $derived(deliveries.filter((delivery) => !isComplete(delivery)));
   const activeProjects = $derived(
     projects.filter((project) => !isComplete(project)),
   );
-  const overdueTasks = $derived(
-    openTasks.filter((task) => {
-      const date = recordDate(task, "task");
+  const overdueDeliveries = $derived(
+    openDeliveries.filter((delivery) => {
+      const date = recordDate(delivery, "delivery");
       return date !== "" && date < today;
     }),
   );
@@ -317,56 +317,56 @@
     }),
   );
   const scheduledThisWeek = $derived(
-    scheduleTasks.flatMap((task) => {
-      const entry = schedule[task.id];
+    scheduleDeliveries.flatMap((delivery) => {
+      const entry = schedule[delivery.id];
       return entry && entry.date >= weekStart && entry.date <= weekEnd
-        ? [{ task, entry }]
+        ? [{ delivery, entry }]
         : [];
     }),
   );
   const scheduledThisMonth = $derived(
-    scheduleTasks.flatMap((task) => {
-      const entry = schedule[task.id];
-      return entry?.date.startsWith(currentMonth) ? [{ task, entry }] : [];
+    scheduleDeliveries.flatMap((delivery) => {
+      const entry = schedule[delivery.id];
+      return entry?.date.startsWith(currentMonth) ? [{ delivery, entry }] : [];
     }),
   );
   const scheduledTodayAll = $derived(
-    scheduleTasks
-      .flatMap((task) => {
-        const entry = schedule[task.id];
-        return entry?.date === today ? [{ task, entry }] : [];
+    scheduleDeliveries
+      .flatMap((delivery) => {
+        const entry = schedule[delivery.id];
+        return entry?.date === today ? [{ delivery, entry }] : [];
       })
       .sort(
         (left, right) => left.entry.startMinutes - right.entry.startMinutes,
       ),
   );
   const scheduledToday = $derived(
-    scheduledTodayAll.filter(({ task }) => !isScheduleComplete(task)),
+    scheduledTodayAll.filter(({ delivery }) => !isScheduleComplete(delivery)),
   );
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const currentScheduledSubtask = $derived(
+  const currentScheduledTask = $derived(
     scheduledToday.find(({ entry }) => {
       const end = entry.startMinutes + entry.durationSlots * 30;
       return entry.startMinutes <= nowMinutes && end > nowMinutes;
     }),
   );
-  const nextScheduledSubtask = $derived(
+  const nextScheduledTask = $derived(
     scheduledToday.find(({ entry }) => entry.startMinutes >= nowMinutes),
   );
-  const todayFocus = $derived(currentScheduledSubtask ?? nextScheduledSubtask);
-  const todayDueTasks = $derived(
-    openTasks.filter((task) => recordDate(task, "task") === today),
+  const todayFocus = $derived(currentScheduledTask ?? nextScheduledTask);
+  const todayDueDeliveries = $derived(
+    openDeliveries.filter((delivery) => recordDate(delivery, "delivery") === today),
   );
   const todayDueProjects = $derived(
     activeProjects.filter(
       (project) => recordDate(project, "project") === today,
     ),
   );
-  const todayTasksWithoutExecution = $derived(
-    todayDueTasks.filter(
-      (task) =>
+  const todayDeliveriesWithoutExecution = $derived(
+    todayDueDeliveries.filter(
+      (delivery) =>
         !scheduledToday.some(
-          ({ task: scheduled }) => scheduled.taskId === task.id,
+          ({ delivery: scheduled }) => scheduled.deliveryId === delivery.id,
         ),
     ),
   );
@@ -399,7 +399,7 @@
   );
   const completedTodayScheduledMinutes = $derived(
     scheduledTodayAll
-      .filter(({ task }) => isScheduleComplete(task))
+      .filter(({ delivery }) => isScheduleComplete(delivery))
       .reduce((total, { entry }) => total + entry.durationSlots * 30, 0),
   );
   const remainingScheduledMinutes = $derived(
@@ -412,8 +412,8 @@
         )
       : 0,
   );
-  const completedTodayTaskCount = $derived(
-    scheduledTodayAll.filter(({ task }) => isScheduleComplete(task)).length,
+  const completedTodayDeliveryCount = $derived(
+    scheduledTodayAll.filter(({ delivery }) => isScheduleComplete(delivery)).length,
   );
   const todayCapacityUsed = $derived(
     remainingWorkday.availableMinutes > 0
@@ -428,9 +428,9 @@
       : 0,
   );
   const todayDeliveries = $derived([
-    ...todayDueTasks.map((task) => ({
-      id: `task-${task.id}`,
-      title: task.nome,
+    ...todayDueDeliveries.map((delivery) => ({
+      id: `delivery-${delivery.id}`,
+      title: delivery.nome,
       kind: "Tarefa",
       href: "/pauta",
     })),
@@ -450,8 +450,8 @@
     if (todayFocus) {
       return {
         label: `Próxima entrega às ${timeFromMinutes(todayFocus.entry.startMinutes)}`,
-        title: todayFocus.task.nome,
-        context: [todayFocus.task.taskNome, todayFocus.task.projeto]
+        title: todayFocus.delivery.nome,
+        context: [todayFocus.delivery.deliveryNome, todayFocus.delivery.projeto]
           .filter(Boolean)
           .join(" · "),
         href: "/cronograma",
@@ -474,21 +474,21 @@
     };
   });
   const todaySignals = $derived<TodaySignal[]>([
-    ...(todayTasksWithoutExecution.length
+    ...(todayDeliveriesWithoutExecution.length
       ? [
           {
-            title: `${todayTasksWithoutExecution.length} ${todayTasksWithoutExecution.length === 1 ? "entrega sem execução" : "entregas sem execução"}`,
+            title: `${todayDeliveriesWithoutExecution.length} ${todayDeliveriesWithoutExecution.length === 1 ? "entrega sem execução" : "entregas sem execução"}`,
             description:
-              "Tarefas com prazo hoje ainda não têm subtarefa reservada no Cronograma.",
+              "Tarefas com prazo hoje ainda não têm tarefa reservada no Cronograma.",
             tone: "warning" as Tone,
             href: "/cronograma",
           },
         ]
       : []),
-    ...(overdueTasks.length
+    ...(overdueDeliveries.length
       ? [
           {
-            title: `${overdueTasks.length} ${overdueTasks.length === 1 ? "tarefa atrasada" : "tarefas atrasadas"}`,
+            title: `${overdueDeliveries.length} ${overdueDeliveries.length === 1 ? "tarefa atrasada" : "tarefas atrasadas"}`,
             description:
               "Revise prioridade, prazo ou o próximo passo na Pauta.",
             tone: "danger" as Tone,
@@ -518,13 +518,13 @@
     {
       value: String(
         scheduledThisWeek.filter(
-          ({ task, entry }) =>
-            entry.date === today && !isScheduleComplete(task),
+          ({ delivery, entry }) =>
+            entry.date === today && !isScheduleComplete(delivery),
         ).length,
       ),
       label: "tarefas do dia",
       tone: scheduledThisWeek.some(
-        ({ task, entry }) => entry.date === today && !isScheduleComplete(task),
+        ({ delivery, entry }) => entry.date === today && !isScheduleComplete(delivery),
       )
         ? "warning"
         : "success",
@@ -533,7 +533,7 @@
     },
     {
       value: String(
-        scheduledThisWeek.filter(({ task }) => !isScheduleComplete(task))
+        scheduledThisWeek.filter(({ delivery }) => !isScheduleComplete(delivery))
           .length,
       ),
       label: "tarefas da semana",
@@ -543,7 +543,7 @@
     },
     {
       value: String(
-        scheduledThisMonth.filter(({ task }) => !isScheduleComplete(task))
+        scheduledThisMonth.filter(({ delivery }) => !isScheduleComplete(delivery))
           .length,
       ),
       label: "tarefas do mês",
@@ -552,7 +552,7 @@
       href: "/pauta",
     },
     {
-      value: String(openTasks.length),
+      value: String(openDeliveries.length),
       label: "tarefas em aberto",
       tone: "info",
       icon: ListTodo,
@@ -708,7 +708,7 @@
 
     const cardFor = (
       record: EntityRecord,
-      kind: "task" | "project",
+      kind: "delivery" | "project",
       level: AttentionLevel,
     ): AttentionCard & { date: string } => ({
       ...levelDetails(level),
@@ -717,24 +717,24 @@
       client:
         record.negocio || record.business_name || "Cliente não informado",
       date: recordDate(record, kind),
-      href: kind === "task" ? "/pauta" : "/clientes/projetos",
+      href: kind === "delivery" ? "/pauta" : "/clientes/projetos",
     });
 
     const byDate = (left: { date: string }, right: { date: string }) =>
       left.date.localeCompare(right.date);
     const urgent = [
-      ...overdueTasks.map((task) => cardFor(task, "task", "urgent")),
+      ...overdueDeliveries.map((delivery) => cardFor(delivery, "delivery", "urgent")),
       ...overdueProjects.map((project) =>
         cardFor(project, "project", "urgent"),
       ),
     ].sort(byDate);
     const warning = [
-      ...openTasks
-        .filter((task) => {
-          const date = recordDate(task, "task");
+      ...openDeliveries
+        .filter((delivery) => {
+          const date = recordDate(delivery, "delivery");
           return date >= today && date <= weekEnd;
         })
-        .map((task) => cardFor(task, "task", "warning")),
+        .map((delivery) => cardFor(delivery, "delivery", "warning")),
       ...activeProjects
         .filter((project) => {
           const date = recordDate(project, "project");
@@ -743,9 +743,9 @@
         .map((project) => cardFor(project, "project", "warning")),
     ].sort(byDate);
     const next = [
-      ...openTasks
-        .filter((task) => recordDate(task, "task") > weekEnd)
-        .map((task) => cardFor(task, "task", "next")),
+      ...openDeliveries
+        .filter((delivery) => recordDate(delivery, "delivery") > weekEnd)
+        .map((delivery) => cardFor(delivery, "delivery", "next")),
       ...activeProjects
         .filter((project) => recordDate(project, "project") > weekEnd)
         .map((project) => cardFor(project, "project", "next")),
@@ -774,7 +774,7 @@
 <section
   class="dashboard-page"
   aria-label="Dashboard"
-  aria-busy={projectsLoading || tasksLoading}
+  aria-busy={projectsLoading || deliveriesLoading}
 >
   <section class="panel alerts-panel" aria-label="Resumo do dia">
     {#if projectsLoading}
@@ -787,10 +787,10 @@
         </button>
       </div>
     {/if}
-    {#if tasksError}
+    {#if deliveriesError}
       <div class="projects-state projects-state--error" role="alert">
-        <span>{tasksError}</span>
-        <button type="button" onclick={() => void reloadTasks()}>
+        <span>{deliveriesError}</span>
+        <button type="button" onclick={() => void reloadDeliveries()}>
           Tentar novamente
         </button>
       </div>
@@ -840,10 +840,10 @@
       </div>
 
       <div class="notebook">
-        <form class="personal-form" onsubmit={addPersonalTask}>
+        <form class="personal-form" onsubmit={addPersonalDelivery}>
           <input
-            bind:value={personalTaskTitle}
-            maxlength={PERSONAL_TASK_TITLE_MAX_LENGTH}
+            bind:value={personalDeliveryTitle}
+            maxlength={PERSONAL_DELIVERY_TITLE_MAX_LENGTH}
             placeholder="Nova tarefa"
             aria-label="Título da tarefa"
           />
@@ -853,26 +853,26 @@
         </form>
 
         <div class="notebook-list">
-          {#if personalTasks.length > 0}
+          {#if personalDeliveries.length > 0}
             <ul>
-              {#each personalTasks as task (task.id)}
-                <li class:done={task.done}>
+              {#each personalDeliveries as delivery (delivery.id)}
+                <li class:done={delivery.done}>
                   <button
                     class="check-button"
                     type="button"
-                    aria-label={task.done
+                    aria-label={delivery.done
                       ? "Reabrir tarefa"
                       : "Concluir tarefa"}
-                    onclick={() => togglePersonalTask(task.id)}
+                    onclick={() => togglePersonalDelivery(delivery.id)}
                   >
-                    {#if task.done}<Check size={13} strokeWidth={3} />{/if}
+                    {#if delivery.done}<Check size={13} strokeWidth={3} />{/if}
                   </button>
-                  <span title={task.title}>{task.title}</span>
+                  <span title={delivery.title}>{delivery.title}</span>
                   <button
                     class="delete-button"
                     type="button"
                     aria-label="Excluir tarefa"
-                    onclick={() => removePersonalTask(task.id)}
+                    onclick={() => removePersonalDelivery(delivery.id)}
                     ><Trash2 size={16} /></button
                   >
                 </li>
@@ -927,23 +927,23 @@
             {#if todayFocus}
               <div class="today-focus-copy">
                 <span class="today-focus-state">
-                  {#if currentScheduledSubtask}
+                  {#if currentScheduledTask}
                     Em execução agora
                   {:else}
-                    Próxima subtarefa
+                    Próxima tarefa
                   {/if}
                 </span>
-                <strong id="today-focus-title">{todayFocus.task.nome}</strong>
+                <strong id="today-focus-title">{todayFocus.delivery.nome}</strong>
                 <p>
-                  {todayFocus.task.taskNome}
-                  {#if todayFocus.task.projeto}
-                    · {todayFocus.task.projeto}
+                  {todayFocus.delivery.deliveryNome}
+                  {#if todayFocus.delivery.projeto}
+                    · {todayFocus.delivery.projeto}
                   {/if}
                 </p>
               </div>
               <div class="today-focus-meta">
                 <span>
-                  {#if currentScheduledSubtask}
+                  {#if currentScheduledTask}
                     Até {timeFromMinutes(
                       todayFocus.entry.startMinutes +
                         todayFocus.entry.durationSlots * 30,
@@ -963,7 +963,7 @@
                   >Sem execução programada agora</strong
                 >
                 <p>
-                  Reserve uma subtarefa para transformar uma demanda em ação.
+                  Reserve uma tarefa para transformar uma demanda em ação.
                 </p>
               </div>
               <a class="today-focus-action" href="/cronograma">
@@ -978,9 +978,9 @@
           >
             <a class="today-stat tone-warning" href="/agenda">
               <span>Entregas hoje</span>
-              <strong>{todayDueTasks.length + todayDueProjects.length}</strong>
+              <strong>{todayDueDeliveries.length + todayDueProjects.length}</strong>
               <small
-                >{todayDueTasks.length} tarefa{todayDueTasks.length === 1
+                >{todayDueDeliveries.length} tarefa{todayDueDeliveries.length === 1
                   ? ""
                   : "s"} e {todayDueProjects.length} projeto{todayDueProjects.length ===
                 1
@@ -1039,24 +1039,24 @@
             </div>
             {#if scheduledToday.length}
               <ol class="today-timeline">
-                {#each scheduledToday as item (item.task.id)}
+                {#each scheduledToday as item (item.delivery.id)}
                   {@const end =
                     item.entry.startMinutes + item.entry.durationSlots * 30}
                   <li
-                    class:current={currentScheduledSubtask?.task.id ===
-                      item.task.id}
-                    class:next={!currentScheduledSubtask &&
-                      nextScheduledSubtask?.task.id === item.task.id}
+                    class:current={currentScheduledTask?.delivery.id ===
+                      item.delivery.id}
+                    class:next={!currentScheduledTask &&
+                      nextScheduledTask?.delivery.id === item.delivery.id}
                   >
                     <span class="today-timeline-time"
                       >{timeFromMinutes(item.entry.startMinutes)}</span
                     >
                     <a href="/cronograma">
-                      <strong>{item.task.nome}</strong>
+                      <strong>{item.delivery.nome}</strong>
                       <span>
-                        {item.task.taskNome}
-                        {#if item.task.projeto}
-                          · {item.task.projeto}{/if}
+                        {item.delivery.deliveryNome}
+                        {#if item.delivery.projeto}
+                          · {item.delivery.projeto}{/if}
                       </span>
                     </a>
                     <span class="today-timeline-duration"

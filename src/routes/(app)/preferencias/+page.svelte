@@ -220,7 +220,7 @@
         label="Duração padrão"
         description="Pode ser ajustada individualmente durante a programação."
         options={durationOptions}
-        bind:value={settings.defaultTaskDuration}
+        bind:value={settings.defaultDeliveryDuration}
       />
     </SettingsCard>
   {:else if activeTab === "pauta"}
@@ -306,7 +306,7 @@
         label="Duração padrão"
         description="O valor continua podendo ser alterado em cada tarefa."
         options={durationOptions}
-        bind:value={settings.defaultTaskDuration}
+        bind:value={settings.defaultDeliveryDuration}
       />
     </SettingsCard>
   {:else if activeTab === "agenda"}
@@ -319,7 +319,7 @@
         description="Alterna entre o planejamento de projetos e o de tarefas."
         options={[
           { value: "projects", label: "Projetos" },
-          { value: "tasks", label: "Tarefas" },
+          { value: "deliveries", label: "Tarefas" },
         ]}
         bind:value={settings.agendaDefaultMode}
       />
@@ -369,12 +369,12 @@
           { value: "60", label: "1 hora" },
           { value: "120", label: "2 horas" },
         ]}
-        bind:value={settings.taskReminderMinutes}
+        bind:value={settings.deliveryReminderMinutes}
       />
       <ToggleRow
         label="Notificar lembretes"
         description="Envia uma notificação quando chegar a antecedência escolhida."
-        bind:checked={settings.notifyTaskReminders}
+        bind:checked={settings.notifyDeliveryReminders}
       />
     </SettingsCard>
   {:else if activeTab === "financeiro"}

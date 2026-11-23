@@ -69,7 +69,7 @@ CRIE TAREFA: Nome da tarefa | PROJETO: Nome do projeto
 ```
 
 A tarefa é criada em planejamento, prioridade normal, sem data de entrega, com
-uma subtarefa inicial de uma hora e o usuário atual como responsável.
+uma tarefa inicial de uma hora e o usuário atual como responsável.
 
 Exemplo:
 

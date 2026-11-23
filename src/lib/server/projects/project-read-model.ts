@@ -37,7 +37,7 @@ import {
   projectTags,
   services,
   tags,
-  tasks,
+  deliveries,
   users,
   workspaceMembers,
   workspaces,
@@ -340,9 +340,9 @@ function projectCommonConditions(
     conditions.push(sql`(
       not ${projects.isInstitutional}
       or exists (
-        select 1 from ${tasks}
-        where ${tasks.workspaceId} = ${projects.workspaceId}
-          and ${tasks.projectId} = ${projects.id}
+        select 1 from ${deliveries}
+        where ${deliveries.workspaceId} = ${projects.workspaceId}
+          and ${deliveries.projectId} = ${projects.id}
       )
     )`);
   }

@@ -10,7 +10,7 @@ import {
 } from "../projects";
 import { agendaEntries } from "../schedule";
 import { services, tags } from "../services";
-import { tasks } from "../tasks";
+import { deliveries } from "../deliveries";
 import { workspaceMembers, workspaces } from "../workspace";
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -32,7 +32,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   responsibles: many(projectResponsibles),
   installments: many(projectInstallments),
   financialEntries: many(financialEntries),
-  tasks: many(tasks),
+  deliveries: many(deliveries),
   agendaEntry: one(agendaEntries),
 }));
 

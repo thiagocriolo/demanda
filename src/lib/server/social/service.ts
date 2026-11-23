@@ -567,7 +567,7 @@ export async function listFeed(
 
   const activityRows = await database.execute<{
     id: string;
-    entity: "workspace" | "project" | "task";
+    entity: "workspace" | "project" | "delivery";
     title: string;
     context: string | null;
     occurred_at: Date | string;
@@ -601,11 +601,11 @@ export async function listFeed(
       inner join workspaces workspace on workspace.id = project.workspace_id
       where project.workspace_id in (select id from visible_workspaces) and project.archived_at is null
       union all
-      select concat('task:', task.id), 'task', task.name, project.name,
-        task.updated_at, task.workspace_id
-      from tasks task
-      inner join projects project on project.id = task.project_id and project.workspace_id = task.workspace_id
-      where task.workspace_id in (select id from visible_workspaces) and task.archived_at is null
+      select concat('delivery:', delivery.id), 'delivery', delivery.name, project.name,
+        delivery.updated_at, delivery.workspace_id
+      from deliveries delivery
+      inner join projects project on project.id = delivery.project_id and project.workspace_id = delivery.workspace_id
+      where delivery.workspace_id in (select id from visible_workspaces) and delivery.archived_at is null
     )
     select event.*, actor.id as actor_id, actor.name as actor_name,
       actor.username as actor_username, actor.avatar_url as actor_avatar_url
@@ -659,7 +659,7 @@ export async function listFeed(
 
   const activities: FeedActivityItem[] = rawRows<{
     id: string;
-    entity: "workspace" | "project" | "task";
+    entity: "workspace" | "project" | "delivery";
     title: string;
     context: string | null;
     occurred_at: Date | string;

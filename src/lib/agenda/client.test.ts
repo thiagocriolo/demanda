@@ -6,7 +6,7 @@ import { setWorkspaceRequestScope } from "../workspaces/workspace-scope";
 const snapshot: AgendaSnapshot = {
   workspaceId: "078ef345-0bdf-4ddb-9135-13a824ec4f6d",
   projects: [],
-  tasks: [],
+  deliveries: [],
 };
 
 describe("agenda client", () => {
@@ -32,7 +32,7 @@ describe("agenda client", () => {
               version: 1,
             },
           ],
-          tasks: [],
+          deliveries: [],
         }),
       );
     });

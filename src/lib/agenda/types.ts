@@ -1,4 +1,4 @@
-export type AgendaMode = "projects" | "tasks";
+export type AgendaMode = "projects" | "deliveries";
 export type AgendaView = "daily" | "weekly" | "monthly";
 
 export type AgendaTone = "blue" | "green" | "amber" | "red" | "gray";
@@ -38,7 +38,7 @@ export type AgendaPlacement = {
 export type AgendaSnapshot = {
   workspaceId: string;
   projects: AgendaPlacement[];
-  tasks: AgendaPlacement[];
+  deliveries: AgendaPlacement[];
 };
 
 export type AgendaQuery = {

@@ -34,9 +34,9 @@
   } from "$lib/cronograma/client";
   import {
     isCronogramaTaskMuted,
-    nextUnscheduledSubtasksForWorkspace,
-    toScheduleSubtasks,
-  } from "$lib/cronograma/subtasks";
+    nextUnscheduledTasksForWorkspace,
+    toScheduleTasks,
+  } from "$lib/cronograma/tasks";
   import type {
     PositionedTask,
     ScheduleEntry,
@@ -44,19 +44,19 @@
     ScheduleTask,
   } from "$lib/cronograma/types";
   import { deliveryConfig } from "$lib/entities/catalog";
-  import TaskForm, { type TaskFormMode } from "$lib/entities/TaskForm.svelte";
+  import DeliveryForm, { type DeliveryFormMode } from "$lib/entities/DeliveryForm.svelte";
   import type { EntityRecord } from "$lib/entities/types";
   import {
     currentSettings,
     loadSettingsFromServer,
   } from "$lib/settings/client";
   import {
-    listAllTasks,
-    observeTasks,
-    TaskApiError,
-    taskToEntityRecord,
-    updateTaskFromEntityValues,
-  } from "$lib/tasks/client";
+    listAllDeliveries,
+    observeDeliveries,
+    DeliveryApiError,
+    deliveryToEntityRecord,
+    updateDeliveryFromEntityValues,
+  } from "$lib/deliveries/client";
   import CardDrawer from "$lib/ui/CardDrawer.svelte";
   import EntityCard from "$lib/ui/EntityCard.svelte";
   import type { EntityCardItem } from "$lib/ui/entity-card";
@@ -79,7 +79,7 @@
 
   type DragMode = "drag" | "resize";
   type DragState = {
-    task: ScheduleTask;
+    delivery: ScheduleTask;
     mode: DragMode;
     pointerId: number;
     startX: number;
@@ -103,10 +103,10 @@
     moved: boolean;
   };
 
-  let tasks = $state<ScheduleTask[]>([]);
+  let deliveries = $state<ScheduleTask[]>([]);
   let schedules = $state<ScheduleMap>({});
-  let allTasks = $state<ScheduleTask[]>([]);
-  let allTaskRecords = $state<EntityRecord[]>([]);
+  let allDeliveries = $state<ScheduleTask[]>([]);
+  let allDeliveryRecords = $state<EntityRecord[]>([]);
   let activeWorkspaceId = $state(PERSONAL_WORKSPACE_ID);
   let workspaceUsers = $state<WorkspaceUser[]>([]);
   let drawerOpen = $state(false);
@@ -118,18 +118,18 @@
   const visibleEnd = 24 * 60;
   const timeColumnWidth = 104;
   const horizontalBufferDays = 8;
-  let selectedTask = $state<EntityRecord>();
-  let taskFormMode = $state<TaskFormMode>("view");
+  let selectedDelivery = $state<EntityRecord>();
+  let deliveryFormMode = $state<DeliveryFormMode>("view");
   let drag = $state<DragState | null>(null);
   let viewportPan = $state<ViewportPanState | null>(null);
   let activeDropTarget = $state<string>();
   let scheduleError = $state<string>();
-  let tasksLoading = $state(false);
+  let deliveriesLoading = $state(false);
   let scheduleSaving = $state(false);
   let autoScheduling = $state(false);
   let scheduleNotice = $state<string>();
   let scheduleNoticeWarning = $state(false);
-  let tasksAbortController: AbortController | undefined;
+  let deliveriesAbortController: AbortController | undefined;
   let viewport: HTMLDivElement;
   let grid: HTMLDivElement;
   let dayColumnWidth = $state(210);
@@ -141,8 +141,8 @@
   let lastHorizontalPositionKey = "";
   let preservedViewportScrollTop: number | undefined;
   let scheduleNoticeTimeout: number | undefined;
-  let heldTaskCard = $derived(
-    drag?.mode === "drag" ? toTaskCardItem(drag.task) : undefined,
+  let heldDeliveryCard = $derived(
+    drag?.mode === "drag" ? toDeliveryCardItem(drag.delivery) : undefined,
   );
 
   let weekStart = $derived(
@@ -161,10 +161,10 @@
   let bufferedStartIso = $derived(bufferedDays[0]?.iso ?? "");
   let bufferedEndIso = $derived(bufferedDays.at(-1)?.iso ?? "");
   let scheduledInBuffer = $derived(
-    tasks
-      .map((task) => ({ task, schedule: schedules[task.id] }))
+    deliveries
+      .map((delivery) => ({ delivery, schedule: schedules[delivery.id] }))
       .filter(
-        (item): item is { task: ScheduleTask; schedule: ScheduleEntry } =>
+        (item): item is { delivery: ScheduleTask; schedule: ScheduleEntry } =>
           !!item.schedule &&
           item.schedule.date >= bufferedStartIso &&
           item.schedule.date <= bufferedEndIso,
@@ -188,8 +188,8 @@
       (_, index) => visibleStart + index * MINUTES_PER_SLOT,
     ),
   );
-  let unscheduledTasks = $derived(
-    nextUnscheduledSubtasksForWorkspace(tasks, schedules, activeWorkspaceId),
+  let unscheduledDeliveries = $derived(
+    nextUnscheduledTasksForWorkspace(deliveries, schedules, activeWorkspaceId),
   );
   let positionedByDay = $derived(
     bufferedDays.map(
@@ -222,10 +222,10 @@
       .then(applyCronogramaPreferences)
       .catch(() => undefined);
 
-    void refreshTasks();
+    void refreshDeliveries();
     initialized = true;
-    const stopTasks = observeTasks(() => void refreshTasks());
-    const stopWorkspaces = observeWorkspaces(() => void refreshTasks());
+    const stopDeliveries = observeDeliveries(() => void refreshDeliveries());
+    const stopWorkspaces = observeWorkspaces(() => void refreshDeliveries());
     const minuteTimer = window.setInterval(() => (now = new Date()), 60_000);
     const autoSchedule = () => void autoOrganizeSchedule();
     const resizeObserver = new ResizeObserver(syncDayColumnWidth);
@@ -237,8 +237,8 @@
     );
 
     return () => {
-      tasksAbortController?.abort();
-      stopTasks();
+      deliveriesAbortController?.abort();
+      stopDeliveries();
       stopWorkspaces();
       resizeObserver.disconnect();
       window.clearInterval(minuteTimer);
@@ -263,7 +263,7 @@
   });
 
   $effect(() => {
-    const ready = initialized && !tasksLoading && tasks.length > 0;
+    const ready = initialized && !deliveriesLoading && deliveries.length > 0;
     const busy = scheduleSaving || autoScheduling || !!drag;
     if (typeof window !== "undefined") {
       publishCronogramaAutoScheduleState({ ready, busy });
@@ -294,7 +294,7 @@
     void tick().then(alignViewportHorizontally);
   });
 
-  function taskDurationSlots(value: string): number {
+  function deliveryDurationSlots(value: string): number {
     const slots = Math.round(Number(value) * (60 / MINUTES_PER_SLOT));
     if (!Number.isFinite(slots)) return 2;
     return Math.max(MIN_DURATION_SLOTS, Math.min(MAX_DURATION_SLOTS, slots));
@@ -317,18 +317,18 @@
     viewport.scrollLeft = horizontalRestPosition();
   }
 
-  function assignedToCurrentUser(task: ScheduleTask): boolean {
+  function assignedToCurrentUser(delivery: ScheduleTask): boolean {
     try {
-      const ids = JSON.parse(task.responsibleUserIds || "[]") as unknown;
+      const ids = JSON.parse(delivery.responsibleUserIds || "[]") as unknown;
       if (Array.isArray(ids) && ids.includes(CURRENT_USER.id)) return true;
     } catch {
       // Registros sem o array tipado ainda usam a compatibilidade singular.
     }
-    return isAssignedToUser(task, CURRENT_USER, workspaceUsers);
+    return isAssignedToUser(delivery, CURRENT_USER, workspaceUsers);
   }
 
-  function toTaskCardItem(task: ScheduleTask): EntityCardItem {
-    const statusKey = task.status || "planejamento";
+  function toDeliveryCardItem(delivery: ScheduleTask): EntityCardItem {
+    const statusKey = delivery.status || "planejamento";
     const statusByValue: Record<string, { label: string; color: string }> = {
       pendente: { label: "Pendente", color: "#64748b" },
       planejamento: { label: "Fila", color: "#64748b" },
@@ -344,25 +344,25 @@
     };
 
     return {
-      id: task.id,
-      kind: "tarefa",
-      title: task.nome,
+      id: delivery.id,
+      kind: "entrega",
+      title: delivery.nome,
       status: status.label,
       statusColor: status.color,
-      primary: task.taskNome,
-      secondary: task.projeto || "Projeto não informado",
-      relation: task.descricao || "Tarefa planejada",
-      responsible: task.responsavel || "Sem responsável",
-      responsibleAvatarUrl: task.responsibleAvatarUrl,
-      steps: `${task.sequence + 1}/${task.subtaskCount}`,
+      primary: delivery.deliveryNome,
+      secondary: delivery.projeto || "Projeto não informado",
+      relation: delivery.descricao || "Entrega planejada",
+      responsible: delivery.responsavel || "Sem responsável",
+      responsibleAvatarUrl: delivery.responsibleAvatarUrl,
+      steps: `${delivery.sequence + 1}/${delivery.taskCount}`,
     };
   }
 
-  async function refreshTasks(): Promise<void> {
-    tasksAbortController?.abort();
+  async function refreshDeliveries(): Promise<void> {
+    deliveriesAbortController?.abort();
     const controller = new AbortController();
-    tasksAbortController = controller;
-    tasksLoading = true;
+    deliveriesAbortController = controller;
+    deliveriesLoading = true;
     scheduleError = undefined;
     try {
       activeWorkspaceId = loadActiveWorkspaceId();
@@ -372,11 +372,11 @@
         : activeWorkspaceId && activeWorkspaceId !== GLOBAL_WORKSPACE_ID
           ? [activeWorkspaceId]
           : [];
-      const [taskGroups, cronogramas] = concreteWorkspaceIds.length
+      const [deliveryGroups, cronogramas] = concreteWorkspaceIds.length
         ? await Promise.all([
             Promise.all(
               concreteWorkspaceIds.map((workspaceId) =>
-                listAllTasks({ workspaceId, signal: controller.signal }),
+                listAllDeliveries({ workspaceId, signal: controller.signal }),
               ),
             ),
             Promise.all(
@@ -386,50 +386,50 @@
             ),
           ])
         : [
-            [await listAllTasks({ signal: controller.signal })],
+            [await listAllDeliveries({ signal: controller.signal })],
             [await loadCronogramaSnapshot()],
           ];
       if (controller.signal.aborted) return;
-      const serverTasks = taskGroups.flat();
+      const serverDeliveries = deliveryGroups.flat();
       const cronograma = {
         workspaceId: GLOBAL_WORKSPACE_ID,
         items: cronogramas.flatMap(({ items }) => items),
       };
-      allTaskRecords = serverTasks
-        .map(taskToEntityRecord)
+      allDeliveryRecords = serverDeliveries
+        .map(deliveryToEntityRecord)
         .filter((record) => !!record.nome);
       workspaceUsers = loadWorkspaceUsers();
-      allTasks = toScheduleSubtasks(allTaskRecords).map((task) => ({
-        ...task,
+      allDeliveries = toScheduleTasks(allDeliveryRecords).map((delivery) => ({
+        ...delivery,
         responsibleAvatarUrl:
-          task.responsibleAvatarUrl ||
-          resolveResponsibleUser(task, workspaceUsers)?.avatarUrl,
+          delivery.responsibleAvatarUrl ||
+          resolveResponsibleUser(delivery, workspaceUsers)?.avatarUrl,
       }));
-      tasks = allTasks.filter(
-        (task) =>
-          assignedToCurrentUser(task) &&
-          !task.archivedAt &&
-          task.taskStatus !== "arquivado",
+      deliveries = allDeliveries.filter(
+        (delivery) =>
+          assignedToCurrentUser(delivery) &&
+          !delivery.archivedAt &&
+          delivery.deliveryStatus !== "arquivado",
       );
       schedules = scheduleMapFromSnapshot(cronograma);
     } catch (cause) {
       if (controller.signal.aborted) return;
-      allTaskRecords = [];
-      allTasks = [];
-      tasks = [];
+      allDeliveryRecords = [];
+      allDeliveries = [];
+      deliveries = [];
       scheduleError =
-        cause instanceof TaskApiError || cause instanceof CronogramaApiError
+        cause instanceof DeliveryApiError || cause instanceof CronogramaApiError
           ? cause.message
           : "Não foi possível carregar o Cronograma.";
     } finally {
-      if (tasksAbortController === controller) tasksLoading = false;
+      if (deliveriesAbortController === controller) deliveriesLoading = false;
     }
   }
 
-  function updateSchedule(taskId: string, entry?: ScheduleEntry): void {
+  function updateSchedule(deliveryId: string, entry?: ScheduleEntry): void {
     const next = { ...schedules };
-    if (entry) next[taskId] = entry;
-    else delete next[taskId];
+    if (entry) next[deliveryId] = entry;
+    else delete next[deliveryId];
     schedules = next;
   }
 
@@ -437,11 +437,11 @@
     snapshot: Awaited<ReturnType<typeof loadCronogramaSnapshot>>,
   ): void {
     const next = { ...schedules };
-    for (const task of allTasks) {
+    for (const delivery of allDeliveries) {
       if (
-        (task.workspaceId ?? PERSONAL_WORKSPACE_ID) === snapshot.workspaceId
+        (delivery.workspaceId ?? PERSONAL_WORKSPACE_ID) === snapshot.workspaceId
       ) {
-        delete next[task.id];
+        delete next[delivery.id];
       }
     }
     schedules = { ...next, ...scheduleMapFromSnapshot(snapshot) };
@@ -470,20 +470,20 @@
     scheduleSaving = true;
     try {
       const snapshot = completed.working
-        ? await saveCronogramaEntry(completed.task.subtaskId, {
+        ? await saveCronogramaEntry(completed.delivery.taskId, {
             date: completed.working.date,
             startMinutes: completed.working.startMinutes,
             durationMinutes: completed.working.durationSlots * MINUTES_PER_SLOT,
             version: completed.original?.version ?? 0,
           })
         : await deleteCronogramaEntry(
-            completed.task.subtaskId,
+            completed.delivery.taskId,
             completed.original?.version ?? 0,
           );
       applyWorkspaceScheduleSnapshot(snapshot);
       scheduleError = undefined;
     } catch (cause) {
-      updateSchedule(completed.task.id, completed.original);
+      updateSchedule(completed.delivery.id, completed.original);
       scheduleError =
         cause instanceof CronogramaApiError
           ? cause.message
@@ -504,15 +504,15 @@
     if (!drag) return;
     const current = drag;
     const conflict = findScheduleConflict(
-      current.task,
+      current.delivery,
       entry,
-      allTasks,
+      allDeliveries,
       schedules,
     );
     const sequenceConflict = findSequenceConflict(
-      current.task,
+      current.delivery,
       entry,
-      allTasks,
+      allDeliveries,
       schedules,
     );
     drag = {
@@ -524,7 +524,7 @@
     activeDropTarget = entry.date;
 
     if (conflict || sequenceConflict) {
-      updateSchedule(current.task.id, current.original);
+      updateSchedule(current.delivery.id, current.original);
       scheduleError = conflict
         ? describeScheduleConflict(conflict)
         : sequenceConflict?.message;
@@ -532,7 +532,7 @@
     }
 
     scheduleError = undefined;
-    updateSchedule(current.task.id, entry);
+    updateSchedule(current.delivery.id, entry);
   }
 
   function slotHeight(): number {
@@ -553,14 +553,14 @@
 
   function beginInteraction(
     event: PointerEvent,
-    task: ScheduleTask,
+    delivery: ScheduleTask,
     schedule?: ScheduleEntry,
   ): void {
     if (
       event.button !== 0 ||
       drag ||
       scheduleSaving ||
-      isCronogramaTaskMuted(task, activeWorkspaceId)
+      isCronogramaTaskMuted(delivery, activeWorkspaceId)
     )
       return;
     const card = event.currentTarget;
@@ -570,7 +570,7 @@
     const mode: DragMode =
       schedule && rect.bottom - event.clientY <= 17 ? "resize" : "drag";
     const durationSlots =
-      schedule?.durationSlots ?? taskDurationSlots(task.duracao);
+      schedule?.durationSlots ?? deliveryDurationSlots(delivery.duracao);
     const pointerRatio = Math.max(
       0,
       Math.min(1, (event.clientY - rect.top) / Math.max(1, rect.height)),
@@ -583,7 +583,7 @@
     scheduleError = undefined;
 
     drag = {
-      task,
+      delivery,
       mode,
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -682,7 +682,7 @@
       };
       activeDropTarget = "drawer";
       scheduleError = undefined;
-      updateSchedule(drag.task.id);
+      updateSchedule(drag.delivery.id);
       return;
     }
 
@@ -691,7 +691,7 @@
       const durationSlots =
         drag.working?.durationSlots ??
         drag.original?.durationSlots ??
-        taskDurationSlots(drag.task.duracao);
+        deliveryDurationSlots(drag.delivery.duracao);
       const rect = day.getBoundingClientRect();
       const rawMinutes =
         visibleStart +
@@ -720,7 +720,7 @@
         sequenceError: undefined,
       };
       scheduleError = undefined;
-      updateSchedule(drag.task.id);
+      updateSchedule(drag.delivery.id);
     }
   }
 
@@ -733,23 +733,23 @@
     drag = null;
 
     if (!completed.moved) {
-      openTask(completed.task);
+      openDelivery(completed.delivery);
       return;
     }
 
     if (cancelled) {
-      updateSchedule(completed.task.id, completed.original);
+      updateSchedule(completed.delivery.id, completed.original);
       return;
     }
 
     if (completed.conflict) {
-      updateSchedule(completed.task.id, completed.original);
+      updateSchedule(completed.delivery.id, completed.original);
       scheduleError = describeScheduleConflict(completed.conflict);
       return;
     }
 
     if (completed.sequenceError) {
-      updateSchedule(completed.task.id, completed.original);
+      updateSchedule(completed.delivery.id, completed.original);
       scheduleError = completed.sequenceError;
       return;
     }
@@ -891,37 +891,37 @@
     else if (clientX > rect.right - edge) viewport.scrollLeft += speed;
   }
 
-  function openTask(task: ScheduleTask): void {
-    if (drag || isCronogramaTaskMuted(task, activeWorkspaceId)) return;
-    selectedTask = allTaskRecords.find((record) => record.id === task.taskId);
-    taskFormMode = "view";
+  function openDelivery(delivery: ScheduleTask): void {
+    if (drag || isCronogramaTaskMuted(delivery, activeWorkspaceId)) return;
+    selectedDelivery = allDeliveryRecords.find((record) => record.id === delivery.deliveryId);
+    deliveryFormMode = "view";
   }
 
-  function handleTaskCardKeydown(
+  function handleDeliveryCardKeydown(
     event: KeyboardEvent,
-    task: ScheduleTask,
+    delivery: ScheduleTask,
   ): void {
     if (event.target !== event.currentTarget) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    openTask(task);
+    openDelivery(delivery);
   }
 
-  async function saveTask(values: Record<string, string>): Promise<void> {
-    if (!selectedTask) return;
-    tasksLoading = true;
+  async function saveDelivery(values: Record<string, string>): Promise<void> {
+    if (!selectedDelivery) return;
+    deliveriesLoading = true;
     scheduleError = undefined;
     try {
-      await updateTaskFromEntityValues(selectedTask.id, values, selectedTask);
-      selectedTask = undefined;
-      await refreshTasks();
+      await updateDeliveryFromEntityValues(selectedDelivery.id, values, selectedDelivery);
+      selectedDelivery = undefined;
+      await refreshDeliveries();
     } catch (cause) {
       scheduleError =
-        cause instanceof TaskApiError
+        cause instanceof DeliveryApiError
           ? cause.message
-          : "Não foi possível salvar a tarefa.";
+          : "Não foi possível salvar a entrega.";
     } finally {
-      tasksLoading = false;
+      deliveriesLoading = false;
     }
   }
 
@@ -936,7 +936,7 @@
   }
 
   async function autoOrganizeSchedule(): Promise<void> {
-    if (autoScheduling || scheduleSaving || tasksLoading || drag) return;
+    if (autoScheduling || scheduleSaving || deliveriesLoading || drag) return;
     autoScheduling = true;
     scheduleError = undefined;
     scheduleNotice = undefined;
@@ -944,59 +944,59 @@
 
     try {
       const settings = currentSettings();
-      const eligibleTasks = tasks.filter(
-        (task) => !isCronogramaTaskMuted(task, activeWorkspaceId),
+      const eligibleDeliveries = deliveries.filter(
+        (delivery) => !isCronogramaTaskMuted(delivery, activeWorkspaceId),
       );
-      const tasksByWorkspace = new Map<string, ScheduleTask[]>();
-      for (const task of eligibleTasks) {
-        if (!task.workspaceId) {
-          throw new Error("Uma tarefa não possui workspace válido.");
+      const deliveriesByWorkspace = new Map<string, ScheduleTask[]>();
+      for (const delivery of eligibleDeliveries) {
+        if (!delivery.workspaceId) {
+          throw new Error("Uma entrega não possui workspace válido.");
         }
-        tasksByWorkspace.set(task.workspaceId, [
-          ...(tasksByWorkspace.get(task.workspaceId) ?? []),
-          task,
+        deliveriesByWorkspace.set(delivery.workspaceId, [
+          ...(deliveriesByWorkspace.get(delivery.workspaceId) ?? []),
+          delivery,
         ]);
       }
       let calculatedSchedules = { ...schedules };
-      const changedTaskIds: string[] = [];
-      const unscheduledTaskIds: string[] = [];
-      for (const [, workspaceTasks] of [...tasksByWorkspace].sort(
+      const changedDeliveryIds: string[] = [];
+      const unscheduledDeliveryIds: string[] = [];
+      for (const [, workspaceDeliveries] of [...deliveriesByWorkspace].sort(
         ([left], [right]) => left.localeCompare(right),
       )) {
         const workspaceResult = autoScheduleWeek({
-          tasks: allTasks,
-          candidateTaskIds: workspaceTasks.map((task) => task.id),
+          deliveries: allDeliveries,
+          candidateDeliveryIds: workspaceDeliveries.map((delivery) => delivery.id),
           schedules: calculatedSchedules,
           days: autoScheduleDays,
           shifts: settings.workdayShifts,
           now,
         });
         calculatedSchedules = workspaceResult.schedule;
-        changedTaskIds.push(...workspaceResult.changedTaskIds);
-        unscheduledTaskIds.push(...workspaceResult.unscheduledTaskIds);
+        changedDeliveryIds.push(...workspaceResult.changedDeliveryIds);
+        unscheduledDeliveryIds.push(...workspaceResult.unscheduledDeliveryIds);
       }
       const result = {
         schedule: calculatedSchedules,
-        changedTaskIds,
-        unscheduledTaskIds,
+        changedDeliveryIds,
+        unscheduledDeliveryIds,
       };
 
-      if (!result.changedTaskIds.length) {
+      if (!result.changedDeliveryIds.length) {
         showScheduleNotice(
-          result.unscheduledTaskIds.length
-            ? `Não há espaço livre nesta semana para ${result.unscheduledTaskIds.length} ${result.unscheduledTaskIds.length === 1 ? "card" : "cards"}.`
+          result.unscheduledDeliveryIds.length
+            ? `Não há espaço livre nesta semana para ${result.unscheduledDeliveryIds.length} ${result.unscheduledDeliveryIds.length === 1 ? "card" : "cards"}.`
             : "O cronograma desta semana já está organizado.",
-          result.unscheduledTaskIds.length > 0,
+          result.unscheduledDeliveryIds.length > 0,
         );
         return;
       }
 
       schedules = result.schedule;
-      const taskById = new Map(allTasks.map((task) => [task.id, task]));
+      const deliveryById = new Map(allDeliveries.map((delivery) => [delivery.id, delivery]));
       const byWorkspace = new Map<
         string,
         Array<{
-          subtaskId: string;
+          taskId: string;
           date: string;
           startMinutes: number;
           durationMinutes: number;
@@ -1004,21 +1004,21 @@
         }>
       >();
 
-      for (const taskId of result.changedTaskIds) {
-        const task = taskById.get(taskId);
-        const entry = result.schedule[taskId];
-        const workspaceId = task?.workspaceId;
-        if (!task || !entry || !workspaceId) {
-          throw new Error("Uma tarefa não possui workspace válido.");
+      for (const deliveryId of result.changedDeliveryIds) {
+        const delivery = deliveryById.get(deliveryId);
+        const entry = result.schedule[deliveryId];
+        const workspaceId = delivery?.workspaceId;
+        if (!delivery || !entry || !workspaceId) {
+          throw new Error("Uma entrega não possui workspace válido.");
         }
         byWorkspace.set(workspaceId, [
           ...(byWorkspace.get(workspaceId) ?? []),
           {
-            subtaskId: task.subtaskId,
+            taskId: delivery.taskId,
             date: entry.date,
             startMinutes: entry.startMinutes,
             durationMinutes: entry.durationSlots * MINUTES_PER_SLOT,
-            version: originalSchedules[taskId]?.version ?? 0,
+            version: originalSchedules[deliveryId]?.version ?? 0,
           },
         ]);
       }
@@ -1032,10 +1032,10 @@
         await loadCompleteCronogramaSnapshot(),
       );
 
-      const newlyScheduled = result.changedTaskIds.filter(
-        (taskId) => !originalSchedules[taskId],
+      const newlyScheduled = result.changedDeliveryIds.filter(
+        (deliveryId) => !originalSchedules[deliveryId],
       ).length;
-      const moved = result.changedTaskIds.length - newlyScheduled;
+      const moved = result.changedDeliveryIds.length - newlyScheduled;
       const summary = [
         moved
           ? `${moved} ${moved === 1 ? "card reposicionado" : "cards reposicionados"}`
@@ -1044,7 +1044,7 @@
           ? `${newlyScheduled} ${newlyScheduled === 1 ? "card agendado" : "cards agendados"}`
           : "",
       ].filter(Boolean);
-      const pending = result.unscheduledTaskIds.length;
+      const pending = result.unscheduledDeliveryIds.length;
       showScheduleNotice(
         `${summary.join(" e ")}.${
           pending
@@ -1077,11 +1077,11 @@
 <section
   class="cronograma-page"
   aria-label="Cronograma semanal"
-  aria-busy={tasksLoading || scheduleSaving || autoScheduling}
+  aria-busy={deliveriesLoading || scheduleSaving || autoScheduling}
 >
   <article
     class="schedule-board"
-    aria-label={`Tarefas programadas de segunda a ${includeSaturday ? "sábado" : "sexta"}`}
+    aria-label={`Entregas programadas de segunda a ${includeSaturday ? "sábado" : "sexta"}`}
   >
     <div class="schedule-viewport" bind:this={viewport} data-schedule-viewport>
       <div
@@ -1145,21 +1145,21 @@
               </span>
             {/if}
 
-            {#each positionedByDay[day.index] ?? [] as item (item.task.id)}
+            {#each positionedByDay[day.index] ?? [] as item (item.delivery.id)}
               <div
-                class="positioned-task"
-                style={`--task-start: ${(item.schedule.startMinutes - visibleStart) / MINUTES_PER_SLOT}; --task-span: ${item.schedule.durationSlots}; --task-left: ${(item.lane / item.laneCount) * 100}%; --task-width: ${100 / item.laneCount}%`}
+                class="positioned-delivery"
+                style={`--delivery-start: ${(item.schedule.startMinutes - visibleStart) / MINUTES_PER_SLOT}; --delivery-span: ${item.schedule.durationSlots}; --delivery-left: ${(item.lane / item.laneCount) * 100}%; --delivery-width: ${100 / item.laneCount}%`}
               >
                 <ScheduleCard
-                  task={item.task}
+                  delivery={item.delivery}
                   schedule={item.schedule}
-                  muted={isCronogramaTaskMuted(item.task, activeWorkspaceId)}
+                  muted={isCronogramaTaskMuted(item.delivery, activeWorkspaceId)}
                   dragging={drag?.moved &&
-                    drag.task.id === item.task.id &&
+                    drag.delivery.id === item.delivery.id &&
                     drag.mode === "drag"}
                   onpointerstart={(event) =>
-                    beginInteraction(event, item.task, item.schedule)}
-                  onopen={() => openTask(item.task)}
+                    beginInteraction(event, item.delivery, item.schedule)}
+                  onopen={() => openDelivery(item.delivery)}
                 />
               </div>
             {/each}
@@ -1170,38 +1170,38 @@
   </article>
 
   <CardDrawer
-    ariaLabel="Subtarefas disponíveis"
-    title="Subtarefas a programar"
-    description="Mostra somente a próxima subtarefa disponível de cada tarefa. Arraste para definir sua execução."
+    ariaLabel="Entregas disponíveis"
+    title="Entregas a programar"
+    description="Mostra somente a próxima entrega disponível de cada entrega. Arraste para definir sua execução."
     icon={ListTodo}
-    items={unscheduledTasks}
-    getKey={(task) => task.id}
+    items={unscheduledDeliveries}
+    getKey={(delivery) => delivery.id}
     open={drawerOpen}
     isDropTarget={activeDropTarget === "drawer"}
-    countLabel="subtarefas disponíveis"
+    countLabel="entregas disponíveis"
     toggleAriaLabel={drawerOpen
       ? "Recolher itens não agendados"
       : "Abrir itens não agendados"}
     ontoggle={() => (drawerOpen = !drawerOpen)}
   >
-    {#snippet card(task)}
+    {#snippet card(delivery)}
       <div
-        class:dragging={drag?.moved && drag.task.id === task.id}
-        class="unscheduled-task-card"
+        class:dragging={drag?.moved && drag.delivery.id === delivery.id}
+        class="unscheduled-delivery-card"
         role="button"
         tabindex="0"
-        aria-label={`Subtarefa: ${task.nome}. Tarefa: ${task.taskNome}. Arraste para programar.`}
-        data-task-id={task.id}
-        data-drawer-task-card
-        onpointerdown={(event) => beginInteraction(event, task)}
-        onkeydown={(event) => handleTaskCardKeydown(event, task)}
+        aria-label={`Entrega: ${delivery.nome}. Entrega: ${delivery.deliveryNome}. Arraste para programar.`}
+        data-delivery-id={delivery.id}
+        data-drawer-delivery-card
+        onpointerdown={(event) => beginInteraction(event, delivery)}
+        onkeydown={(event) => handleDeliveryCardKeydown(event, delivery)}
       >
-        <EntityCard item={toTaskCardItem(task)} level={4} />
+        <EntityCard item={toDeliveryCardItem(delivery)} level={4} />
       </div>
     {/snippet}
 
     {#snippet empty()}
-      <Inbox size={18} />Nenhuma subtarefa disponível para programar.
+      <Inbox size={18} />Nenhuma entrega disponível para programar.
     {/snippet}
   </CardDrawer>
 </section>
@@ -1237,25 +1237,25 @@
   </div>
 {/if}
 
-{#if drag?.moved && heldTaskCard}
+{#if drag?.moved && heldDeliveryCard}
   <div
     class="drag-preview"
     style={`left: ${drag.clientX + 14}px; top: ${drag.clientY + 14}px`}
     aria-hidden="true"
     data-drag-preview-card
   >
-    <EntityCard item={heldTaskCard} level={5} interactive={false} />
+    <EntityCard item={heldDeliveryCard} level={5} interactive={false} />
   </div>
 {/if}
 
-{#if selectedTask}
-  <TaskForm
+{#if selectedDelivery}
+  <DeliveryForm
     config={deliveryConfig}
-    record={selectedTask}
-    mode={taskFormMode}
-    oncancel={() => (selectedTask = undefined)}
-    onsave={saveTask}
-    onedit={() => (taskFormMode = "edit")}
+    record={selectedDelivery}
+    mode={deliveryFormMode}
+    oncancel={() => (selectedDelivery = undefined)}
+    onsave={saveDelivery}
+    onedit={() => (deliveryFormMode = "edit")}
   />
 {/if}
 
@@ -1462,16 +1462,16 @@
     background-color: rgba(220, 38, 38, 0.12);
     background-blend-mode: multiply;
   }
-  .positioned-task {
+  .positioned-delivery {
     position: absolute;
     z-index: 3;
-    top: calc(var(--task-start) * var(--slot-height));
-    left: var(--task-left);
-    width: var(--task-width);
-    height: calc(var(--task-span) * var(--slot-height));
+    top: calc(var(--delivery-start) * var(--slot-height));
+    left: var(--delivery-left);
+    width: var(--delivery-width);
+    height: calc(var(--delivery-span) * var(--slot-height));
     min-height: var(--slot-height);
   }
-  .positioned-task::after {
+  .positioned-delivery::after {
     position: absolute;
     z-index: 9;
     right: 0;
@@ -1482,7 +1482,7 @@
     content: "";
     pointer-events: none;
   }
-  :global(.positioned-task > .task-card) {
+  :global(.positioned-delivery > .delivery-card) {
     position: relative;
     width: 100%;
     height: 100%;
@@ -1518,7 +1518,7 @@
     font-size: var(--text-xs);
     font-weight: 700;
   }
-  .unscheduled-task-card {
+  .unscheduled-delivery-card {
     width: 100%;
     min-width: 0;
     cursor: grab;
@@ -1526,10 +1526,10 @@
     user-select: none;
     transition: opacity var(--motion-fast);
   }
-  .unscheduled-task-card:active {
+  .unscheduled-delivery-card:active {
     cursor: grabbing;
   }
-  .unscheduled-task-card.dragging {
+  .unscheduled-delivery-card.dragging {
     opacity: 0.28;
     pointer-events: none;
   }

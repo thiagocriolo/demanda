@@ -6,7 +6,7 @@ export const recordsTabRoutes: Record<RecordsTab, string> = {
   negocios: "/clientes/negócios",
   contratos: "/clientes/contratos",
   projetos: "/clientes/projetos",
-  tarefas: "/clientes/tarefas",
+  entregas: "/clientes/entregas",
 };
 
 export const recordsTabs: TabItem[] = [
@@ -25,6 +25,6 @@ export function recordsTabFromPath(pathname: string): RecordsTab | undefined {
   if (segment === "negócios") return "negocios";
   if (segment === "contratos") return "contratos";
   if (segment === "projetos") return "projetos";
-  if (segment === "entregas" || segment === "tarefas") return "tarefas";
+  if (segment === "entregas" || segment === "tarefas") return "entregas";
   return undefined;
 }

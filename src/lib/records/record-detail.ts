@@ -1,7 +1,7 @@
 import type { Business } from "$lib/businesses/types";
 import type { Contact } from "$lib/contacts/types";
 import type { Project } from "$lib/projects/types";
-import type { Task } from "$lib/tasks/types";
+import type { Delivery } from "$lib/deliveries/types";
 import type { EntityCardKind } from "$lib/ui/entity-card";
 
 export type RecordDetailField = { label: string; value: string };
@@ -194,21 +194,21 @@ export function projectDetail(project: Project): RecordDetail {
   };
 }
 
-export function taskDetail(task: Task): RecordDetail {
+export function deliveryDetail(delivery: Delivery): RecordDetail {
   return {
-    id: task.id,
-    kind: "tarefa",
+    id: delivery.id,
+    kind: "entrega",
     typeLabel: "Entrega",
-    title: task.name,
-    status: task.archivedAt ? "Arquivado" : task.status,
-    archived: Boolean(task.archivedAt),
-    updatedAt: date(task.updatedAt),
+    title: delivery.name,
+    status: delivery.archivedAt ? "Arquivado" : delivery.status,
+    archived: Boolean(delivery.archivedAt),
+    updatedAt: date(delivery.updatedAt),
     fields: [
-      { label: "Negócio", value: task.business.name },
-      { label: "Projeto", value: task.project.name },
-      { label: "Prazo", value: date(task.dueDate) },
-      { label: "Prioridade", value: text(task.priority) },
-      { label: "Categoria", value: text(task.category) },
+      { label: "Negócio", value: delivery.business.name },
+      { label: "Projeto", value: delivery.project.name },
+      { label: "Prazo", value: date(delivery.dueDate) },
+      { label: "Prioridade", value: text(delivery.priority) },
+      { label: "Categoria", value: text(delivery.category) },
     ],
     sections: [
       {
@@ -216,20 +216,20 @@ export function taskDetail(task: Task): RecordDetail {
         fields: [
           {
             label: "Responsáveis",
-            value: list(task.responsibles.map(({ name }) => name)),
+            value: list(delivery.responsibles.map(({ name }) => name)),
           },
-          { label: "Tags", value: list(task.tags.map(({ name }) => name)) },
-          { label: "Briefing", value: text(task.briefing) },
+          { label: "Tags", value: list(delivery.tags.map(({ name }) => name)) },
+          { label: "Briefing", value: text(delivery.briefing) },
         ],
       },
       {
-        title: "Tarefas",
+        title: "Entregas",
         fields: [
           {
             label: "Itens",
             value: list(
-              task.subtasks.map(({ name, status }) => `${name} (${status})`),
-              "Nenhuma subtask",
+              delivery.tasks.map(({ name, status }) => `${name} (${status})`),
+              "Nenhuma task",
             ),
           },
         ],

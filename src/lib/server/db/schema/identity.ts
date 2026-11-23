@@ -86,8 +86,8 @@ export const userPreferences = applicationSchema.table(
   ],
 );
 
-export const personalTasks = applicationSchema.table(
-  "personal_tasks",
+export const personalDeliveries = applicationSchema.table(
+  "personal_deliveries",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
@@ -100,17 +100,17 @@ export const personalTasks = applicationSchema.table(
     updatedAt: updatedAt(),
   },
   (table) => [
-    index("personal_tasks_user_order_index").on(
+    index("personal_deliveries_user_order_index").on(
       table.userId,
       table.sortOrder,
       table.createdAt,
     ),
     check(
-      "personal_tasks_title_not_blank",
+      "personal_deliveries_title_not_blank",
       sql`length(btrim(${table.title})) > 0`,
     ),
     check(
-      "personal_tasks_sort_order_nonnegative",
+      "personal_deliveries_sort_order_nonnegative",
       sql`${table.sortOrder} >= 0`,
     ),
   ],

@@ -8,7 +8,7 @@ describe("configurações padrão de status", () => {
       ...settings.personStatuses,
       ...settings.businessStatuses,
       ...settings.projectStatuses,
-      ...settings.taskStatuses,
+      ...settings.deliveryStatuses,
     ];
 
     expect(statuses).toHaveLength(20);

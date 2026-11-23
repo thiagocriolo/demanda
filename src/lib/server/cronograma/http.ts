@@ -3,7 +3,7 @@ import { WorkspacePermissionDeniedError } from "../authorization/policy";
 import { WorkspaceNotFoundError } from "../authorization/workspace-context";
 import {
   CronogramaRuleViolationError,
-  CronogramaSubtaskNotFoundError,
+  CronogramaTaskNotFoundError,
   CronogramaVersionConflictError,
 } from "./service";
 
@@ -12,7 +12,7 @@ export function throwCronogramaHttpError(cause: unknown): never {
     error(403, cause.message);
   if (
     cause instanceof WorkspaceNotFoundError ||
-    cause instanceof CronogramaSubtaskNotFoundError ||
+    cause instanceof CronogramaTaskNotFoundError ||
     cause instanceof CronogramaRuleViolationError ||
     cause instanceof CronogramaVersionConflictError
   ) {

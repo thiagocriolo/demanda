@@ -32,6 +32,9 @@
   let completed = $state(false);
   let preflightIssues = $state<RecordQueuePreflightIssue[]>([]);
   let preflightPending = $state(false);
+  // This token only discards stale asynchronous preflight responses; it is not
+  // UI state. Keeping it outside $state prevents the effect from retriggering
+  // itself forever when a review link is opened.
   let preflightEpoch = 0;
   let commandPayload = $state<string | null>(null);
   let loadedPayload = $state(false);
@@ -54,9 +57,13 @@
       contact: "Contato",
       business: "Negócio",
       project: "Projeto",
-      task: "Tarefa",
+      delivery: "Tarefa",
       service_template: "Modelo de serviço",
       delivery_template: "Modelo de entrega",
+      workspace: "Workspace",
+      service: "Serviço",
+      contract: "Contrato",
+      finance_entry: "Lançamento financeiro",
     } as const;
     return `${labels[command.kind]}: ${command.name}`;
   }
@@ -65,11 +72,11 @@
     if (command.kind === "project") {
       return `Tipo: ${command.contractType === "recurring" ? "Cíclico" : "Pontual"}.`;
     }
-    if (command.kind === "task" && command.subtasks?.length) {
-      return `${command.subtasks.length} subtarefa(s) será(ão) criada(s).`;
+    if (command.kind === "delivery" && command.tasks?.length) {
+      return `${command.tasks.length} tarefa(s) será(ão) criada(s).`;
     }
-    if (command.kind === "delivery_template" && command.subtasks?.length) {
-      return `${command.subtasks.length} subtarefa(s) será(ão) incluída(s) no modelo.`;
+    if (command.kind === "delivery_template" && command.tasks?.length) {
+      return `${command.tasks.length} tarefa(s) será(ão) incluída(s) no modelo.`;
     }
     return "";
   }
@@ -104,9 +111,13 @@
           "O link precisa conter um documento JSON do protocolo v2.",
         );
       }
-      queue = compileRecordCommandQueue(parsed.queueCommands);
+      const compiledQueue = compileRecordCommandQueue(parsed.queueCommands);
+      queue = compiledQueue;
       preflightPending = true;
-      void preflightRecordCommandQueue(queue)
+      // Use the local value here. Reading the reactive `queue` after writing
+      // it would make this effect depend on itself and restart the preflight
+      // indefinitely.
+      void preflightRecordCommandQueue(compiledQueue)
         .then((issues) => {
           if (epoch === preflightEpoch) preflightIssues = issues;
         })
@@ -258,6 +269,7 @@
           preflightIssues.length > 0}
       >
         {#if executing}<LoaderCircle
+            class="spin"
             size={18}
           />Executando…{:else if completed}<Check
             size={18}
@@ -455,11 +467,8 @@
   .review-actions :global(svg) {
     flex: none;
   }
-  .review-actions button :global(svg) {
+  :global(.spin) {
     animation: spin 800ms linear infinite;
-  }
-  .review-actions button:not(:disabled) :global(svg) {
-    animation: none;
   }
   .alert {
     display: flex;

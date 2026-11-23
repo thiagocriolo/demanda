@@ -25,12 +25,12 @@ export function projectsParticipatedByUser(
 }
 
 /** Relações com projetos só são válidas por ID exato. */
-export function taskBelongsToProjects(
-  task: EntityRecord,
+export function deliveryBelongsToProjects(
+  delivery: EntityRecord,
   projects: EntityRecord[],
 ): boolean {
   const projectId =
-    task.projetoId || task.projeto_id || task.projectId || task.project_id;
+    delivery.projetoId || delivery.projeto_id || delivery.projectId || delivery.project_id;
   return Boolean(
     projectId && projects.some((project) => project.id === projectId),
   );

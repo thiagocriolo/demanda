@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getContext, onMount } from "svelte";
   import {
+    CalendarDays,
     FileText,
     Plus,
     RefreshCw,
@@ -324,8 +325,14 @@
         <span class="col-agreement-head">Contrato</span>
         <span class="col-workspace-head">Workspace</span>
         <span>Modalidade</span>
-        <span>Início</span>
-        <span>Término</span>
+        <span class="period-head">
+          <CalendarDays size={13} strokeWidth={1.9} />
+          <span>Início</span>
+        </span>
+        <span class="period-head">
+          <CalendarDays size={13} strokeWidth={1.9} />
+          <span>Término</span>
+        </span>
         <span class="col-duration-head">Duração</span>
         <span class="col-projects-head">Projetos</span>
         <span class="align-right">Valor</span>
@@ -561,8 +568,25 @@
     text-transform: uppercase;
   }
 
+  .ledger-columns > span {
+    justify-self: stretch;
+    text-align: center;
+  }
+
   .col-agreement-head {
     padding-left: 50px;
+    text-align: left !important;
+  }
+
+  .period-head {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+
+  .period-head :global(svg) {
+    color: var(--brand-600);
   }
 
   .col-actions-head {
@@ -571,7 +595,7 @@
   }
 
   .align-right {
-    text-align: right;
+    text-align: right !important;
   }
 
   .ledger-rows {

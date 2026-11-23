@@ -9,7 +9,7 @@ import {
   contactDetail,
   businessDetail,
   projectDetail,
-  taskDetail,
+  deliveryDetail,
   contractDetail,
 } from "$lib/records/record-detail";
 import { recordTabFromRoute } from "$lib/records/record-page";
@@ -17,7 +17,7 @@ import {
   getBusinessOperations,
   getContractOperations,
   getProjectOperations,
-  getTaskOperations,
+  getDeliveryOperations,
 } from "$lib/server/records/operations";
 import {
   getContactOperationalDashboard,
@@ -32,8 +32,8 @@ import {
   getWorkspaceProject,
   ProjectNotFoundError,
 } from "$lib/server/projects/service";
-import { getWorkspaceTask, TaskNotFoundError } from "$lib/server/tasks/service";
-import { listWorkspaceTaskComments } from "$lib/server/tasks/comments";
+import { getWorkspaceDelivery, DeliveryNotFoundError } from "$lib/server/deliveries/service";
+import { listWorkspaceDeliveryComments } from "$lib/server/deliveries/comments";
 
 const recordIdSchema = z.string().uuid();
 
@@ -120,19 +120,19 @@ export const load: PageServerLoad = async ({ locals, params }) => {
         backHref: "/clientes/contratos",
       };
     }
-    const task = await getWorkspaceTask(database, context, parsedId.data);
+    const delivery = await getWorkspaceDelivery(database, context, parsedId.data);
     return {
-      detail: taskDetail(task),
-      taskDashboard: getTaskOperations(task),
-      taskComments: await listWorkspaceTaskComments(database, context, task.id),
-      backHref: "/clientes/tarefas",
+      detail: deliveryDetail(delivery),
+      deliveryDashboard: getDeliveryOperations(delivery),
+      deliveryComments: await listWorkspaceDeliveryComments(database, context, delivery.id),
+      backHref: "/clientes/entregas",
     };
   } catch (cause) {
     if (
       cause instanceof ContactNotFoundError ||
       cause instanceof BusinessNotFoundError ||
       cause instanceof ProjectNotFoundError ||
-      cause instanceof TaskNotFoundError
+      cause instanceof DeliveryNotFoundError
     ) {
       error(404, "Registro não encontrado.");
     }

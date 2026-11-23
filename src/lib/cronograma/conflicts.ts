@@ -1,9 +1,9 @@
 import { MINUTES_PER_SLOT, minutesToTime } from "./date";
-import { isSubtaskCompleted } from "../entities/subtasks";
+import { isTaskCompleted } from "../entities/tasks";
 import type { ScheduleEntry, ScheduleMap, ScheduleTask } from "./types";
 
 export type ScheduleConflict = {
-  task: ScheduleTask;
+  delivery: ScheduleTask;
   schedule: ScheduleEntry;
   responsibles: string[];
 };
@@ -44,10 +44,10 @@ export function schedulesOverlap(
   return left.startMinutes < rightEnd && right.startMinutes < leftEnd;
 }
 
-function typedResponsibleIds(task: ScheduleTask): string[] | null {
-  if (task.responsibleUserIds === undefined) return null;
+function typedResponsibleIds(delivery: ScheduleTask): string[] | null {
+  if (delivery.responsibleUserIds === undefined) return null;
   try {
-    const parsed = JSON.parse(task.responsibleUserIds) as unknown;
+    const parsed = JSON.parse(delivery.responsibleUserIds) as unknown;
     return Array.isArray(parsed) &&
       parsed.every((value) => typeof value === "string")
       ? [...new Set(parsed)]
@@ -82,26 +82,26 @@ function sharedResponsibles(
 }
 
 export function findScheduleConflict(
-  task: ScheduleTask,
+  delivery: ScheduleTask,
   candidate: ScheduleEntry,
-  tasks: ScheduleTask[],
+  deliveries: ScheduleTask[],
   schedule: ScheduleMap,
 ): ScheduleConflict | undefined {
-  const taskById = new Map(tasks.map((item) => [item.id, item]));
+  const deliveryById = new Map(deliveries.map((item) => [item.id, item]));
 
-  for (const [otherTaskId, otherSchedule] of Object.entries(schedule)) {
+  for (const [otherDeliveryId, otherSchedule] of Object.entries(schedule)) {
     if (
-      otherTaskId === task.id ||
+      otherDeliveryId === delivery.id ||
       !schedulesOverlap(candidate, otherSchedule)
     ) {
       continue;
     }
-    const otherTask = taskById.get(otherTaskId);
-    if (!otherTask) continue;
+    const otherDelivery = deliveryById.get(otherDeliveryId);
+    if (!otherDelivery) continue;
 
-    const shared = sharedResponsibles(task, otherTask);
+    const shared = sharedResponsibles(delivery, otherDelivery);
     if (shared.length) {
-      return { task: otherTask, schedule: otherSchedule, responsibles: shared };
+      return { delivery: otherDelivery, schedule: otherSchedule, responsibles: shared };
     }
   }
 }
@@ -114,7 +114,7 @@ export function describeScheduleConflict(conflict: ScheduleConflict): string {
   const endMinutes =
     conflict.schedule.startMinutes +
     conflict.schedule.durationSlots * MINUTES_PER_SLOT;
-  return `Conflito de horário para ${names}: “${conflict.task.nome}” já ocupa ${minutesToTime(conflict.schedule.startMinutes)}–${minutesToTime(endMinutes)}.`;
+  return `Conflito de horário para ${names}: “${conflict.delivery.nome}” já ocupa ${minutesToTime(conflict.schedule.startMinutes)}–${minutesToTime(endMinutes)}.`;
 }
 
 function startsAfterEnd(
@@ -129,39 +129,39 @@ function startsAfterEnd(
 }
 
 export function findSequenceConflict(
-  task: ScheduleTask,
+  delivery: ScheduleTask,
   candidate: ScheduleEntry,
-  tasks: ScheduleTask[],
+  deliveries: ScheduleTask[],
   schedule: ScheduleMap,
 ): SequenceConflict | undefined {
-  const siblings = tasks
-    .filter((item) => item.taskId === task.taskId && item.id !== task.id)
+  const siblings = deliveries
+    .filter((item) => item.deliveryId === delivery.deliveryId && item.id !== delivery.id)
     .sort((left, right) => left.sequence - right.sequence);
 
   for (const previous of siblings.filter(
-    (item) => item.sequence < task.sequence,
+    (item) => item.sequence < delivery.sequence,
   )) {
     const previousSchedule = schedule[previous.id];
-    if (!previousSchedule && !isSubtaskCompleted(previous.status)) {
+    if (!previousSchedule && !isTaskCompleted(previous.status)) {
       return {
         related: previous,
-        message: `“${task.nome}” só pode ser alocada depois que “${previous.nome}” for concluída ou programada.`,
+        message: `“${delivery.nome}” só pode ser alocada depois que “${previous.nome}” for concluída ou programada.`,
       };
     }
     if (previousSchedule && !startsAfterEnd(candidate, previousSchedule)) {
       return {
         related: previous,
-        message: `“${task.nome}” deve começar depois do término de “${previous.nome}”.`,
+        message: `“${delivery.nome}” deve começar depois do término de “${previous.nome}”.`,
       };
     }
   }
 
-  for (const next of siblings.filter((item) => item.sequence > task.sequence)) {
+  for (const next of siblings.filter((item) => item.sequence > delivery.sequence)) {
     const nextSchedule = schedule[next.id];
     if (nextSchedule && !startsAfterEnd(nextSchedule, candidate)) {
       return {
         related: next,
-        message: `“${task.nome}” deve terminar antes do início de “${next.nome}”.`,
+        message: `“${delivery.nome}” deve terminar antes do início de “${next.nome}”.`,
       };
     }
   }
@@ -169,33 +169,33 @@ export function findSequenceConflict(
 
 /** Remove alocações legadas que quebram a sequência ou pulam uma etapa pendente. */
 export function removeSequenceConflicts(
-  tasks: ScheduleTask[],
+  deliveries: ScheduleTask[],
   schedule: ScheduleMap,
 ): ScheduleMap {
   const result = { ...schedule };
-  const ordered = [...tasks].sort(
+  const ordered = [...deliveries].sort(
     (left, right) =>
-      left.taskId.localeCompare(right.taskId) || left.sequence - right.sequence,
+      left.deliveryId.localeCompare(right.deliveryId) || left.sequence - right.sequence,
   );
 
-  const acceptedByTask = new Map<string, ScheduleEntry>();
-  const blockedTasks = new Set<string>();
-  for (const task of ordered) {
-    const entry = result[task.id];
+  const acceptedByDelivery = new Map<string, ScheduleEntry>();
+  const blockedDeliveries = new Set<string>();
+  for (const delivery of ordered) {
+    const entry = result[delivery.id];
     if (!entry) {
-      if (!isSubtaskCompleted(task.status)) blockedTasks.add(task.taskId);
+      if (!isTaskCompleted(delivery.status)) blockedDeliveries.add(delivery.deliveryId);
       continue;
     }
-    const previous = acceptedByTask.get(task.taskId);
+    const previous = acceptedByDelivery.get(delivery.deliveryId);
     if (
-      blockedTasks.has(task.taskId) ||
+      blockedDeliveries.has(delivery.deliveryId) ||
       (previous && !startsAfterEnd(entry, previous))
     ) {
-      delete result[task.id];
-      if (!isSubtaskCompleted(task.status)) blockedTasks.add(task.taskId);
+      delete result[delivery.id];
+      if (!isTaskCompleted(delivery.status)) blockedDeliveries.add(delivery.deliveryId);
       continue;
     }
-    acceptedByTask.set(task.taskId, entry);
+    acceptedByDelivery.set(delivery.deliveryId, entry);
   }
   return result;
 }
@@ -205,10 +205,10 @@ export function removeSequenceConflicts(
  * de cada usuário e retirando da grade os compromissos conflitantes seguintes.
  */
 export function removeScheduleConflicts(
-  tasks: ScheduleTask[],
+  deliveries: ScheduleTask[],
   schedule: ScheduleMap,
 ): ScheduleMap {
-  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const deliveryById = new Map(deliveries.map((delivery) => [delivery.id, delivery]));
   const sorted = Object.entries(schedule).sort(
     ([leftId, left], [rightId, right]) =>
       left.date.localeCompare(right.date) ||
@@ -217,10 +217,10 @@ export function removeScheduleConflicts(
   );
   const result: ScheduleMap = {};
 
-  for (const [taskId, entry] of sorted) {
-    const task = taskById.get(taskId);
-    if (!task || !findScheduleConflict(task, entry, tasks, result)) {
-      result[taskId] = entry;
+  for (const [deliveryId, entry] of sorted) {
+    const delivery = deliveryById.get(deliveryId);
+    if (!delivery || !findScheduleConflict(delivery, entry, deliveries, result)) {
+      result[deliveryId] = entry;
     }
   }
   return result;

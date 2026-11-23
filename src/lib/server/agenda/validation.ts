@@ -19,7 +19,7 @@ export const agendaQuerySchema = z
 
 export const agendaMoveSchema = z
   .object({
-    mode: z.enum(["projects", "tasks"]),
+    mode: z.enum(["projects", "deliveries"]),
     items: z
       .array(
         z
