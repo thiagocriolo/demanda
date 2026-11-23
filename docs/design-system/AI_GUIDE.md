@@ -8,7 +8,7 @@
 ## 1. Regras de Ouro Estéticas
 
 ### FAÇA (Obrigatório)
-- Importe `SRDesign/core/sr-design.css` (ou os módulos de `core/components/`).
+- Consulte `docs/design-system/core/sr-design.css` (ou os módulos de `core/components/`) antes de criar ou alterar componentes visuais.
 - Use exclusivamente variáveis `--sr-*` para cores, tipografia, raios, sombras e espaçamento.
 - Mantenha o fundo principal em `--sr-main-background` (tint suave da cor primária) com superfícies elevadas em branco (`--sr-surface` / `--sr-panel`) e bordas sutis (`1px solid var(--sr-border)`).
 - Use a fonte **Pogonia** (`var(--sr-font-sans)`) e pesos `400` (corpo), `500` (abas/destaques leves), `600` (títulos/labels/botões).
@@ -28,14 +28,14 @@
 
 ### HTML / PHP / Vanilla JS
 ```html
-<link rel="stylesheet" href="SRDesign/core/sr-design.css" />
-<script src="SRDesign/core/sr-icons.js"></script>
-<script src="SRDesign/core/sr-core.js"></script>
+<link rel="stylesheet" href="design-system/core/sr-design.css" />
+<script src="design-system/core/sr-icons.js"></script>
+<script src="design-system/core/sr-core.js"></script>
 ```
 Se renderizar HTML dinamicamente após o load, chame `window.SRDesign.init(container)` para hidratar ícones e eventos.
 
 ### Svelte / React / Vue / Next / Vite
-- Importe `SRDesign/core/sr-design.css` no layout raiz da aplicação (verifique o caminho das fontes em `core/sr-base.css` caso o bundler copie assets).
+- Se o kit for adotado como dependência de uma aplicação, importe `design-system/core/sr-design.css` no layout raiz (verifique o caminho das fontes em `core/sr-base.css` caso o bundler copie assets).
 - Reutilize exatamente as mesmas classes `.sr-*` e anatomia HTML dos componentes.
 - Substitua os gatilhos JS imperativos (`data-sr-*`) pelo estado reativo nativo do framework, preservando **classes de estado** (`.is-collapsed`, `.is-active`, `.is-open`, `.is-dirty`, `.is-saved`, `.is-invalid`, `.is-disabled`) e atributos ARIA (`aria-selected`, `aria-expanded`, `aria-checked`, `hidden`).
 

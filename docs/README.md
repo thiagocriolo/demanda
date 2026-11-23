@@ -31,8 +31,8 @@ limitados a 2048 px e 1 MiB, contabilizados por usuário e nunca persistidos com
 base64 nas preferências. A
 BE-14 disponibiliza projeções autorizadas de Dashboard, atividades e busca no
 back-end, sem alterar o layout existente nem adicionar uma busca ao cabeçalho.
-Os dados locais legados são preservados para a migração controlada da BE-15,
-que é a próxima e única etapa ativa.
+Os mecanismos de importação de dados locais legados foram removidos: esta base
+começa com dados novos e usa apenas as APIs e o banco atuais.
 
 O `PUT` agregado de uma tarefa salva conteúdo e status na mesma transação. A
 Pauta reindexa as colunas ativas completas, mesmo sob filtros, e envia a
@@ -52,3 +52,6 @@ As instruções do ambiente local estão em
 
 O pipeline e a operação de imagens privadas estão em
 [private-media.md](./private-media.md).
+
+O kit visual de referência está em
+[design-system/](./design-system/).

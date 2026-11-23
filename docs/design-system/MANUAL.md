@@ -14,17 +14,17 @@ Ele foi criado para ser copiado e colado em qualquer outro projeto — sem servi
 
 ## Como reutilizar em um novo projeto
 
-1. Copie a pasta inteira **`SRDesign/`** para dentro do novo projeto.
+1. Copie a pasta inteira **`design-system/`** para dentro do novo projeto.
 2. Carregue os 3 arquivos do núcleo na sua página (ou importe o CSS no seu bundler):
 
 ```html
-<link rel="stylesheet" href="SRDesign/core/sr-design.css" />
-<script src="SRDesign/core/sr-icons.js"></script>
-<script src="SRDesign/core/sr-core.js"></script>
+<link rel="stylesheet" href="design-system/core/sr-design.css" />
+<script src="design-system/core/sr-icons.js"></script>
+<script src="design-system/core/sr-core.js"></script>
 ```
 
 3. **Usando com IA:** diga ao agente de IA:
-   > *"Leia `SRDesign/AI_GUIDE.md` e `SRDesign/catalog.json` e construa a interface deste projeto usando exclusivamente o SRDesign."*
+   > *"Leia `docs/design-system/AI_GUIDE.md` e `docs/design-system/catalog.json` e construa a interface deste projeto usando exclusivamente o SRDesign."*
 
 ---
 
