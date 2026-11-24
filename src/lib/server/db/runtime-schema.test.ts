@@ -6,9 +6,11 @@ import { applyRuntimeSchema } from "./runtime-schema";
 type FakeCatalog = {
   tables: Set<string>;
   columns: Set<string>;
+  columnExtras?: Map<string, string>;
   indexes: Set<string>;
   foreignKeys: Set<string>;
   legacyProjects?: Array<{ id: string; workspace_id: string }>;
+  rejectVirtualInstitutionalIndex?: boolean;
 };
 
 function flattenSql(query: SQL): { text: string; params: unknown[] } {
@@ -56,6 +58,10 @@ function createFakeDatabase(catalog: FakeCatalog) {
       if (normalized.includes("from information_schema.tables")) {
         const table = String(params[0]);
         return [catalog.tables.has(table) ? [{ present: 1 }] : []];
+      }
+      if (normalized.includes("select extra from information_schema.columns")) {
+        const key = `${String(params[0])}.${String(params[1])}`;
+        return [[{ extra: catalog.columnExtras?.get(key) ?? "" }]];
       }
       if (normalized.includes("from information_schema.columns")) {
         const key = `${String(params[0])}.${String(params[1])}`;
@@ -116,11 +122,43 @@ function createFakeDatabase(catalog: FakeCatalog) {
         catalog.tables.add("contract_installments");
       }
 
+      if (
+        normalized ===
+        "ALTER TABLE `projects` DROP COLUMN `institutional_contract_id`"
+      ) {
+        catalog.columns.delete("projects.institutional_contract_id");
+        catalog.columnExtras?.delete("projects.institutional_contract_id");
+      }
+
       const addColumnMatch = /^ALTER TABLE `([^`]+)` ADD COLUMN `([^`]+)`/.exec(
         normalized,
       );
       if (addColumnMatch) {
-        catalog.columns.add(`${addColumnMatch[1]}.${addColumnMatch[2]}`);
+        const key = `${addColumnMatch[1]}.${addColumnMatch[2]}`;
+        catalog.columns.add(key);
+        if (normalized.includes("STORED")) {
+          catalog.columnExtras?.set(key, "STORED GENERATED");
+        } else if (normalized.includes("VIRTUAL")) {
+          catalog.columnExtras?.set(key, "VIRTUAL GENERATED");
+        }
+      }
+
+      if (
+        catalog.rejectVirtualInstitutionalIndex &&
+        normalized ===
+          "ALTER TABLE `projects` ADD CONSTRAINT `projects_workspace_contract_institutional_unique` UNIQUE (`workspace_id`, `institutional_contract_id`)" &&
+        (catalog.columnExtras?.get("projects.institutional_contract_id") ?? "")
+          .toUpperCase()
+          .includes("VIRTUAL")
+      ) {
+        throw Object.assign(new Error("Failed query"), {
+          cause: {
+            code: "ER_UNSUPPORTED_EXTENSION",
+            errno: 3175,
+            sqlMessage:
+              "Cannot create index on virtual column whose base column has foreign constraint",
+          },
+        });
       }
 
       return [[]];
@@ -316,5 +354,100 @@ describe("applyRuntimeSchema", () => {
     expect(texts.some((q) => q.startsWith("INSERT INTO contracts"))).toBe(
       false,
     );
+  });
+
+  it("converte institutional_contract_id de VIRTUAL para STORED quando o banco rejeita índice em coluna virtual com FK", async () => {
+    const { database, executed } = createFakeDatabase({
+      tables: new Set([
+        "contracts",
+        "contract_installments",
+        "deliveries",
+        "delivery_tasks",
+        "delivery_responsibles",
+        "delivery_tags",
+        "delivery_comments",
+        "project_delivery_routines",
+        "service_delivery_templates",
+        "delivery_template_tasks",
+        "personal_deliveries",
+        "projects",
+        "financial_entries",
+      ]),
+      columns: new Set([
+        "contracts.contract_type",
+        "contracts.start_date",
+        "contracts.end_date",
+        "contracts.owner_user_id",
+        "projects.is_active",
+        "projects.contract_id",
+        "projects.engagement_type",
+        "projects.institutional_contract_id",
+        "deliveries.engagement_type",
+        "deliveries.project_routine_id",
+        "deliveries.routine_occurrence_date",
+        "delivery_tasks.execution_at",
+        "delivery_tasks.delivery_id",
+        "delivery_responsibles.delivery_id",
+        "delivery_tags.delivery_id",
+        "delivery_comments.delivery_id",
+        "tool_uses.delivery_id",
+        "agenda_entries.delivery_id",
+        "cronograma_blocks.delivery_id",
+        "cronograma_blocks.task_id",
+        "project_delivery_routines.tasks",
+        "project_delivery_routines.source_service_delivery_template_id",
+        "service_delivery_templates.recurrence_type",
+        "service_delivery_templates.recurrence_unit",
+        "service_delivery_templates.recurrence_days",
+        "financial_entries.contract_id",
+        "financial_entries.contract_installment_id",
+        "financial_entries.owner_user_id",
+      ]),
+      columnExtras: new Map([
+        ["projects.institutional_contract_id", "VIRTUAL GENERATED"],
+      ]),
+      indexes: new Set([
+        "contracts.contracts_workspace_id_id_business_id_unique",
+        "contracts.contracts_owner_workspace_updated_index",
+        "financial_entries.financial_entries_workspace_contract_index",
+        "financial_entries.financial_entries_owner_due_status_index",
+        "financial_entries.financial_entries_owner_contract_installment_unique",
+      ]),
+      foreignKeys: new Set([
+        "contracts.contracts_owner_user_id_users_id_fk",
+        "contracts.contracts_business_foreign_key",
+        "financial_entries.financial_entries_owner_user_id_users_id_fk",
+        "financial_entries.financial_entries_workspace_contract_foreign_key",
+        "financial_entries.financial_entries_workspace_contract_installment_foreign_key",
+        "projects.projects_workspace_contract_business_foreign_key",
+      ]),
+      rejectVirtualInstitutionalIndex: true,
+    });
+
+    await applyRuntimeSchema(database);
+
+    const texts = executed.map((entry) => entry.text);
+    expect(
+      texts.some(
+        (q) =>
+          q ===
+          "ALTER TABLE `projects` DROP COLUMN `institutional_contract_id`",
+      ),
+    ).toBe(true);
+    expect(
+      texts.some(
+        (q) =>
+          q.startsWith(
+            "ALTER TABLE `projects` ADD COLUMN `institutional_contract_id`",
+          ) && q.endsWith("STORED"),
+      ),
+    ).toBe(true);
+    expect(
+      texts.filter(
+        (q) =>
+          q ===
+          "ALTER TABLE `projects` ADD CONSTRAINT `projects_workspace_contract_institutional_unique` UNIQUE (`workspace_id`, `institutional_contract_id`)",
+      ),
+    ).toHaveLength(2);
   });
 });

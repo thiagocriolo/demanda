@@ -19,6 +19,10 @@ export function ensureRuntimeSchema(database: Database): Promise<void> {
     database,
   ).catch((cause) => {
     runtimeSchemaGlobals.__demandaRuntimeSchemaPromise = undefined;
+    console.error(
+      "[runtime-schema] Failed to apply runtime schema:",
+      describeDatabaseError(cause),
+    );
     throw cause;
   });
   return runtimeSchemaGlobals.__demandaRuntimeSchemaPromise;
@@ -445,18 +449,72 @@ async function ensureContractsSchema(database: Database): Promise<void> {
     "projects",
     "projects_workspace_business_institutional_unique",
   );
+  await ensureInstitutionalContractUniqueIndex(database);
+}
+
+async function ensureInstitutionalContractUniqueIndex(
+  database: Database,
+): Promise<void> {
+  const indexName = "projects_workspace_contract_institutional_unique";
+  if (await indexExists(database, "projects", indexName)) return;
+
   await addColumnIfMissing(
     database,
     "projects",
     "institutional_contract_id",
-    "char(36) GENERATED ALWAYS AS (case when `is_institutional` then `contract_id` else null end) VIRTUAL",
+    "char(36) GENERATED ALWAYS AS (case when `is_institutional` then `contract_id` else null end) STORED",
   );
-  await addUniqueIndexIfMissing(
-    database,
-    "projects",
-    "projects_workspace_contract_institutional_unique",
-    "(`workspace_id`, `institutional_contract_id`)",
-  );
+
+  try {
+    await addUniqueIndexIfMissing(
+      database,
+      "projects",
+      indexName,
+      "(`workspace_id`, `institutional_contract_id`)",
+    );
+    return;
+  } catch (firstError) {
+    // MariaDB/InnoDB can reject indexing a VIRTUAL generated column whose base
+    // column participates in a foreign key. If an earlier deploy created the
+    // column as VIRTUAL, recreate it as STORED and retry once.
+    const extra = await columnExtra(
+      database,
+      "projects",
+      "institutional_contract_id",
+    );
+    if (extra.toUpperCase().includes("VIRTUAL")) {
+      try {
+        await database.execute(
+          sql.raw(
+            "ALTER TABLE `projects` DROP COLUMN `institutional_contract_id`",
+          ),
+        );
+        await database.execute(
+          sql.raw(
+            "ALTER TABLE `projects` ADD COLUMN `institutional_contract_id` char(36) GENERATED ALWAYS AS (case when `is_institutional` then `contract_id` else null end) STORED",
+          ),
+        );
+        await addUniqueIndexIfMissing(
+          database,
+          "projects",
+          indexName,
+          "(`workspace_id`, `institutional_contract_id`)",
+        );
+        return;
+      } catch (retryError) {
+        console.warn(
+          "[runtime-schema] Skipping projects_workspace_contract_institutional_unique after STORED retry:",
+          describeDatabaseError(retryError),
+        );
+        return;
+      }
+    }
+
+    console.warn(
+      "[runtime-schema] Skipping projects_workspace_contract_institutional_unique:",
+      describeDatabaseError(firstError),
+    );
+  }
 }
 
 async function backfillLegacyProjectContracts(
@@ -632,6 +690,46 @@ async function columnExists(
           and column_name = ${columnName} limit 1`,
   );
   return rawRows<{ present: number }>(result).length > 0;
+}
+
+async function columnExtra(
+  database: Database,
+  tableName: string,
+  columnName: string,
+): Promise<string> {
+  const result = await database.execute(
+    sql`select extra from information_schema.columns
+        where table_schema = database() and table_name = ${tableName}
+          and column_name = ${columnName} limit 1`,
+  );
+  const row = rawRows<{ extra?: string; EXTRA?: string }>(result)[0];
+  return row?.extra ?? row?.EXTRA ?? "";
+}
+
+function describeDatabaseError(error: unknown): string {
+  const parts: string[] = [];
+  const visited = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !visited.has(current)) {
+    visited.add(current);
+    const record = current as Record<string, unknown>;
+    const detail = [
+      typeof record.code === "string" ? `code=${record.code}` : null,
+      typeof record.errno === "number" ? `errno=${record.errno}` : null,
+      typeof record.sqlState === "string"
+        ? `sqlState=${record.sqlState}`
+        : null,
+      typeof record.sqlMessage === "string"
+        ? `sqlMessage=${record.sqlMessage}`
+        : null,
+      typeof record.message === "string" ? record.message : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    if (detail) parts.push(detail);
+    current = record.cause;
+  }
+  return parts.join(" | ") || String(error);
 }
 
 async function indexExists(
