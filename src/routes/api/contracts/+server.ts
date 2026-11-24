@@ -22,6 +22,7 @@ import { readRequestInput } from "$lib/server/authorization/request-input";
 import { requireWorkspacePermissionForUpdate } from "$lib/server/authorization/workspace-context";
 import { getDatabase } from "$lib/server/db";
 import { escapeLikeMySql } from "$lib/server/db/helpers";
+import { recurringContractInstallments } from "$lib/contracts/recurrence";
 import {
   businesses,
   contractInstallments,
@@ -67,8 +68,18 @@ export const _contractMutationSchema = z
 export function _validInstallments(
   input: z.infer<typeof _contractMutationSchema>,
 ): boolean {
-  if (input.contractType === "recurring")
-    return input.installments.length === 0 && input.startDate !== null;
+  if (input.contractType === "recurring") {
+    if (input.installments.length > 0) return false;
+    // A zero-value recurring agreement may be used only for operational work.
+    // Revenue-bearing agreements need a finite billing period and a payment date.
+    if (!input.amountCents) return input.startDate !== null;
+    if (!input.startDate || !input.endDate || !input.firstDueDate) return false;
+    // A monthly fee can be paid in advance (for example, on the 23rd for a
+    // term that starts on the 24th). Only a payment after the term is invalid.
+    if (input.firstDueDate > input.endDate) return false;
+    const generated = _recurringInstallments(input);
+    return generated.length > 0 && generated.length <= 999;
+  }
   if (input.amountCents > 0 && !input.installments.length) return false;
   if (
     input.installments.length &&
@@ -84,6 +95,13 @@ export function _validInstallments(
     input.installments.reduce((sum, item) => sum + item.amountCents, 0) ===
       input.amountCents
   );
+}
+
+/** Creates one monthly charge for every payment date in the contract term. */
+export function _recurringInstallments(
+  input: z.infer<typeof _contractMutationSchema>,
+): z.infer<typeof installmentSchema>[] {
+  return recurringContractInstallments(input);
 }
 
 function hasValidContractDates(
@@ -272,9 +290,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       )
       .limit(1);
     if (!business) error(400, "Selecione um negócio da sua biblioteca.");
+    const installmentValues =
+      parsed.data.contractType === "recurring"
+        ? _recurringInstallments(parsed.data)
+        : parsed.data.installments;
     const {
-      installments: installmentValues,
-      workspaceId: _,
+      installments: _,
+      workspaceId: _workspaceId,
       ...input
     } = parsed.data;
     const now = new Date();

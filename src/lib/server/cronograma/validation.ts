@@ -19,6 +19,7 @@ const isoDate = z
 
 export const cronogramaBlockSchema = z
   .object({
+    workspaceId: z.string().uuid().optional(),
     date: isoDate,
     startMinutes: z.number().int().min(0).max(1_410).multipleOf(30),
     durationMinutes: z.number().int().min(30).max(480).multipleOf(30),
@@ -33,7 +34,10 @@ export const cronogramaBlockSchema = z
   .transform((value): CronogramaBlockInput => value);
 
 export const cronogramaDeleteSchema = z
-  .object({ version: z.number().int().positive() })
+  .object({
+    workspaceId: z.string().uuid().optional(),
+    version: z.number().int().positive(),
+  })
   .strict()
   .transform((value): CronogramaDeleteInput => value);
 

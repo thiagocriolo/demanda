@@ -136,6 +136,7 @@ const updateTask = taskBase
 const contentShape = {
   name: collapsedText(140),
   projectId: z.string().uuid().optional(),
+  recurrence: z.enum(["one_off", "daily", "weekly", "monthly"]).optional(),
   category: optionalNormalizedKey,
   priority: normalizedKey,
   briefing: z.string().trim().max(10_000),

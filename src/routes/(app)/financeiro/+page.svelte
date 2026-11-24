@@ -743,7 +743,7 @@
                         : "Pagar"}</button
                     >
                   {/if}
-                  {#if entry.source === "manual" && entry.mode === "pontual" && !entry.settled}
+                  {#if !entry.settled}
                     <button
                       class="mini-button"
                       type="button"

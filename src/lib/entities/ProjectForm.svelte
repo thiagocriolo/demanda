@@ -46,6 +46,12 @@
     X,
   } from "@lucide/svelte";
   import { onMount, tick } from "svelte";
+  import {
+    dateInputCaretPosition,
+    formatDateForDisplay,
+    formatDateInput,
+    normalizeDateInput,
+  } from "./date-format";
   import type { EntityRecord } from "./types";
 
   type ProjectFormMode = "create" | "view" | "edit";
@@ -470,12 +476,7 @@
   }
 
   function displayDate(value: string): string {
-    const raw = value.trim();
-    const iso = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(raw);
-    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
-    const digits = /^(\d{2})(\d{2})(\d{4})$/u.exec(raw);
-    if (digits) return `${digits[1]}/${digits[2]}/${digits[3]}`;
-    return raw.replaceAll(".", "/");
+    return formatDateForDisplay(value);
   }
 
   function projectFromRecord(record?: EntityRecord): ProjectFormState {
@@ -603,23 +604,47 @@
   }
 
   function normalizeDate(value: string): string | null {
-    const raw = value.trim();
-    if (!raw) return "";
-    const match =
-      /^(?:(\d{2})[./](\d{2})[./](\d{4})|(\d{4})-(\d{2})-(\d{2}))$/u.exec(raw);
-    if (!match) return null;
-    const year = Number(match[3] ?? match[4]);
-    const month = Number(match[2] ?? match[5]);
-    const day = Number(match[1] ?? match[6]);
-    const date = new Date(Date.UTC(year, month - 1, day));
-    if (
-      date.getUTCFullYear() !== year ||
-      date.getUTCMonth() !== month - 1 ||
-      date.getUTCDate() !== day
-    ) {
-      return null;
+    return normalizeDateInput(value);
+  }
+
+  function handleDateInput(
+    event: Event,
+    field: "dataInicio" | "dataFim",
+  ): void {
+    const input = event.currentTarget as HTMLInputElement;
+    const rawValue = input.value;
+    const rawCaret = input.selectionStart;
+    const masked = formatDateInput(rawValue);
+    if (input.value !== masked) {
+      input.value = masked;
+      const nextCaret = dateInputCaretPosition(rawValue, rawCaret, masked);
+      input.setSelectionRange(nextCaret, nextCaret);
     }
-    return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    form[field] = masked;
+    input.setCustomValidity("");
+    validationError = "";
+    if (field === "dataInicio") {
+      refreshSourceEndDate();
+    }
+  }
+
+  function handleDatePickerChange(
+    event: Event,
+    field: "dataInicio" | "dataFim",
+  ): void {
+    const iso = (event.currentTarget as HTMLInputElement).value;
+    form[field] = displayDate(iso);
+    validationError = "";
+    if (field === "dataInicio") {
+      startDateInput?.setCustomValidity("");
+      refreshSourceEndDate();
+    } else {
+      endDateInput?.setCustomValidity("");
+    }
+  }
+
+  function openDatePicker(event: MouseEvent): void {
+    (event.currentTarget as HTMLInputElement).showPicker?.();
   }
 
   function validateDate(
@@ -903,44 +928,64 @@
             </div>
 
             <div class="field">
-              <div class="control">
+              <div class="control date-control">
                 <span class="control-icon" aria-hidden="true">
                   <CalendarDays size={15} strokeWidth={1.8} />
                 </span>
                 <input
+                  class="date-picker"
+                  type="date"
+                  tabindex="-1"
+                  disabled={viewOnly}
+                  value={normalizeDate(form.dataInicio) || ""}
+                  aria-label="Abrir calendário para a data de início"
+                  onclick={openDatePicker}
+                  onchange={(event) =>
+                    handleDatePickerChange(event, "dataInicio")}
+                />
+                <input
                   bind:this={startDateInput}
+                  type="text"
                   name="dataInicio"
                   inputmode="numeric"
                   autocomplete="off"
                   maxlength="10"
                   disabled={viewOnly}
-                  aria-label="Data de início"
+                  aria-label="Data de início (dd/mm/aaaa)"
                   placeholder="Data de início"
-                  bind:value={form.dataInicio}
-                  oninput={() => {
-                    startDateInput?.setCustomValidity("");
-                    refreshSourceEndDate();
-                  }}
+                  value={form.dataInicio}
+                  oninput={(event) => handleDateInput(event, "dataInicio")}
                 />
               </div>
             </div>
 
             <div class="field">
-              <div class="control">
+              <div class="control date-control">
                 <span class="control-icon" aria-hidden="true">
                   <CalendarCheck2 size={15} strokeWidth={1.8} />
                 </span>
                 <input
+                  class="date-picker"
+                  type="date"
+                  tabindex="-1"
+                  disabled={viewOnly}
+                  value={normalizeDate(form.dataFim) || ""}
+                  aria-label="Abrir calendário para a data de fim"
+                  onclick={openDatePicker}
+                  onchange={(event) => handleDatePickerChange(event, "dataFim")}
+                />
+                <input
                   bind:this={endDateInput}
+                  type="text"
                   name="dataFim"
                   inputmode="numeric"
                   autocomplete="off"
                   maxlength="10"
                   disabled={viewOnly}
-                  aria-label="Data de fim"
+                  aria-label="Data de fim (dd/mm/aaaa)"
                   placeholder="Data de fim"
-                  bind:value={form.dataFim}
-                  oninput={() => endDateInput?.setCustomValidity("")}
+                  value={form.dataFim}
+                  oninput={(event) => handleDateInput(event, "dataFim")}
                 />
               </div>
             </div>
@@ -1327,6 +1372,7 @@
   }
 
   .control {
+    position: relative;
     display: grid;
     grid-template-columns: 18px minmax(0, 1fr);
     min-height: 56px;
@@ -1352,6 +1398,26 @@
     align-items: center;
     justify-content: center;
     color: var(--muted);
+  }
+
+  .date-control .control-icon {
+    pointer-events: none;
+  }
+
+  .date-picker {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 42px;
+    min-width: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .date-picker:disabled {
+    cursor: default;
   }
 
   input,

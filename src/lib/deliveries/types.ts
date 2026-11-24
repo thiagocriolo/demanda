@@ -59,11 +59,18 @@ export type DeliveryTaskInput = {
   status: string;
 };
 
+export type InstitutionalDeliveryRecurrence =
+  | "one_off"
+  | "daily"
+  | "weekly"
+  | "monthly";
+
 export type DeliveryContentInput = {
   name: string;
   projectId?: string;
   /** Used only while creating a delivery for a contract's phantom project. */
   institutionalContractId?: string;
+  recurrence?: InstitutionalDeliveryRecurrence;
   category: string;
   priority: string;
   briefing: string;

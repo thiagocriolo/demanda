@@ -18,15 +18,25 @@ describe("parseRecordCommand", () => {
       ok: true,
       command: { kind: "workspace", name: "Estúdio" },
     });
-    expect(parseRecordCommand("Crie um serviço chamado Gestão social.")).toEqual({
+    expect(
+      parseRecordCommand("Crie um serviço chamado Gestão social."),
+    ).toEqual({
       ok: true,
       command: { kind: "service", name: "Gestão social" },
     });
     expect(
-      parseRecordCommand("Registre uma receita Fee de R$ 2.500,00 para 2026-11-30"),
+      parseRecordCommand(
+        "Registre uma receita Fee de R$ 2.500,00 para 2026-11-30",
+      ),
     ).toEqual({
       ok: true,
-      command: { kind: "finance_entry", name: "Fee", type: "revenue", amountCents: 250000, dueDate: "2026-11-30" },
+      command: {
+        kind: "finance_entry",
+        name: "Fee",
+        type: "revenue",
+        amountCents: 250000,
+        dueDate: "2026-11-30",
+      },
     });
   });
 
@@ -58,15 +68,104 @@ describe("parseRecordCommand", () => {
     expect(
       parseRecordCommands(`CRIE CONTATO: Caleb
 CRIE NEGÓCIO: Macajo | RESPONSÁVEL: Caleb
-CRIE PROJETO: Site | NEGÓCIO: Macajo
+CRIE PROJETO: Site | CONTRATO: Fee Macajo
 CRIE TAREFA: Wireframe | PROJETO: Site`),
     ).toEqual({
       ok: true,
       commands: [
         { kind: "contact", name: "Caleb" },
-        { kind: "business", name: "Macajo", contactName: "Caleb" },
-        { kind: "project", name: "Site", businessName: "Macajo" },
+        { kind: "business", name: "Macajo", contactNames: ["Caleb"] },
+        { kind: "project", name: "Site", contractName: "Fee Macajo" },
         { kind: "delivery", name: "Wireframe", projectName: "Site" },
+      ],
+    });
+  });
+
+  it("cria contato com combinações de status, telefone e e-mail", () => {
+    expect(
+      parseRecordCommands(
+        "CRIE CONTATO: Rafael Monteiro | STATUS: Ativo | TELEFONE: (88) 99999-0000 | E-MAIL: rafael@exemplo.com | PROFISSÃO: Designer | OBSERVAÇÕES: Indicado pela Camila",
+      ),
+    ).toEqual({
+      ok: true,
+      commands: [
+        {
+          kind: "contact",
+          name: "Rafael Monteiro",
+          status: "active",
+          profession: "Designer",
+          phones: [
+            {
+              type: "whatsapp",
+              label: "WhatsApp",
+              value: "(88) 99999-0000",
+              isPrimary: true,
+            },
+          ],
+          emails: [
+            {
+              type: "work",
+              label: "Principal",
+              value: "rafael@exemplo.com",
+              isPrimary: true,
+            },
+          ],
+          notes: [{ body: "Indicado pela Camila" }],
+        },
+      ],
+    });
+  });
+
+  it("rejeita um status de contato que não existe", () => {
+    expect(
+      parseRecordCommands(
+        "CRIE CONTATO: Rafael Monteiro | STATUS: Novo status",
+      ),
+    ).toEqual({
+      ok: false,
+      message:
+        "Linha 1: data.status precisa ser Lead, Prospecto, Ativo, Desativado ou Arquivado.",
+    });
+  });
+
+  it("converte o status exibido de negócio para sua chave canônica", () => {
+    expect(
+      parseRecordCommands(
+        "CRIE NEGÓCIO: Estúdio | RESPONSÁVEL: Caleb | STATUS: Ativado",
+      ),
+    ).toMatchObject({
+      ok: true,
+      commands: [{ kind: "business", stage: "ativo" }],
+    });
+  });
+
+  it("preserva todos os campos de contato no protocolo estruturado", () => {
+    expect(
+      parseRecordCommands(`{
+  "protocol": "demanda.commands/v2",
+  "commands": [{
+    "id": "contact-rafael",
+    "action": "create",
+    "resource": "contact",
+    "data": {
+      "name": "Rafael Monteiro",
+      "contactType": "person",
+      "status": "ativo",
+      "phones": [{ "type": "mobile", "label": "Celular", "value": "+5588999990000", "isPrimary": true }],
+      "emails": [{ "type": "work", "label": "Trabalho", "value": "rafael@exemplo.com", "isPrimary": true }],
+      "notes": [{ "body": "Cliente prioritário" }]
+    }
+  }]
+}`),
+    ).toMatchObject({
+      ok: true,
+      commands: [
+        {
+          kind: "contact",
+          status: "active",
+          phones: [{ type: "mobile", value: "+5588999990000" }],
+          emails: [{ type: "work", value: "rafael@exemplo.com" }],
+        },
       ],
     });
   });
@@ -127,7 +226,7 @@ CRIE TAREFA: Wireframe | PROJETO: Site`),
       "id": "project-site",
       "action": "create",
       "resource": "project",
-      "data": { "name": "Site", "businessRef": "business-acme" }
+      "data": { "name": "Site", "contractRef": "contract-acme" }
     },
     {
       "id": "delivery-home",
@@ -150,7 +249,7 @@ CRIE TAREFA: Wireframe | PROJETO: Site`),
           command: {
             kind: "project",
             name: "Site",
-            businessRef: "business-acme",
+            contractRef: "contract-acme",
           },
         },
         {
@@ -177,7 +276,7 @@ CRIE TAREFA: Wireframe | PROJETO: Site`),
       "resource": "project",
       "data": {
         "name": "Gestão mensal",
-        "businessName": "Macajo",
+        "contractName": "Fee Macajo",
         "contractType": "cíclico"
       }
     },
@@ -187,7 +286,7 @@ CRIE TAREFA: Wireframe | PROJETO: Site`),
       "resource": "project",
       "data": {
         "name": "Site institucional",
-        "businessName": "Macajo",
+        "contractName": "Fee Macajo",
         "contractType": "pontual"
       }
     }
@@ -265,8 +364,20 @@ CRIE TAREFA: Wireframe | PROJETO: Site`),
       commands: [
         { kind: "workspace", name: "Acme" },
         { kind: "service", name: "Gestão social" },
-        { kind: "contract", name: "Mensal", businessRef: "business", contractType: "recurring", amountCents: 250000 },
-        { kind: "finance_entry", name: "Fee novembro", type: "revenue", amountCents: 250000, dueDate: "2026-11-30" },
+        {
+          kind: "contract",
+          name: "Mensal",
+          businessRef: "business",
+          contractType: "recurring",
+          amountCents: 250000,
+        },
+        {
+          kind: "finance_entry",
+          name: "Fee novembro",
+          type: "revenue",
+          amountCents: 250000,
+          dueDate: "2026-11-30",
+        },
       ],
     });
   });

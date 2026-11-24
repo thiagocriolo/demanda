@@ -508,6 +508,36 @@ describe("BE-12: Financeiro persistente", () => {
         settled.entries.filter(({ source }) => source === "contract"),
       ).toHaveLength(5);
     }));
+  it("repeats recurring contract billing monthly through the term", () =>
+    withRollback(async (transaction) => {
+      const data = await fixture(transaction, "Recurring");
+      await transaction.insert(contracts).values({
+        id: randomUUID(),
+        workspaceId: data.workspace.id,
+        ownerUserId: data.owner.id,
+        businessId: data.business.id,
+        name: "Monthly fee",
+        contractType: "recurring",
+        amountCents: 250_000,
+        startDate: "2026-01-01",
+        endDate: "2026-03-31",
+        firstDueDate: "2026-01-10",
+      });
+
+      const snapshot = await getFinancialSnapshot(
+        transaction,
+        data.ownerContext,
+      );
+      const entries = snapshot.entries.filter(
+        ({ source, title }) => source === "contract" && title === "Monthly fee",
+      );
+      expect(entries.map(({ dueDate }) => dueDate)).toEqual([
+        "2026-01-10",
+        "2026-02-10",
+        "2026-03-10",
+      ]);
+      expect(entries.every(({ mode }) => mode === "recurring")).toBe(true);
+    }));
 });
 
 afterAll(async () => {

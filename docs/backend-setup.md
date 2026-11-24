@@ -235,9 +235,10 @@ mesma importação não duplica tarefas.
   compare-and-swap dentro de uma transação. Versões obsoletas retornam `409`;
   alterações de tarefa também incrementam a versão do agregado. Repetir um
   estado já atingido e arquivar novamente são operações idempotentes.
-- Uma tarefa só chega a `conclusao` quando todas as tarefas ativas estão
-  `concluida`. Para reabrir uma tarefa, reabra primeiro a tarefa. O
-  arquivamento é separado do status e torna a tarefa imutável.
+- Ao concluir todas as tarefas ativas de uma entrega, o status avança
+  automaticamente para `conclusao`. Mudanças manuais de status (inclusive pela
+  Pauta ou pelo formulário) continuam permitidas em qualquer direção. O
+  arquivamento é separado do status e torna a entrega imutável.
 - Uma tarefa cujo projeto ou negócio já vinculado foi arquivado continua
   visível e pode ser editada mantendo esses pais. Novos vínculos com projeto ou
   negócio arquivado são rejeitados.

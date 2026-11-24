@@ -1,5 +1,6 @@
 import type {
   CronogramaBlockInput,
+  CronogramaDeleteInput,
   CronogramaQuery,
   CronogramaReorganizationInput,
   CronogramaSnapshot,
@@ -76,12 +77,14 @@ export function saveCronogramaEntry(
 
 export function deleteCronogramaEntry(
   taskId: string,
-  version: number,
+  input: number | CronogramaDeleteInput,
   fetcher: FetchLike = fetch,
 ): Promise<CronogramaSnapshot> {
+  const payload: CronogramaDeleteInput =
+    typeof input === "number" ? { version: input } : input;
   return request(
     `/api/cronograma/${encodeURIComponent(taskId)}`,
-    jsonRequest("DELETE", { version }),
+    jsonRequest("DELETE", payload),
     fetcher,
   );
 }

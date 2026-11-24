@@ -34,10 +34,12 @@ import {
   INSTITUTIONAL_PROJECT_NAME,
   INSTITUTIONAL_PROJECT_STATUS,
 } from "../../projects/institutional";
+import { institutionalOccurrenceDate } from "../projects/project-routines";
 import {
   requireWorkspacePermission,
   requireWorkspacePermissionForUpdate,
   workspaceIdFromContext,
+  WorkspaceNotFoundError,
   type RequestAuthorizationContext,
 } from "../authorization/workspace-context";
 import type {
@@ -60,6 +62,10 @@ import {
   TASK_PENDING_STATUS,
   DELIVERY_COMPLETED_STATUS,
 } from "./types";
+import {
+  areAllDeliveryTasksCompleted,
+  resolveDeliveryStatusAfterTaskUpdate,
+} from "../../deliveries/completion";
 import {
   normalizeDeliveryTagLabel,
   deliveryTagKey,
@@ -158,6 +164,60 @@ async function findScopedDeliveryRow(
   if (lock) query = query.for("update") as typeof query;
   const [row] = await query;
   return row ?? null;
+}
+
+async function findAuthorizedDeliveryRow(
+  database: DeliveryDatabase,
+  context: RequestAuthorizationContext,
+  deliveryId: string,
+  permission: "workspace:read" | "workspace:write",
+  lock: boolean,
+): Promise<typeof deliveries.$inferSelect> {
+  const activeWorkspaceId = workspaceIdFromContext(context);
+  const checkPermission = lock
+    ? requireWorkspacePermissionForUpdate
+    : requireWorkspacePermission;
+  await checkPermission(
+    database,
+    context.user.id,
+    activeWorkspaceId,
+    permission,
+  );
+  const inActive = await findScopedDeliveryRow(
+    database,
+    activeWorkspaceId,
+    deliveryId,
+    lock,
+  );
+  if (inActive) return inActive;
+
+  const [candidate] = await database
+    .select({ workspaceId: deliveries.workspaceId })
+    .from(deliveries)
+    .where(eq(deliveries.id, deliveryId))
+    .limit(1);
+  if (!candidate) throw new DeliveryNotFoundError();
+  try {
+    await checkPermission(
+      database,
+      context.user.id,
+      candidate.workspaceId,
+      permission,
+    );
+  } catch (cause) {
+    if (cause instanceof WorkspaceNotFoundError) {
+      throw new DeliveryNotFoundError();
+    }
+    throw cause;
+  }
+  const scoped = await findScopedDeliveryRow(
+    database,
+    candidate.workspaceId,
+    deliveryId,
+    lock,
+  );
+  if (!scoped) throw new DeliveryNotFoundError();
+  return scoped;
 }
 
 async function findScopedTaskRow(
@@ -381,7 +441,7 @@ async function validateAndLockProject(
   projectId: string;
   businessId: string;
   engagementType: "fee" | "personal";
-  isInstitutional: boolean;
+  isRecurringInstitutional: boolean;
 }> {
   const [row] = await database
     .select({
@@ -389,6 +449,7 @@ async function validateAndLockProject(
       businessId: projects.businessId,
       engagementType: projects.engagementType,
       isInstitutional: projects.isInstitutional,
+      contractType: projects.contractType,
       projectArchivedAt: projects.archivedAt,
       businessArchivedAt: businesses.archivedAt,
     })
@@ -410,7 +471,8 @@ async function validateAndLockProject(
     projectId: row.projectId,
     businessId: row.businessId,
     engagementType: row.engagementType,
-    isInstitutional: row.isInstitutional,
+    isRecurringInstitutional:
+      row.isInstitutional && row.contractType === "recurring",
   };
 }
 
@@ -427,12 +489,15 @@ async function materializeInstitutionalProject(
   projectId: string;
   businessId: string;
   engagementType: "fee" | "personal";
-  isInstitutional: boolean;
+  isRecurringInstitutional: boolean;
 }> {
   const [contract] = await database
     .select({
       id: contracts.id,
       businessId: contracts.businessId,
+      contractType: contracts.contractType,
+      startDate: contracts.startDate,
+      endDate: contracts.endDate,
       archivedAt: contracts.archivedAt,
     })
     .from(contracts)
@@ -448,7 +513,6 @@ async function materializeInstitutionalProject(
       projectId: projects.id,
       businessId: projects.businessId,
       engagementType: projects.engagementType,
-      isInstitutional: projects.isInstitutional,
     })
     .from(projects)
     .where(
@@ -460,7 +524,12 @@ async function materializeInstitutionalProject(
     )
     .limit(1)
     .for("update");
-  if (existing) return existing;
+  if (existing) {
+    return {
+      ...existing,
+      isRecurringInstitutional: contract.contractType === "recurring",
+    };
+  }
 
   const projectId = randomUUID();
   await database.insert(projects).values({
@@ -471,14 +540,16 @@ async function materializeInstitutionalProject(
     isInstitutional: true,
     name: INSTITUTIONAL_PROJECT_NAME,
     statusKey: INSTITUTIONAL_PROJECT_STATUS,
+    startDate: contract.startDate,
+    endDate: contract.contractType === "one_off" ? contract.endDate : null,
     engagementType: "personal",
-    contractType: "one_off",
+    contractType: contract.contractType,
   });
   return {
     projectId,
     businessId: contract.businessId,
     engagementType: "personal",
-    isInstitutional: true,
+    isRecurringInstitutional: contract.contractType === "recurring",
   };
 }
 
@@ -563,22 +634,6 @@ async function resolveAndLockTags(
   }
   const byKey = new Map(rows.map((row) => [row.key, row]));
   return normalized.map(({ key }) => byKey.get(key)!).filter(Boolean);
-}
-
-function assertCompletionAllowed(
-  status: string,
-  tasks: DeliveryTaskMutationInput[],
-): void {
-  if (
-    status === DELIVERY_COMPLETED_STATUS &&
-    tasks.some(
-      ({ status: taskStatus }) => taskStatus !== TASK_COMPLETED_STATUS,
-    )
-  ) {
-    throw new DeliveryStateConflictError(
-      "Conclua todas as tarefas antes de concluir a entrega.",
-    );
-  }
 }
 
 function deliveryBoardColumnKey(
@@ -849,18 +904,56 @@ export async function getWorkspaceDelivery(
   context: RequestAuthorizationContext,
   deliveryId: string,
 ): Promise<Delivery> {
-  const workspaceId = workspaceIdFromContext(context);
-  await requireWorkspacePermission(
+  const row = await findAuthorizedDeliveryRow(
     database,
-    context.user.id,
-    workspaceId,
+    context,
+    deliveryId,
     "workspace:read",
+    false,
   );
-  const row = await findScopedDeliveryRow(database, workspaceId, deliveryId);
-  if (!row) throw new DeliveryNotFoundError();
   const [delivery] = await hydrateDeliveries(database, [row], context.user.id);
   if (!delivery) throw new DeliveryNotFoundError();
   return delivery;
+}
+
+async function resolveWorkspaceForDeliveryCreate(
+  transaction: DeliveryDatabase,
+  actorUserId: string,
+  input: Pick<DeliveryCreateInput, "projectId" | "institutionalContractId">,
+): Promise<string> {
+  let targetWorkspaceId: string | undefined;
+  if (input.institutionalContractId) {
+    const [contract] = await transaction
+      .select({ workspaceId: contracts.workspaceId })
+      .from(contracts)
+      .where(eq(contracts.id, input.institutionalContractId))
+      .limit(1);
+    targetWorkspaceId = contract?.workspaceId;
+  } else if (input.projectId) {
+    const [project] = await transaction
+      .select({ workspaceId: projects.workspaceId })
+      .from(projects)
+      .where(eq(projects.id, input.projectId))
+      .limit(1);
+    targetWorkspaceId = project?.workspaceId;
+  }
+  if (!targetWorkspaceId) {
+    throw new DeliveryRelationsInvalidError();
+  }
+  try {
+    await requireWorkspacePermissionForUpdate(
+      transaction,
+      actorUserId,
+      targetWorkspaceId,
+      "workspace:write",
+    );
+  } catch (cause) {
+    if (cause instanceof WorkspaceNotFoundError) {
+      throw new DeliveryRelationsInvalidError();
+    }
+    throw cause;
+  }
+  return targetWorkspaceId;
 }
 
 export async function createWorkspaceDelivery(
@@ -868,18 +961,15 @@ export async function createWorkspaceDelivery(
   context: RequestAuthorizationContext,
   input: DeliveryCreateInput,
 ): Promise<Delivery> {
-  const workspaceId = workspaceIdFromContext(context);
   if (input.boardOrder && Object.keys(input.boardOrder).length > 0) {
     throw new DeliveryRelationsInvalidError();
   }
-  assertCompletionAllowed(input.status, input.tasks);
   try {
     return await database.transaction(async (transaction) => {
-      await requireWorkspacePermissionForUpdate(
+      const workspaceId = await resolveWorkspaceForDeliveryCreate(
         transaction,
         context.user.id,
-        workspaceId,
-        "workspace:write",
+        input,
       );
       const created = await createWorkspaceDeliveryInTransaction(
         transaction,
@@ -953,7 +1043,6 @@ export async function createWorkspaceDeliveryInTransaction(
   if (input.boardOrder && Object.keys(input.boardOrder).length > 0) {
     throw new DeliveryRelationsInvalidError();
   }
-  assertCompletionAllowed(input.status, input.tasks);
   const project = input.institutionalContractId
     ? await materializeInstitutionalProject(
         transaction,
@@ -978,30 +1067,12 @@ export async function createWorkspaceDeliveryInTransaction(
   const id = randomUUID();
   let projectRoutineId: string | undefined;
   let routineOccurrenceDate: string | undefined;
-  if (input.institutionalContractId) {
-    const [contract] = await transaction
-      .select({ startDate: contracts.startDate })
-      .from(contracts)
-      .where(
-        and(
-          eq(contracts.workspaceId, workspaceId),
-          eq(contracts.id, input.institutionalContractId),
-        ),
-      )
-      .limit(1);
-    if (!contract?.startDate) throw new DeliveryRelationsInvalidError();
-    const elapsedDays = Math.max(
-      0,
-      Math.floor(
-        (Date.now() - Date.parse(`${contract.startDate}T00:00:00.000Z`)) /
-          86_400_000,
-      ),
+  const recurrenceType = input.recurrence ?? "one_off";
+  if (project.isRecurringInstitutional && recurrenceType !== "one_off") {
+    routineOccurrenceDate = institutionalOccurrenceDate(
+      recurrenceType,
+      new Date().toISOString().slice(0, 10),
     );
-    const occurrence = new Date(`${contract.startDate}T00:00:00.000Z`);
-    occurrence.setUTCDate(
-      occurrence.getUTCDate() + Math.floor(elapsedDays / 7) * 7,
-    );
-    routineOccurrenceDate = occurrence.toISOString().slice(0, 10);
     projectRoutineId = randomUUID();
     await transaction.insert(projectDeliveryRoutines).values({
       id: projectRoutineId,
@@ -1021,7 +1092,7 @@ export async function createWorkspaceDeliveryInTransaction(
           status: "pendente",
         })),
       ),
-      recurrenceType: "weekly",
+      recurrenceType,
       recurrenceUnit: null,
       recurrenceDays: "[]",
       createdAt: now,
@@ -1040,7 +1111,7 @@ export async function createWorkspaceDeliveryInTransaction(
     categoryKey: input.category || null,
     priorityKey: input.priority,
     statusKey: input.status,
-    dueDate: project.isInstitutional ? null : input.dueDate,
+    dueDate: project.isRecurringInstitutional ? null : input.dueDate,
     engagementType: input.engagementType ?? "personal",
     sortOrder: input.sortOrder ?? 0,
     boardOrder: {},
@@ -1183,22 +1254,16 @@ export async function updateWorkspaceDelivery(
   deliveryId: string,
   input: DeliveryUpdateInput,
 ): Promise<Delivery> {
-  const workspaceId = workspaceIdFromContext(context);
   try {
     return await database.transaction(async (transaction) => {
-      await requireWorkspacePermissionForUpdate(
+      const existing = await findAuthorizedDeliveryRow(
         transaction,
-        context.user.id,
-        workspaceId,
-        "workspace:write",
-      );
-      const existing = await findScopedDeliveryRow(
-        transaction,
-        workspaceId,
+        context,
         deliveryId,
+        "workspace:write",
         true,
       );
-      if (!existing) throw new DeliveryNotFoundError();
+      const workspaceId = existing.workspaceId;
       if (existing.archivedAt) throw new DeliveryArchivedError();
       if (existing.version !== input.version) {
         throw new DeliveryVersionConflictError();
@@ -1215,7 +1280,12 @@ export async function updateWorkspaceDelivery(
       ) {
         throw new DeliveryRelationsInvalidError();
       }
-      assertCompletionAllowed(input.status, input.tasks);
+      const effectiveStatus = resolveDeliveryStatusAfterTaskUpdate({
+        previousStatus: existing.statusKey,
+        requestedStatus: input.status,
+        previousTaskStatuses: beforeDelivery.tasks.map(({ status }) => status),
+        nextTaskStatuses: input.tasks.map(({ status }) => status),
+      });
       const project = await validateAndLockProject(
         transaction,
         workspaceId,
@@ -1243,13 +1313,13 @@ export async function updateWorkspaceDelivery(
       );
       const now = new Date();
       const completedAt =
-        input.status === DELIVERY_COMPLETED_STATUS
+        effectiveStatus === DELIVERY_COMPLETED_STATUS
           ? existing.statusKey === DELIVERY_COMPLETED_STATUS
             ? (existing.completedAt ?? now)
             : now
           : null;
       const boardOrder = { ...existing.boardOrder };
-      if (existing.statusKey !== input.status) delete boardOrder.status;
+      if (existing.statusKey !== effectiveStatus) delete boardOrder.status;
       if (existing.priorityKey !== input.priority) delete boardOrder.priority;
       if (existing.projectId !== project.projectId) delete boardOrder.project;
       if (existing.businessId !== project.businessId)
@@ -1263,8 +1333,8 @@ export async function updateWorkspaceDelivery(
           description: input.briefing,
           categoryKey: input.category || null,
           priorityKey: input.priority,
-          statusKey: input.status,
-          dueDate: project.isInstitutional ? null : input.dueDate,
+          statusKey: effectiveStatus,
+          dueDate: project.isRecurringInstitutional ? null : input.dueDate,
           engagementType: input.engagementType ?? "personal",
           sortOrder: input.sortOrder ?? existing.sortOrder,
           boardOrder,
@@ -1280,7 +1350,7 @@ export async function updateWorkspaceDelivery(
           ),
         );
       if (affectedRows(deliveryRows) !== 1) throw new DeliveryVersionConflictError();
-      if (project.isInstitutional) {
+      if (project.isRecurringInstitutional) {
         await transaction
           .delete(agendaEntries)
           .where(
@@ -1320,12 +1390,12 @@ export async function updateWorkspaceDelivery(
             {
               field: "status",
               before: existing.statusKey,
-              after: input.status,
+              after: effectiveStatus,
             },
             {
               field: "dueDate",
               before: existing.dueDate,
-              after: project.isInstitutional ? null : input.dueDate,
+              after: project.isRecurringInstitutional ? null : input.dueDate,
             },
           ].filter((change) => change.before !== change.after),
         },
@@ -1455,7 +1525,7 @@ export async function updateWorkspaceDeliveryBoard(
   context: RequestAuthorizationContext,
   input: DeliveryBoardInput,
 ): Promise<DeliveryBoardResult> {
-  const workspaceId = workspaceIdFromContext(context);
+  const activeWorkspaceId = workspaceIdFromContext(context);
   const deliveryIds = input.updates.map(({ id }) => id);
   const boardPositions = input.updates.map(
     ({ columnKey, position }) => `${columnKey}\u0000${position}`,
@@ -1474,9 +1544,40 @@ export async function updateWorkspaceDeliveryBoard(
       await requireWorkspacePermissionForUpdate(
         transaction,
         context.user.id,
-        workspaceId,
+        activeWorkspaceId,
         "workspace:write",
       );
+
+      const candidateRows = await transaction
+        .select({ id: deliveries.id, workspaceId: deliveries.workspaceId })
+        .from(deliveries)
+        .where(inArray(deliveries.id, deliveryIds));
+      if (candidateRows.length !== deliveryIds.length) {
+        throw new DeliveryNotFoundError();
+      }
+      const targetWorkspaceIds = new Set(
+        candidateRows.map(({ workspaceId }) => workspaceId),
+      );
+      if (targetWorkspaceIds.size !== 1) {
+        throw new DeliveryNotFoundError();
+      }
+      const [workspaceId] = targetWorkspaceIds;
+      if (!workspaceId) throw new DeliveryNotFoundError();
+      if (workspaceId !== activeWorkspaceId) {
+        try {
+          await requireWorkspacePermissionForUpdate(
+            transaction,
+            context.user.id,
+            workspaceId,
+            "workspace:write",
+          );
+        } catch (cause) {
+          if (cause instanceof WorkspaceNotFoundError) {
+            throw new DeliveryNotFoundError();
+          }
+          throw cause;
+        }
+      }
 
       const lockedDeliveries = await transaction
         .select()
@@ -1552,46 +1653,16 @@ export async function updateWorkspaceDeliveryBoard(
         }
       }
 
-      if (input.view === "status") {
-        const completingDeliveryIds = input.updates
-          .filter(({ columnKey }) => columnKey === DELIVERY_COMPLETED_STATUS)
-          .map(({ id }) => id)
-          .sort();
-        if (completingDeliveryIds.length) {
-          const taskRows = await transaction
-            .select({
-              deliveryId: deliveryTasks.deliveryId,
-              status: deliveryTasks.statusKey,
-            })
-            .from(deliveryTasks)
-            .where(
-              and(
-                eq(deliveryTasks.workspaceId, workspaceId),
-                inArray(deliveryTasks.deliveryId, completingDeliveryIds),
-                isNull(deliveryTasks.archivedAt),
-              ),
-            )
-            .orderBy(asc(deliveryTasks.deliveryId), asc(deliveryTasks.id))
-            .for("update");
-          const tasksByDelivery = new Map<string, string[]>();
-          for (const task of taskRows) {
-            const statuses = tasksByDelivery.get(task.deliveryId) ?? [];
-            statuses.push(task.status);
-            tasksByDelivery.set(task.deliveryId, statuses);
-          }
-          for (const deliveryId of completingDeliveryIds) {
-            const statuses = tasksByDelivery.get(deliveryId) ?? [];
-            if (
-              !statuses.length ||
-              statuses.some((status) => status !== TASK_COMPLETED_STATUS)
-            ) {
-              throw new DeliveryStateConflictError(
-                "Conclua todas as tarefas antes de concluir a entrega.",
-              );
-            }
-          }
-        }
-      }
+      const activeProjectRows = await transaction
+        .select({ id: projects.id })
+        .from(projects)
+        .where(
+          and(
+            eq(projects.workspaceId, workspaceId),
+            eq(projects.isActive, true),
+          ),
+        );
+      const activeProjectIds = new Set(activeProjectRows.map(({ id }) => id));
 
       const affectedColumns = new Set<string>();
       for (const update of input.updates) {
@@ -1600,14 +1671,16 @@ export async function updateWorkspaceDeliveryBoard(
         );
         affectedColumns.add(update.columnKey);
       }
+      const receivedDeliveryIds = new Set(deliveryIds);
       const affectedDeliveryIds = lockedDeliveries
         .filter(
           (delivery) =>
             !delivery.archivedAt &&
+            (activeProjectIds.has(delivery.projectId) ||
+              receivedDeliveryIds.has(delivery.id)) &&
             affectedColumns.has(deliveryBoardColumnKey(delivery, input.view)),
         )
         .map(({ id }) => id);
-      const receivedDeliveryIds = new Set(deliveryIds);
       if (
         affectedDeliveryIds.length !== receivedDeliveryIds.size ||
         affectedDeliveryIds.some((id) => !receivedDeliveryIds.has(id))
@@ -1784,28 +1857,6 @@ export async function setWorkspaceDeliveryState(
     if (existing.version !== input.version) {
       throw new DeliveryVersionConflictError();
     }
-    if (input.status === DELIVERY_COMPLETED_STATUS) {
-      const taskRows = await transaction
-        .select({ status: deliveryTasks.statusKey })
-        .from(deliveryTasks)
-        .where(
-          and(
-            eq(deliveryTasks.workspaceId, workspaceId),
-            eq(deliveryTasks.deliveryId, deliveryId),
-            isNull(deliveryTasks.archivedAt),
-          ),
-        )
-        .orderBy(asc(deliveryTasks.id))
-        .for("update");
-      if (
-        !taskRows.length ||
-        taskRows.some(({ status }) => status !== TASK_COMPLETED_STATUS)
-      ) {
-        throw new DeliveryStateConflictError(
-          "Conclua todas as tarefas antes de concluir a entrega.",
-        );
-      }
-    }
     const now = new Date();
     const boardOrder = { ...existing.boardOrder };
     delete boardOrder.status;
@@ -1904,14 +1955,6 @@ export async function setWorkspaceTaskState(
     if (deliveryRow.version !== input.version) {
       throw new DeliveryVersionConflictError();
     }
-    if (
-      deliveryRow.statusKey === DELIVERY_COMPLETED_STATUS &&
-      input.status === TASK_PENDING_STATUS
-    ) {
-      throw new DeliveryStateConflictError(
-        "Reabra a entrega antes de reabrir uma tarefa.",
-      );
-    }
     const now = new Date();
     const changedTask = await transaction
       .update(deliveryTasks)
@@ -1930,9 +1973,39 @@ export async function setWorkspaceTaskState(
       );
     if (affectedRows(changedTask) !== 1)
       throw new DeliveryTaskNotFoundError();
+    let autoCompletedDelivery = false;
+    if (
+      input.status === TASK_COMPLETED_STATUS &&
+      deliveryRow.statusKey !== DELIVERY_COMPLETED_STATUS
+    ) {
+      const deliveryTaskRows = await transaction
+        .select({ status: deliveryTasks.statusKey })
+        .from(deliveryTasks)
+        .where(
+          and(
+            eq(deliveryTasks.workspaceId, workspaceId),
+            eq(deliveryTasks.deliveryId, deliveryId),
+            isNull(deliveryTasks.archivedAt),
+          ),
+        )
+        .orderBy(asc(deliveryTasks.id))
+        .for("update");
+      autoCompletedDelivery = areAllDeliveryTasksCompleted(
+        deliveryTaskRows.map(({ status }) => status),
+      );
+    }
+    const nextBoardOrder = { ...deliveryRow.boardOrder };
+    if (autoCompletedDelivery) delete nextBoardOrder.status;
     const updatedDeliveryRows = await transaction
       .update(deliveries)
       .set({
+        ...(autoCompletedDelivery
+          ? {
+              statusKey: DELIVERY_COMPLETED_STATUS,
+              completedAt: now,
+              boardOrder: nextBoardOrder,
+            }
+          : {}),
         version: sql`${deliveries.version} + 1`,
         updatedAt: now,
       })
@@ -1973,6 +2046,33 @@ export async function setWorkspaceTaskState(
         metadata: { deliveryId },
       },
     );
+    if (autoCompletedDelivery) {
+      await appendDataChangeAuditLog(
+        transaction,
+        {
+          userId: context.user.id,
+          workspaceId,
+        },
+        {
+          action: "delivery.status_changed",
+          targetType: "delivery",
+          targetId: deliveryId,
+          changes: [
+            {
+              field: "status",
+              before: deliveryRow.statusKey,
+              after: DELIVERY_COMPLETED_STATUS,
+            },
+            {
+              field: "completedAt",
+              before: deliveryRow.completedAt?.toISOString() ?? null,
+              after: now.toISOString(),
+            },
+          ],
+          metadata: { reason: "all_tasks_completed" },
+        },
+      );
+    }
     const [updatedDelivery] = await transaction
       .select()
       .from(deliveries)
@@ -1995,21 +2095,15 @@ export async function archiveWorkspaceDelivery(
   deliveryId: string,
   version: number,
 ): Promise<Delivery> {
-  const workspaceId = workspaceIdFromContext(context);
   return database.transaction(async (transaction) => {
-    await requireWorkspacePermissionForUpdate(
+    const existing = await findAuthorizedDeliveryRow(
       transaction,
-      context.user.id,
-      workspaceId,
-      "workspace:write",
-    );
-    const existing = await findScopedDeliveryRow(
-      transaction,
-      workspaceId,
+      context,
       deliveryId,
+      "workspace:write",
       true,
     );
-    if (!existing) throw new DeliveryNotFoundError();
+    const workspaceId = existing.workspaceId;
 
     // Arquivar novamente é idempotente e retorna o estado atual.
     if (existing.archivedAt) {
@@ -2071,21 +2165,15 @@ export async function deleteWorkspaceDelivery(
   deliveryId: string,
   version: number,
 ): Promise<void> {
-  const workspaceId = workspaceIdFromContext(context);
   await database.transaction(async (transaction) => {
-    await requireWorkspacePermissionForUpdate(
+    const existing = await findAuthorizedDeliveryRow(
       transaction,
-      context.user.id,
-      workspaceId,
-      "workspace:write",
-    );
-    const existing = await findScopedDeliveryRow(
-      transaction,
-      workspaceId,
+      context,
       deliveryId,
+      "workspace:write",
       true,
     );
-    if (!existing) throw new DeliveryNotFoundError();
+    const workspaceId = existing.workspaceId;
     if (existing.version !== version) throw new DeliveryVersionConflictError();
     const deleted = await transaction
       .delete(deliveries)

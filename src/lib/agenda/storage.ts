@@ -154,6 +154,25 @@ function deliveryItem(
   };
 }
 
+function isInstitutionalProjectRecord(record: EntityRecord): boolean {
+  return (
+    record.isInstitutional === "true" ||
+    record.__projectInstitutional === "true"
+  );
+}
+
+function isRecurringContractRecord(record: EntityRecord): boolean {
+  const contractType = (
+    record.contract_type ||
+    record.contractType ||
+    record.tipoContrato ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  return contractType === "recurring" || contractType === "recorrente";
+}
+
 export function loadAgendaItems(
   projectRecords: EntityRecord[] = [],
   deliveryRecords: EntityRecord[] = [],
@@ -167,8 +186,18 @@ export function loadAgendaItems(
   );
   const activeWorkspaceId = loadActiveWorkspaceId();
   const workspaceUsers = loadWorkspaceUsers();
-  const participatingProjects = projectRecords.filter(
+  const activeProjects = projectRecords.filter(
     (record) => !isArchivedRecord(record),
+  );
+  const participatingProjects = activeProjects.filter(
+    (record) => !isInstitutionalProjectRecord(record),
+  );
+  const deliveryProjects = activeProjects.filter(
+    (record) =>
+      !(
+        isInstitutionalProjectRecord(record) &&
+        isRecurringContractRecord(record)
+      ),
   );
   const projects = participatingProjects.map((record, index) =>
     projectItem(
@@ -181,7 +210,7 @@ export function loadAgendaItems(
       if (isArchivedRecord(record)) return false;
       const projectId = record.projetoId || record.project_id || "";
       const project = projectId
-        ? participatingProjects.find((candidate) => candidate.id === projectId)
+        ? deliveryProjects.find((candidate) => candidate.id === projectId)
         : undefined;
       if (projectId && !project) return false;
       if (!project) return belongsToWorkspace(record, activeWorkspaceId);

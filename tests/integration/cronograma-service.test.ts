@@ -254,6 +254,63 @@ describe("leitura do Cronograma por workspace", () => {
         }),
       ).rejects.toBeInstanceOf(WorkspaceNotFoundError);
     }));
+
+  it("permite agendar e remover bloco de outro workspace autorizado no escopo global", () =>
+    withRollback(async (transaction) => {
+      const active = await fixture(transaction, "GlobalSaveA");
+      const other = await fixture(transaction, "GlobalSaveB");
+      await transaction.insert(workspaceMembers).values({
+        workspaceId: other.workspace.id,
+        userId: active.owner.id,
+        role: "member",
+      });
+      await transaction
+        .delete(deliveryResponsibles)
+        .where(eq(deliveryResponsibles.deliveryId, other.deliveries[0]!.id));
+      await transaction.insert(deliveryResponsibles).values({
+        workspaceId: other.workspace.id,
+        deliveryId: other.deliveries[0]!.id,
+        userId: active.owner.id,
+      });
+
+      const saved = await saveCronogramaBlock(
+        transaction,
+        active.ownerContext,
+        other.tasks[0]!.id,
+        {
+          ...placement(8 * 60),
+          workspaceId: other.workspace.id,
+        },
+      );
+      expect(saved.workspaceId).toBe(other.workspace.id);
+      expect(saved.items).toMatchObject([
+        {
+          workspaceId: other.workspace.id,
+          taskId: other.tasks[0]!.id,
+          startMinutes: 480,
+          version: 1,
+        },
+      ]);
+
+      const removed = await deleteCronogramaBlock(
+        transaction,
+        active.ownerContext,
+        other.tasks[0]!.id,
+        {
+          workspaceId: other.workspace.id,
+          version: saved.items[0]!.version,
+        },
+      );
+      expect(removed.workspaceId).toBe(other.workspace.id);
+      expect(removed.items).toEqual([]);
+
+      await expect(
+        saveCronogramaBlock(transaction, other.ownerContext, active.tasks[0]!.id, {
+          ...placement(9 * 60),
+          workspaceId: active.workspace.id,
+        }),
+      ).rejects.toBeInstanceOf(WorkspaceNotFoundError);
+    }));
 });
 
 describe("BE-11: Cronograma persistente e regras de alocação", () => {

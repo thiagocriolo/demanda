@@ -344,7 +344,7 @@
     };
 
     return {
-      id: delivery.id,
+      id: delivery.deliveryId,
       kind: "entrega",
       title: delivery.nome,
       status: status.label,
@@ -467,19 +467,27 @@
   }
 
   async function persistSchedule(completed: DragState): Promise<void> {
+    if (!completed.working && !completed.original) return;
     scheduleSaving = true;
     try {
+      const workspaceId =
+        completed.delivery.workspaceId &&
+        completed.delivery.workspaceId !== GLOBAL_WORKSPACE_ID &&
+        completed.delivery.workspaceId !== PERSONAL_WORKSPACE_ID
+          ? completed.delivery.workspaceId
+          : undefined;
       const snapshot = completed.working
         ? await saveCronogramaEntry(completed.delivery.taskId, {
+            ...(workspaceId ? { workspaceId } : {}),
             date: completed.working.date,
             startMinutes: completed.working.startMinutes,
             durationMinutes: completed.working.durationSlots * MINUTES_PER_SLOT,
             version: completed.original?.version ?? 0,
           })
-        : await deleteCronogramaEntry(
-            completed.delivery.taskId,
-            completed.original?.version ?? 0,
-          );
+        : await deleteCronogramaEntry(completed.delivery.taskId, {
+            ...(workspaceId ? { workspaceId } : {}),
+            version: completed.original?.version ?? 0,
+          });
       applyWorkspaceScheduleSnapshot(snapshot);
       scheduleError = undefined;
     } catch (cause) {

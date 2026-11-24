@@ -65,6 +65,22 @@ describe("validacao de negocios", () => {
     );
   });
 
+  it("converte o rótulo Ativado para a chave canônica ativo", () => {
+    expect(
+      businessMutationSchema.parse({ ...validMutation(), stage: "Ativado" })
+        .stage,
+    ).toBe("ativo");
+    expect(businessListQuerySchema.parse({ stage: "ATIVADO" }).stage).toBe(
+      "ativo",
+    );
+    expect(
+      businessMutationSchema.safeParse({
+        ...validMutation(),
+        stage: "Ativacao experimental",
+      }).success,
+    ).toBe(false);
+  });
+
   it("exige entre um e vinte responsaveis unicos", () => {
     expect(
       businessMutationSchema.safeParse({

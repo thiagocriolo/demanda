@@ -113,4 +113,46 @@ describe("agenda client", () => {
       ],
     });
   });
+
+  it("salva cada workspace separadamente no escopo global", async () => {
+    const secondWorkspaceId = crypto.randomUUID();
+    const firstId = crypto.randomUUID();
+    const secondId = crypto.randomUUID();
+    const fetcher = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const workspaceId = new URL(
+        String(input),
+        "https://demanda.local",
+      ).searchParams.get("workspaceId")!;
+      return new Response(
+        JSON.stringify({ workspaceId, projects: [], deliveries: [] }),
+        { headers: { "content-type": "application/json" } },
+      );
+    });
+    const item = (id: string, workspaceId: string, order: number) =>
+      ({
+        id,
+        workspaceId,
+        date: "2026-07-14",
+        order,
+        durationMinutes: 60,
+        version: 1,
+      }) as AgendaItem;
+
+    const result = await saveAgendaOrder(
+      "projects",
+      [item(firstId, snapshot.workspaceId, 0), item(secondId, secondWorkspaceId, 1)],
+      fetcher as typeof fetch,
+    );
+
+    expect(result.workspaceId).toBe("global");
+    expect(fetcher.mock.calls.map(([path]) => String(path))).toEqual([
+      `/api/agenda?workspaceId=${snapshot.workspaceId}`,
+      `/api/agenda?workspaceId=${secondWorkspaceId}`,
+    ]);
+    const [, request] = fetcher.mock.calls[1] as unknown as [
+      RequestInfo | URL,
+      RequestInit,
+    ];
+    expect(JSON.parse(String(request.body)).items[0].order).toBe(0);
+  });
 });

@@ -1,5 +1,13 @@
-import { createBusiness, listBusinesses } from "$lib/businesses/client";
-import { createContact, listContacts } from "$lib/contacts/client";
+import {
+  archiveBusiness,
+  createBusiness,
+  listBusinesses,
+} from "$lib/businesses/client";
+import {
+  archiveContact,
+  createContact,
+  listContacts,
+} from "$lib/contacts/client";
 import {
   createProject,
   createService,
@@ -7,9 +15,12 @@ import {
   listProjects,
 } from "$lib/projects/client";
 import { createDelivery } from "$lib/deliveries/client";
-import { createContract } from "$lib/contracts/client";
+import { createContract, listContracts } from "$lib/contracts/client";
 import { createFinanceEntry } from "$lib/finance/client";
-import { createWorkspace, CURRENT_USER } from "$lib/workspaces/workspace-storage";
+import {
+  createWorkspace,
+  CURRENT_USER,
+} from "$lib/workspaces/workspace-storage";
 import { currentSettings, saveWorkspaceSettings } from "$lib/settings/client";
 import type { RecordCommand } from "./record-commands";
 import type { CompiledQueueCommand } from "./execution-queue";
@@ -68,7 +79,7 @@ export class RecordResolutionRequiredError extends Error {
 /** A parent referenced by a reviewed batch is absent before mutations begin. */
 export class RecordDependencyMissingError extends Error {
   constructor(
-    readonly resource: "negócio" | "projeto",
+    readonly resource: "negócio" | "projeto" | "contrato",
     readonly recordName: string,
   ) {
     super(
@@ -129,7 +140,7 @@ export async function preflightRecordCommandQueue(
       const { command } = item;
       try {
         if (
-          (command.kind === "project" || command.kind === "contract") &&
+          command.kind === "contract" &&
           command.businessName &&
           !command.businessRef &&
           !hasParentCommand(queue, item, "business")
@@ -142,6 +153,26 @@ export async function preflightRecordCommandQueue(
             throw new RecordDependencyMissingError(
               "negócio",
               command.businessName,
+            );
+          }
+        }
+        if (
+          command.kind === "project" &&
+          command.contractName &&
+          !command.contractRef &&
+          !hasParentCommand(queue, item, "contract")
+        ) {
+          const contracts = await listContracts({
+            query: command.contractName,
+            page: 1,
+            pageSize: 100,
+            orderBy: "name_asc",
+            archived: "exclude",
+          });
+          if (!exactOne(contracts.items, command.contractName, "contrato")) {
+            throw new RecordDependencyMissingError(
+              "contrato",
+              command.contractName,
             );
           }
         }
@@ -183,7 +214,12 @@ export async function preflightRecordCommandQueue(
 function referencedId(
   context: RecordCommandExecutionContext | undefined,
   commandId: string,
-  field: "contactId" | "businessId" | "projectId" | "serviceTemplateId",
+  field:
+    | "contactId"
+    | "businessId"
+    | "projectId"
+    | "contractId"
+    | "serviceTemplateId",
 ): string {
   const id = context?.outputsByCommandId.get(commandId)?.[field];
   if (!id) {
@@ -194,24 +230,28 @@ function referencedId(
   return id;
 }
 
-async function findOrCreateContact(name: string): Promise<{
+type ContactCreateCommand = Extract<RecordCommand, { kind: "contact" }>;
+
+async function findOrCreateContact(command: ContactCreateCommand): Promise<{
   id: string;
   created: boolean;
 }> {
-  const contacts = await listContacts({ query: name, pageSize: 100 });
-  const existing = exactOne(contacts.items, name, "contato");
+  const contacts = await listContacts({ query: command.name, pageSize: 100 });
+  const existing = exactOne(contacts.items, command.name, "contato");
   if (existing) return { id: existing.id, created: false };
 
   const contact = await createContact({
-    name,
-    contactType: "person",
-    status: "lead",
-    profession: null,
+    name: command.name,
+    contactType: command.contactType ?? "person",
+    status:
+      command.status === "archived" ? "inactive" : (command.status ?? "lead"),
+    profession: command.profession ?? null,
     linkedUserId: null,
-    phones: [],
-    emails: [],
-    notes: [],
+    phones: command.phones ?? [],
+    emails: command.emails ?? [],
+    notes: command.notes ?? [],
   });
+  if (command.status === "archived") await archiveContact(contact.id);
   return { id: contact.id, created: true };
 }
 
@@ -285,7 +325,7 @@ export async function executeRecordCommand(
   }
 
   if (command.kind === "contact") {
-    const result = await findOrCreateContact(command.name);
+    const result = await findOrCreateContact(command);
     return result.created
       ? {
           message: `Criei o contato ${command.name}.`,
@@ -300,27 +340,43 @@ export async function executeRecordCommand(
   }
 
   if (command.kind === "business") {
-    const contact = command.contactRef
-      ? {
-          id: referencedId(context, command.contactRef, "contactId"),
-          created: false,
-        }
-      : await findOrCreateContact(command.contactName!);
+    const contacts = command.contactRef
+      ? [
+          {
+            id: referencedId(context, command.contactRef, "contactId"),
+            created: false,
+          },
+        ]
+      : await Promise.all(
+          (command.contactNames ?? [command.contactName!]).map((name) =>
+            findOrCreateContact({ kind: "contact", name }),
+          ),
+        );
+    const archiveBusinessAfterCreate =
+      command.stage
+        ?.normalize("NFD")
+        .replace(/\p{M}/gu, "")
+        .toLocaleLowerCase("pt-BR") === "arquivado";
     const business = await createBusiness({
       name: command.name,
-      category: "geral",
-      stage: "negociacao",
-      responsibleContactIds: [contact.id],
+      category: command.category ?? "geral",
+      stage: archiveBusinessAfterCreate
+        ? "encerrado"
+        : (command.stage ?? "negociacao"),
+      responsibleContactIds: contacts.map(({ id }) => id),
       responsibleUserIds: [],
-      notes: [],
+      notes: command.notes ?? [],
     });
-    const contactName = command.contactName ?? "o contato vinculado";
+    if (archiveBusinessAfterCreate) await archiveBusiness(business.id);
+    const contactNames = command.contactNames ?? [
+      command.contactName ?? "o contato vinculado",
+    ];
     return {
-      message: `${contact.created ? `Criei o contato ${contactName} e ` : ""}criei o negócio ${business.name} para ${contactName}.`,
+      message: `${contacts.some(({ created }) => created) ? "Criei os contatos ausentes e " : ""}criei o negócio ${business.name} para ${contactNames.join(", ")}.`,
       created: [
-        ...(contact.created
-          ? ([{ type: "contato", name: contactName }] as const)
-          : []),
+        ...contactNames
+          .filter((_, index) => contacts[index]?.created)
+          .map((name) => ({ type: "contato" as const, name })),
         { type: "negócio", name: business.name },
       ],
       output: { businessId: business.id },
@@ -328,50 +384,57 @@ export async function executeRecordCommand(
   }
 
   if (command.kind === "project") {
-    let businessId: string;
-    let businessName: string;
-    if (command.businessRef) {
-      businessId = referencedId(context, command.businessRef, "businessId");
-      businessName = command.businessName ?? "negócio vinculado";
+    let contractId: string;
+    let contractName: string;
+    if (command.contractRef) {
+      contractId = referencedId(context, command.contractRef, "contractId");
+      contractName = command.contractName ?? "contrato vinculado";
     } else {
-      const businesses = await listBusinesses({
-        query: command.businessName!,
+      const contracts = await listContracts({
+        query: command.contractName!,
+        page: 1,
         pageSize: 100,
+        orderBy: "name_asc",
+        archived: "exclude",
       });
-      const business = exactOne(
-        businesses.items,
-        command.businessName!,
-        "negócio",
+      const contract = exactOne(
+        contracts.items,
+        command.contractName!,
+        "contrato",
       );
-      if (!business) {
+      if (!contract) {
         throw new RecordDependencyMissingError(
-          "negócio",
-          command.businessName!,
+          "contrato",
+          command.contractName!,
         );
       }
-      businessId = business.id;
-      businessName = business.name;
+      contractId = contract.id;
+      contractName = contract.name;
     }
     const project = await createProject({
       name: command.name,
-      businessId,
+      contractId,
       serviceIds: [],
-      status: "planejamento",
-      startDate: today(),
-      endDate: null,
-      briefing: "",
-      tagLabels: [],
-      responsibleUserIds: [await currentResponsibleUserId()],
+      ...(command.serviceIds ? { serviceIds: command.serviceIds } : {}),
+      status: command.status ?? "planejamento",
+      startDate: command.startDate ?? today(),
+      endDate: command.endDate ?? null,
+      engagementType: command.engagementType ?? "personal",
+      briefing: command.briefing ?? "",
+      tagLabels: command.tagLabels ?? [],
+      responsibleUserIds: command.responsibleUserIds ?? [
+        await currentResponsibleUserId(),
+      ],
       contractType: command.contractType ?? "one_off",
-      amountCents: 0,
-      firstDueDate: null,
-      paymentMethod: "",
-      paymentTerms: "",
-      financeNotes: "",
-      installments: [],
+      amountCents: command.amountCents ?? 0,
+      firstDueDate: command.firstDueDate ?? null,
+      paymentMethod: command.paymentMethod ?? "",
+      paymentTerms: command.paymentTerms ?? "",
+      financeNotes: command.financeNotes ?? "",
+      installments: command.installments ?? [],
     });
     return {
-      message: `Criei o projeto ${project.name} no negócio ${businessName}.`,
+      message: `Criei o projeto ${project.name} no contrato ${contractName}.`,
       created: [{ type: "projeto", name: project.name }],
       output: { projectId: project.id },
     };
@@ -448,9 +511,20 @@ export async function executeRecordCommand(
       businessId = referencedId(context, command.businessRef, "businessId");
       businessName = command.businessName ?? "negócio vinculado";
     } else {
-      const businesses = await listBusinesses({ query: command.businessName!, pageSize: 100 });
-      const business = exactOne(businesses.items, command.businessName!, "negócio");
-      if (!business) throw new RecordDependencyMissingError("negócio", command.businessName!);
+      const businesses = await listBusinesses({
+        query: command.businessName!,
+        pageSize: 100,
+      });
+      const business = exactOne(
+        businesses.items,
+        command.businessName!,
+        "negócio",
+      );
+      if (!business)
+        throw new RecordDependencyMissingError(
+          "negócio",
+          command.businessName!,
+        );
       businessId = business.id;
       businessName = business.name;
     }
@@ -462,13 +536,21 @@ export async function executeRecordCommand(
       startDate: command.startDate ?? null,
       endDate: command.endDate ?? null,
       firstDueDate: command.firstDueDate ?? null,
-      paymentMethod: "",
-      paymentTerms: "",
-      financeNotes: "",
+      paymentMethod: command.paymentMethod ?? "",
+      paymentTerms: command.paymentTerms ?? "",
+      financeNotes: command.financeNotes ?? "",
       installments:
-        command.contractType === "one_off" && command.amountCents > 0
-          ? [{ number: 1, dueDate: command.firstDueDate!, amountCents: command.amountCents, status: "pending" }]
-          : [],
+        command.installments ??
+        (command.contractType === "one_off" && command.amountCents > 0
+          ? [
+              {
+                number: 1,
+                dueDate: command.firstDueDate!,
+                amountCents: command.amountCents,
+                status: "pending",
+              },
+            ]
+          : []),
     });
     return {
       message: `Criei o contrato ${contract.name} para o negócio ${businessName}.`,
@@ -487,12 +569,21 @@ export async function executeRecordCommand(
       mode: command.mode === "recurring" ? "fixa" : "pontual",
       category: command.category ?? "",
       notes: "",
-      ...(command.mode === "recurring" ? { recurrenceMonths: command.recurrenceCount ?? 12 } : {}),
+      ...(command.mode === "recurring"
+        ? { recurrenceMonths: command.recurrenceCount ?? 12 }
+        : {}),
     });
-    const entry = snapshot.entries.find((item) => item.title === command.name && item.dueDate === command.dueDate);
+    const entry = snapshot.entries.find(
+      (item) => item.title === command.name && item.dueDate === command.dueDate,
+    );
     return {
       message: `Criei a ${command.type === "revenue" ? "receita" : "despesa"} ${command.name}.`,
-      created: [{ type: command.type === "revenue" ? "receita" : "despesa", name: command.name }],
+      created: [
+        {
+          type: command.type === "revenue" ? "receita" : "despesa",
+          name: command.name,
+        },
+      ],
       output: entry ? { financeEntryId: entry.id } : undefined,
     };
   }
@@ -572,7 +663,7 @@ export async function executeRecordCommand(
   const tasks = command.tasks?.length
     ? command.tasks.map((task) => ({
         ...task,
-        status: "pendente" as const,
+        status: task.status ?? "pendente",
       }))
     : [
         {
@@ -584,15 +675,18 @@ export async function executeRecordCommand(
   const delivery = await createDelivery({
     name: command.name,
     projectId,
-    category: "",
-    priority: "normal",
-    briefing: "",
-    dueDate: null,
+    category: command.category ?? "",
+    priority: command.priority ?? "normal",
+    briefing: command.briefing ?? "",
+    dueDate: command.dueDate ?? null,
     sortOrder: 0,
     boardOrder: {},
-    tagLabels: [],
-    responsibleUserIds: [await currentResponsibleUserId()],
-    status: "planejamento",
+    engagementType: command.engagementType ?? "personal",
+    tagLabels: command.tagLabels ?? [],
+    responsibleUserIds: command.responsibleUserIds ?? [
+      await currentResponsibleUserId(),
+    ],
+    status: command.status ?? "planejamento",
     tasks,
   });
   return {

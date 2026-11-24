@@ -653,6 +653,9 @@ function mutationFields(
     institutionalContractId: (
       values.institutionalContractId ?? current?.institutionalContractId ?? ""
     ).trim() || undefined,
+    recurrence: (
+      values.recurrence ?? current?.recurrence ?? "one_off"
+    ) as DeliveryCreateInput["recurrence"],
     category: (
       values.categoria ??
       values.stage ??

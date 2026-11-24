@@ -11,6 +11,7 @@ import type {
   FinancialTotals,
 } from "../../finance/api-types";
 import { addMonthsToFinanceDate as addMonths } from "../../finance/installments";
+import { recurringContractInstallments } from "../../contracts/recurrence";
 import { appendAdministrativeAuditLog } from "../authorization/audit";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
 import {
@@ -65,10 +66,56 @@ function contractStatusSettled(status: string | null): boolean {
   );
 }
 
+/** Backfills the monthly occurrences of legacy recurring contracts once. */
+async function materializeRecurringContractInstallments(
+  database: FinanceDatabase,
+  workspaceId: string,
+): Promise<void> {
+  const recurringContracts = await database
+    .select({
+      id: contracts.id,
+      amountCents: contracts.amountCents,
+      firstDueDate: contracts.firstDueDate,
+      endDate: contracts.endDate,
+    })
+    .from(contracts)
+    .where(
+      and(
+        eq(contracts.workspaceId, workspaceId),
+        eq(contracts.contractType, "recurring"),
+      ),
+    );
+  if (!recurringContracts.length) return;
+
+  const existing = await database
+    .select({ contractId: contractInstallments.contractId })
+    .from(contractInstallments)
+    .where(eq(contractInstallments.workspaceId, workspaceId));
+  const contractIdsWithInstallments = new Set(
+    existing.map(({ contractId }) => contractId),
+  );
+  const rows = recurringContracts.flatMap((contract) => {
+    if (contractIdsWithInstallments.has(contract.id)) return [];
+    return recurringContractInstallments({
+      contractType: "recurring",
+      amountCents: contract.amountCents,
+      firstDueDate: contract.firstDueDate,
+      endDate: contract.endDate,
+    }).map(({ status, ...installment }) => ({
+      workspaceId,
+      contractId: contract.id,
+      ...installment,
+      statusKey: status,
+    }));
+  });
+  if (rows.length) await database.insert(contractInstallments).values(rows);
+}
+
 async function synchronizeContractEntries(
   database: FinanceDatabase,
   workspaceId: string,
 ): Promise<void> {
+  await materializeRecurringContractInstallments(database, workspaceId);
   const sourceRows = await database
     .select({
       installment: contractInstallments,
@@ -132,7 +179,10 @@ async function synchronizeContractEntries(
       competenceDate: installment.dueDate,
       dueDate: installment.dueDate,
       seriesId: installment.contractId,
-      seriesKind: "installment" as const,
+      seriesKind:
+        source.contractType === "recurring"
+          ? ("recurrence" as const)
+          : ("installment" as const),
       seriesNumber: installment.number,
       seriesCount: counts.get(installment.contractId) ?? 1,
       updatedByUserId: source.contractOwnerUserId,

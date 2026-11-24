@@ -21,6 +21,30 @@ describe("BE-11: validacao do Cronograma", () => {
       durationMinutes: 90,
       version: 0,
     });
+    expect(
+      cronogramaBlockSchema.parse({
+        workspaceId: "01dd1ab3-ed34-44fd-b100-8c371bf1bbad",
+        date: "2026-07-15",
+        startMinutes: 8 * 60,
+        durationMinutes: 90,
+        version: 0,
+      }),
+    ).toEqual({
+      workspaceId: "01dd1ab3-ed34-44fd-b100-8c371bf1bbad",
+      date: "2026-07-15",
+      startMinutes: 480,
+      durationMinutes: 90,
+      version: 0,
+    });
+    expect(
+      cronogramaDeleteSchema.parse({
+        workspaceId: "01dd1ab3-ed34-44fd-b100-8c371bf1bbad",
+        version: 2,
+      }),
+    ).toEqual({
+      workspaceId: "01dd1ab3-ed34-44fd-b100-8c371bf1bbad",
+      version: 2,
+    });
   });
 
   it("rejeita grade quebrada, virada de dia e versao de exclusao invalida", () => {

@@ -81,9 +81,37 @@ describe("BE-11: cliente do Cronograma", () => {
       fetcher,
     );
     await deleteCronogramaEntry(snapshot.items[0]!.taskId, 2, fetcher);
+    await saveCronogramaEntry(
+      snapshot.items[0]!.taskId,
+      {
+        workspaceId: snapshot.workspaceId,
+        date: "2026-07-15",
+        startMinutes: 480,
+        durationMinutes: 90,
+        version: 2,
+      },
+      fetcher,
+    );
+    await deleteCronogramaEntry(
+      snapshot.items[0]!.taskId,
+      { workspaceId: snapshot.workspaceId, version: 2 },
+      fetcher,
+    );
     expect(calls[0]?.[1]).toMatchObject({ method: "PUT" });
     expect(calls[1]?.[1]).toMatchObject({ method: "DELETE" });
     expect(calls[1]?.[1]?.body).toBe(JSON.stringify({ version: 2 }));
+    expect(calls[2]?.[1]?.body).toBe(
+      JSON.stringify({
+        workspaceId: snapshot.workspaceId,
+        date: "2026-07-15",
+        startMinutes: 480,
+        durationMinutes: 90,
+        version: 2,
+      }),
+    );
+    expect(calls[3]?.[1]?.body).toBe(
+      JSON.stringify({ workspaceId: snapshot.workspaceId, version: 2 }),
+    );
   });
 
   it("envia a reorganização da semana em lote", async () => {

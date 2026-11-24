@@ -31,6 +31,14 @@ Exemplo:
 CRIE CONTATO: Caleb Martins
 ```
 
+O contato aceita campos opcionais separados por `|`. As combinações são livres;
+somente o nome é obrigatório. `STATUS` aceita exclusivamente `Lead`,
+`Prospecto`, `Ativo`, `Desativado` ou `Arquivado`.
+
+```text
+CRIE CONTATO: Rafael Monteiro | STATUS: Ativo | TELEFONE: (88) 99999-0000 | E-MAIL: rafael@exemplo.com | PROFISSÃO: Designer | OBSERVAÇÕES: Indicado pela Camila
+```
+
 ### Criar negócio
 
 ```text
@@ -46,10 +54,13 @@ Exemplo:
 CRIE NEGÓCIO: Macajo | RESPONSÁVEL: Caleb Martins
 ```
 
+Também são aceitos `CATEGORIA`, `STATUS` (ou `ETAPA`) e `OBSERVAÇÕES`. Para
+vários responsáveis, separe os nomes por vírgula em `RESPONSÁVEL`.
+
 ### Criar projeto
 
 ```text
-CRIE PROJETO: Nome do projeto | NEGÓCIO: Nome do negócio | TIPO: CÍCLICO ou PONTUAL
+CRIE PROJETO: Nome do projeto | CONTRATO: Nome do contrato | TIPO: CÍCLICO ou PONTUAL
 ```
 
 O projeto é criado em planejamento, com início na data atual, sem valor, e com
@@ -59,8 +70,11 @@ o usuário atual como responsável. Escolha `CÍCLICO` para uma recorrência ou
 Exemplo:
 
 ```text
-CRIE PROJETO: Site institucional | NEGÓCIO: Macajo | TIPO: PONTUAL
+CRIE PROJETO: Site institucional | CONTRATO: Fee Macajo | TIPO: PONTUAL
 ```
+
+Também são aceitos `STATUS`, `INÍCIO`, `FIM`, `BRIEFING` e `TAGS` (separadas
+por vírgula).
 
 ### Criar tarefa
 
@@ -77,12 +91,24 @@ Exemplo:
 CRIE TAREFA: Criar wireframe da página inicial | PROJETO: Site institucional
 ```
 
+Também são aceitos `CATEGORIA`, `PRIORIDADE`, `STATUS`, `BRIEFING`,
+`VENCIMENTO` e `TAGS`. `CRIE ENTREGA:` é sinônimo de `CRIE TAREFA:`.
+
+### Criar contrato
+
+```text
+CRIE CONTRATO: Fee mensal | NEGÓCIO: Macajo | TIPO: RECORRENTE | VALOR: R$ 2.500,00 | INÍCIO: 2026-12-01 | FORMA PAGAMENTO: PIX | CONDIÇÕES: Vencimento todo dia 5
+```
+
+Além dos campos acima, o contrato aceita `FIM`, `VENCIMENTO` e `OBSERVAÇÕES`.
+Para relações, use o nome completo e inequívoco do negócio ou projeto.
+
 ## Exemplo de lote completo
 
 ```text
 CRIE CONTATO: Caleb Martins
 CRIE NEGÓCIO: Macajo | RESPONSÁVEL: Caleb Martins
-CRIE PROJETO: Site institucional | NEGÓCIO: Macajo | TIPO: PONTUAL
+CRIE PROJETO: Site institucional | CONTRATO: Fee Macajo | TIPO: PONTUAL
 CRIE TAREFA: Criar wireframe da página inicial | PROJETO: Site institucional
 CRIE TAREFA: Definir identidade visual | PROJETO: Site institucional
 ```

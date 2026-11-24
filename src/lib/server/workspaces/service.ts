@@ -6,6 +6,7 @@ import {
   auditLogs,
   businesses,
   contracts,
+  deliveries,
   projectResponsibles,
   projects,
   projectServices,
@@ -181,6 +182,14 @@ export async function listUserWorkspaces(
         inArray(projects.workspaceId, ids),
         eq(projects.isActive, true),
         isNull(projects.archivedAt),
+        sql`(
+          not ${projects.isInstitutional}
+          or exists (
+            select 1 from ${deliveries}
+            where ${deliveries.workspaceId} = ${projects.workspaceId}
+              and ${deliveries.projectId} = ${projects.id}
+          )
+        )`,
       ),
     )
     .orderBy(

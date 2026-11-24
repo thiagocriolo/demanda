@@ -23,6 +23,7 @@
   } from "$lib/settings/client";
   import { defaultSettings } from "$lib/settings/defaults";
   import {
+    archiveDelivery,
     createDelivery,
     entityValuesToDeliveryCreateInput,
     listAllDeliveries,
@@ -33,6 +34,14 @@
     updateDeliveryBoard,
     updateDeliveryFromEntityValues,
   } from "$lib/deliveries/client";
+  import {
+    canDropInBoardColumn,
+    canMoveBetweenColumns,
+    filterWorkspaceActiveBoardRecords,
+    isArchiveColumnDrop,
+    recordWorkspaceId,
+    resolveWorkspaceBeforeId,
+  } from "$lib/deliveries/board-move";
   import CardDropPlaceholder from "$lib/dnd/CardDropPlaceholder.svelte";
   import { cardDropBeforeId } from "$lib/dnd/card-drop-position";
   import EntityCard from "$lib/ui/EntityCard.svelte";
@@ -50,6 +59,7 @@
     type WorkspaceUser,
   } from "$lib/workspaces/workspace-storage";
   import {
+    Archive,
     ArrowDown,
     ArrowUp,
     BriefcaseBusiness,
@@ -193,7 +203,7 @@
       return (
         belongsToParticipatingProject &&
         (viewMode === "status" || showArchived || !archived) &&
-        (showDone || !done) &&
+        (viewMode === "status" || showDone || !done) &&
         responsibleMatches &&
         businessMatches &&
         deliveryMatches &&
@@ -240,12 +250,14 @@
     );
   }
 
-  async function reloadDeliveries(): Promise<void> {
+  async function reloadDeliveries(
+    options: { preserveError?: boolean } = {},
+  ): Promise<void> {
     deliveriesAbortController?.abort();
     const controller = new AbortController();
     deliveriesAbortController = controller;
     deliveriesLoading = true;
-    deliveriesError = "";
+    if (!options.preserveError) deliveriesError = "";
     try {
       const deliveries = await listAllDeliveries({
         archived: "include",
@@ -645,6 +657,7 @@
     if (viewMode === "client") return BriefcaseBusiness;
     if (viewMode === "project") return FolderKanban;
     if (column.value === "conclusao") return Check;
+    if (column.value === "arquivado") return Archive;
     return Flag;
   }
 
@@ -665,7 +678,29 @@
     dragBeforeDeliveryId = undefined;
   }
 
+  function canDropDeliveryInColumn(
+    deliveryId: string | undefined,
+    column: PautaColumn,
+  ): boolean {
+    if (!deliveryId) return false;
+    const dragged = allRecords.find((record) => record.id === deliveryId);
+    if (!dragged || isArchivedRecord(dragged)) return false;
+    return canDropInBoardColumn(
+      viewMode,
+      recordColumnValue(dragged, viewMode),
+      column.value,
+    );
+  }
+
   function updateDeliveryDropTarget(event: DragEvent, column: PautaColumn): void {
+    if (!canDropDeliveryInColumn(draggedDeliveryId, column)) {
+      if (dragTargetId === column.id) {
+        dragTargetId = undefined;
+        dragBeforeDeliveryId = undefined;
+      }
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
+      return;
+    }
     event.preventDefault();
     dragTargetId = column.id;
     dragBeforeDeliveryId = cardDropBeforeId(
@@ -702,7 +737,10 @@
     event.preventDefault();
     const deliveryId =
       draggedDeliveryId || event.dataTransfer?.getData("text/plain") || "";
-    if (!deliveryId) return;
+    if (!deliveryId || !canDropDeliveryInColumn(deliveryId, column)) {
+      endDrag();
+      return;
+    }
     void moveDelivery(
       deliveryId,
       column,
@@ -723,25 +761,48 @@
       deliveriesError = "Entregas arquivadas n\u00e3o podem ser reordenadas.";
       return;
     }
-    if (
-      viewMode === "project" &&
-      column.relationId &&
-      !projectRecords.some((project) => project.id === column.relationId) &&
-      (moved.projetoId || moved.project_id) !== column.relationId
-    )
-      return;
 
     const sourceValue = recordColumnValue(moved, viewMode);
-    if (viewMode === "client" && sourceValue !== column.value) {
-      deliveriesError =
-        "Para trocar o negócio, mova a entrega pela visão de projeto ou edite o formulário.";
+    if (!canDropInBoardColumn(viewMode, sourceValue, column.value)) {
       return;
     }
-    // Reindex the complete active source/target columns, not only the cards
-    // currently visible through search and filters. This prevents hidden deliveries
-    // from retaining duplicate positions.
-    const activeBoardRecords = allRecords.filter(
-      (record) => !isArchivedRecord(record),
+    if (isArchiveColumnDrop(viewMode, column.value)) {
+      const timestamp = new Date().toISOString();
+      allRecords = allRecords.map((record) =>
+        record.id === deliveryId
+          ? {
+              ...record,
+              archivedAt: timestamp,
+              status: "arquivado",
+              updatedAt: timestamp,
+            }
+          : record,
+      );
+      deliveryRequestPending = true;
+      deliveriesError = "";
+      let failed = false;
+      try {
+        await archiveDelivery(deliveryId, deliveryVersionFromRecord(moved));
+      } catch (cause) {
+        failed = true;
+        deliveriesError =
+          cause instanceof DeliveryApiError
+            ? cause.message
+            : "Não foi possível arquivar a entrega.";
+      } finally {
+        deliveryRequestPending = false;
+        await reloadDeliveries({ preserveError: failed });
+      }
+      return;
+    }
+    // Reindex the complete active source/target columns within the moved
+    // delivery's workspace, not only visible cards and never mixing workspaces
+    // when viewing the Global scope.
+    const movedWorkspaceId = recordWorkspaceId(moved);
+    const activeBoardRecords = filterWorkspaceActiveBoardRecords(
+      allRecords,
+      movedWorkspaceId,
+      isArchivedRecord,
     );
     const sourceItems = activeBoardRecords
       .filter((record) => recordColumnValue(record, viewMode) === sourceValue)
@@ -757,7 +818,14 @@
     const targetIds = targetItems
       .filter((record) => record.id !== deliveryId)
       .map((record) => record.id);
-    const beforeIndex = beforeId ? targetIds.indexOf(beforeId) : -1;
+    const resolvedBeforeId = resolveWorkspaceBeforeId(
+      beforeId,
+      column.items,
+      targetIds,
+    );
+    const beforeIndex = resolvedBeforeId
+      ? targetIds.indexOf(resolvedBeforeId)
+      : -1;
     targetIds.splice(
       beforeIndex >= 0 ? beforeIndex : targetIds.length,
       0,
@@ -786,35 +854,6 @@
             priority: column.value,
             updatedAt: timestamp,
           };
-        } else if (viewMode === "client") {
-          next = {
-            ...record,
-            negocio: column.title === "Sem cliente" ? "" : column.title,
-            negocioId: column.relationId || "",
-            business_id: column.relationId || "",
-            updatedAt: timestamp,
-          };
-        } else {
-          const project = projectRecords.find(
-            (candidate) => candidate.id === column.relationId,
-          );
-          next = {
-            ...record,
-            projeto: column.title === "Sem projeto" ? "" : column.title,
-            projetoId: column.relationId || "",
-            project_id: column.relationId || "",
-            projectWorkspaceId: project?.workspaceId || "",
-            project_workspace_id: project?.workspaceId || "",
-            negocio: project?.negocio || column.businessName || record.negocio,
-            negocioId: project?.negocioId || record.negocioId,
-            business_id:
-              project?.negocioId || project?.business_id || record.business_id,
-            businessWorkspaceId:
-              project?.workspaceId || record.businessWorkspaceId,
-            business_workspace_id:
-              project?.workspaceId || record.business_workspace_id,
-            updatedAt: timestamp,
-          };
         }
       }
       const visualOrder = orderById.get(record.id);
@@ -834,6 +873,7 @@
     allRecords = nextRecords;
     deliveryRequestPending = true;
     deliveriesError = "";
+    let failed = false;
     try {
       await updateDeliveryBoard({
         view: viewMode === "client" ? "business" : viewMode,
@@ -855,13 +895,14 @@
         }),
       });
     } catch (cause) {
+      failed = true;
       deliveriesError =
         cause instanceof DeliveryApiError
           ? cause.message
           : "Não foi possível mover a entrega.";
     } finally {
       deliveryRequestPending = false;
-      await reloadDeliveries();
+      await reloadDeliveries({ preserveError: failed });
     }
   }
 
@@ -949,6 +990,7 @@
     if (deliveryRequestPending) return;
     deliveryRequestPending = true;
     deliveriesError = "";
+    let failed = false;
     try {
       if (selectedDelivery) {
         await updateDeliveryFromEntityValues(selectedDelivery.id, values, selectedDelivery);
@@ -957,13 +999,14 @@
       }
       closeForm();
     } catch (cause) {
+      failed = true;
       deliveriesError =
         cause instanceof DeliveryApiError
           ? cause.message
           : "Não foi possível salvar a entrega.";
     } finally {
       deliveryRequestPending = false;
-      await reloadDeliveries();
+      await reloadDeliveries({ preserveError: failed });
     }
   }
 </script>
@@ -1055,8 +1098,13 @@
       >
         {#each columns as column (column.id)}
           {@const ColumnIcon = columnIcon(column)}
+          {@const isArchivedColumn =
+            viewMode === "status" && column.value === "arquivado"}
+          {@const cardDraggable =
+            canMoveBetweenColumns(viewMode) || column.items.length > 1}
           <section
             class:drop-target={dragTargetId === column.id}
+            class:pauta-column--archived={isArchivedColumn}
             class="pauta-column"
             style={`--column-color: ${column.color}`}
             aria-label={`${column.meta}: ${column.title}`}
@@ -1084,18 +1132,28 @@
 
             <div class="column-cards">
               {#each column.items as delivery (delivery.id)}
+                {@const isArchivedDelivery = isArchivedRecord(delivery)}
+                {@const isDeliveryDraggable =
+                  cardDraggable && !isArchivedDelivery}
                 {#if dragTargetId === column.id && dragBeforeDeliveryId === delivery.id}
                   <CardDropPlaceholder height={dropPlaceholderHeight} />
                 {/if}
                 <div
                   class:dragging={draggedDeliveryId === delivery.id}
+                  class:archived={isArchivedDelivery}
                   class="delivery-card-wrap"
                   data-pauta-delivery={delivery.id}
-                  draggable="true"
+                  draggable={isDeliveryDraggable}
                   role="button"
                   tabindex="0"
                   aria-label={`Abrir entrega ${delivery.nome || "sem nome"}`}
-                  ondragstart={(event) => beginDrag(event, delivery.id)}
+                  ondragstart={(event) => {
+                    if (!isDeliveryDraggable) {
+                      event.preventDefault();
+                      return;
+                    }
+                    beginDrag(event, delivery.id);
+                  }}
                   ondragend={endDrag}
                   onclick={() => openDelivery(delivery)}
                   onkeydown={(event) => {
@@ -1380,6 +1438,53 @@
     transform: translateY(-1px);
   }
 
+  .pauta-column--archived {
+    --column-color: #94a3b8;
+    border-color: color-mix(in srgb, var(--ink-400) 24%, var(--border));
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--ink-400) 8%, var(--surface-soft)) 0%,
+        color-mix(in srgb, var(--ink-400) 3%, var(--surface-soft)) 120px
+      ),
+      var(--surface-soft);
+    opacity: 0.78;
+  }
+
+  .pauta-column--archived.drop-target {
+    opacity: 0.96;
+  }
+
+  .pauta-column--archived .column-header {
+    border-bottom-color: color-mix(in srgb, var(--ink-400) 18%, var(--border));
+  }
+
+  .pauta-column--archived .column-icon {
+    border-color: color-mix(in srgb, var(--ink-400) 24%, var(--border));
+    color: var(--ink-400);
+    background: color-mix(in srgb, var(--ink-400) 8%, var(--surface));
+  }
+
+  .pauta-column--archived .column-header small {
+    color: var(--ink-400);
+  }
+
+  .pauta-column--archived .column-header h2 {
+    color: var(--ink-500);
+  }
+
+  .pauta-column--archived .column-count {
+    border-color: color-mix(in srgb, var(--ink-400) 22%, var(--border));
+    color: var(--ink-500);
+    background: color-mix(in srgb, var(--surface-soft) 70%, var(--surface));
+  }
+
+  .pauta-column--archived .column-empty {
+    border-color: color-mix(in srgb, var(--ink-400) 24%, var(--border));
+    color: var(--ink-400);
+    opacity: 0.75;
+  }
+
   .column-header {
     display: flex;
     min-width: 0;
@@ -1474,13 +1579,17 @@
     min-width: 0;
     border-radius: 16px;
     outline: 0;
-    cursor: grab;
+    cursor: pointer;
     transition:
       opacity var(--motion-fast),
       transform var(--motion-fast);
   }
 
-  .delivery-card-wrap:active {
+  .delivery-card-wrap[draggable="true"] {
+    cursor: grab;
+  }
+
+  .delivery-card-wrap[draggable="true"]:active {
     cursor: grabbing;
   }
 
@@ -1500,6 +1609,31 @@
 
   .delivery-card-wrap:hover :global(.wc-card-item) {
     box-shadow: 0 5px 14px rgba(15, 23, 42, 0.08);
+  }
+
+  .delivery-card-wrap.archived {
+    opacity: 0.62;
+    filter: grayscale(1);
+    transition:
+      opacity var(--motion-fast),
+      filter var(--motion-fast),
+      transform var(--motion-fast);
+  }
+
+  .delivery-card-wrap.archived :global(.wc-card-item) {
+    border-color: color-mix(in srgb, var(--ink-400) 24%, var(--border));
+    background: color-mix(in srgb, var(--surface-soft) 75%, var(--panel));
+    box-shadow: none;
+  }
+
+  .delivery-card-wrap.archived:hover,
+  .delivery-card-wrap.archived:focus-visible {
+    opacity: 0.78;
+    filter: grayscale(0.85);
+  }
+
+  .delivery-card-wrap.archived:hover :global(.wc-card-item) {
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
   }
 
   .column-empty {

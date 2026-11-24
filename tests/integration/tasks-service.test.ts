@@ -12,6 +12,8 @@ import {
 import { createDatabasePool } from "../../src/lib/server/db/pool";
 import {
   businesses,
+  contracts,
+  projectDeliveryRoutines,
   projects,
   tags,
   deliveryResponsibles,
@@ -532,13 +534,13 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
           ownerContext,
           created.id,
           updateInput(reopened, {
-            status: "conclusao",
+            projectId: randomUUID(),
             name: "Não persistir",
             priority: "baixa",
             tagLabels: ["Não Persistir"],
           }),
         ),
-      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
+      ).rejects.toBeInstanceOf(DeliveryRelationsInvalidError);
       expect(
         await getWorkspaceDelivery(database, ownerContext, created.id),
       ).toEqual(reopened);
@@ -1031,8 +1033,10 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
         first,
       );
 
-      await expect(
-        updateWorkspaceDeliveryBoard(database, ownerContext, {
+      const manualBoardCompletion = await updateWorkspaceDeliveryBoard(
+        database,
+        ownerContext,
+        {
           view: "status",
           updates: [
             {
@@ -1044,22 +1048,102 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
             {
               id: second.id,
               version: second.version,
-              position: 1,
+              position: 0,
               columnKey: "conclusao",
             },
           ],
-        }),
-      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
-      expect(await getWorkspaceDelivery(database, ownerContext, first.id)).toEqual(
-        first,
+        },
       );
-      expect(await getWorkspaceDelivery(database, ownerContext, second.id)).toEqual(
-        second,
-      );
+      expect(
+        manualBoardCompletion.items.find(({ id }) => id === second.id),
+      ).toMatchObject({
+        status: "conclusao",
+        boardOrder: { status: 0 },
+      });
+      expect(
+        manualBoardCompletion.items.find(({ id }) => id === second.id)
+          ?.completedAt,
+      ).not.toBeNull();
     });
   });
 
-  it("aplica conclusão e reabertura explícitas com retry idempotente", async () => {
+  it("permite mover entrega de fazendo para feito mesmo com entregas em projetos inativos na coluna de destino", async () => {
+    await withRollback(async (database) => {
+      const owner = await insertUser(database, "Owner Pauta Inativo");
+      const workspace = await insertWorkspace(database, owner, "Pauta Inativo");
+      const business = await insertBusiness(database, workspace.id, "Cliente");
+      const activeProject = await insertProject(
+        database,
+        workspace.id,
+        business.id,
+        "Projeto Ativo",
+      );
+      const inactiveProject = await insertProject(
+        database,
+        workspace.id,
+        business.id,
+        "Projeto Inativo",
+      );
+      const ownerContext = context(owner, workspace, "owner");
+
+      await createWorkspaceDelivery(
+        database,
+        ownerContext,
+        deliveryInput(inactiveProject.id, [owner.id], {
+          name: "Entrega concluída de projeto inativo",
+          status: "conclusao",
+          tasks: [
+            {
+              name: "Concluída",
+              durationMinutes: 60,
+              status: "concluida",
+            },
+          ],
+        }),
+      );
+      await database
+        .update(projects)
+        .set({ isActive: false })
+        .where(eq(projects.id, inactiveProject.id));
+
+      const movingDelivery = await createWorkspaceDelivery(
+        database,
+        ownerContext,
+        deliveryInput(activeProject.id, [owner.id], {
+          name: "Entrega em produção pronta",
+          status: "producao",
+          tasks: [
+            {
+              name: "Pronta",
+              durationMinutes: 60,
+              status: "concluida",
+            },
+          ],
+        }),
+      );
+
+      const moved = await updateWorkspaceDeliveryBoard(database, ownerContext, {
+        view: "status",
+        updates: [
+          {
+            id: movingDelivery.id,
+            version: movingDelivery.version,
+            position: 0,
+            columnKey: "conclusao",
+          },
+        ],
+      });
+
+      expect(moved.items).toHaveLength(1);
+      expect(moved.items[0]).toMatchObject({
+        id: movingDelivery.id,
+        status: "conclusao",
+        boardOrder: { status: 0 },
+      });
+    });
+  });
+
+  it("conclui entrega automaticamente ao concluir todas as tarefas e permite mudanças manuais com retry idempotente", async () => {
     await withRollback(async (database) => {
       const owner = await insertUser(database, "Owner Estado");
       const workspace = await insertWorkspace(database, owner, "Estado");
@@ -1077,13 +1161,6 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
         deliveryInput(project.id, [owner.id]),
       );
 
-      await expect(
-        setWorkspaceDeliveryState(database, ownerContext, created.id, {
-          version: 1,
-          status: "conclusao",
-        }),
-      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
-
       const first = await setWorkspaceTaskState(
         database,
         ownerContext,
@@ -1092,6 +1169,7 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
         { version: 1, status: "concluida" },
       );
       expect(first.version).toBe(2);
+      expect(first.status).toBe("planejamento");
       expect(first.tasks[0]?.status).toBe("concluida");
 
       const repeatedFirst = await setWorkspaceTaskState(
@@ -1113,64 +1191,34 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
         ),
       ).rejects.toBeInstanceOf(DeliveryVersionConflictError);
 
-      const second = await setWorkspaceTaskState(
+      // Ao concluir a última tarefa pendente, a entrega move automaticamente para conclusao.
+      const autoCompleted = await setWorkspaceTaskState(
         database,
         ownerContext,
         created.id,
         created.tasks[1]!.id,
         { version: 2, status: "concluida" },
       );
-      expect(second.version).toBe(3);
+      expect(autoCompleted).toMatchObject({ status: "conclusao", version: 3 });
+      expect(autoCompleted.completedAt).not.toBeNull();
 
-      const completed = await setWorkspaceDeliveryState(
-        database,
-        ownerContext,
-        created.id,
-        { version: 3, status: "conclusao" },
-      );
-      expect(completed).toMatchObject({ status: "conclusao", version: 4 });
-      expect(completed.completedAt).not.toBeNull();
-
+      // Retry idempotente do estado já concluído mantém versão atual.
       const repeatedCompletion = await setWorkspaceDeliveryState(
         database,
         ownerContext,
         created.id,
-        { version: 3, status: "conclusao" },
+        { version: 2, status: "conclusao" },
       );
-      expect(repeatedCompletion.version).toBe(4);
+      expect(repeatedCompletion.version).toBe(3);
 
-      await expect(
-        setWorkspaceTaskState(
-          database,
-          ownerContext,
-          created.id,
-          created.tasks[0]!.id,
-          { version: 4, status: "pendente" },
-        ),
-      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
-      await expect(
-        updateWorkspaceDelivery(
-          database,
-          ownerContext,
-          created.id,
-          updateInput(completed, {
-            tasks: completed.tasks.map((task, index) => ({
-              id: task.id,
-              name: task.name,
-              durationMinutes: task.durationMinutes,
-              status: index === 0 ? "pendente" : task.status,
-            })),
-          }),
-        ),
-      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
-
+      // Reabrir manualmente a entrega funciona mesmo com todas as tarefas concluídas.
       const reopenedDelivery = await setWorkspaceDeliveryState(
         database,
         ownerContext,
         created.id,
-        { version: 4, status: "producao" },
+        { version: 3, status: "producao" },
       );
-      expect(reopenedDelivery).toMatchObject({ status: "producao", version: 5 });
+      expect(reopenedDelivery).toMatchObject({ status: "producao", version: 4 });
       expect(reopenedDelivery.completedAt).toBeNull();
 
       const reopenedTask = await setWorkspaceTaskState(
@@ -1178,12 +1226,50 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
         ownerContext,
         created.id,
         created.tasks[0]!.id,
-        { version: 5, status: "pendente" },
+        { version: 4, status: "pendente" },
       );
-      expect(reopenedTask.version).toBe(6);
+      expect(reopenedTask.version).toBe(5);
+      expect(reopenedTask.status).toBe("producao");
+
+      // Conclusão manual continua permitida mesmo com tarefa pendente.
+      const manuallyCompleted = await setWorkspaceDeliveryState(
+        database,
+        ownerContext,
+        created.id,
+        { version: 5, status: "conclusao" },
+      );
+      expect(manuallyCompleted).toMatchObject({ status: "conclusao", version: 6 });
+      expect(manuallyCompleted.completedAt).not.toBeNull();
+
+      // Edição via agregado também conclui automaticamente quando todas as tarefas passam a concluídas.
+      const backToDoing = await setWorkspaceDeliveryState(
+        database,
+        ownerContext,
+        created.id,
+        { version: 6, status: "producao" },
+      );
+      const autoCompletedByUpdate = await updateWorkspaceDelivery(
+        database,
+        ownerContext,
+        created.id,
+        updateInput(backToDoing, {
+          tasks: backToDoing.tasks.map((task) => ({
+            id: task.id,
+            name: task.name,
+            durationMinutes: task.durationMinutes,
+            status: "concluida",
+          })),
+        }),
+      );
+      expect(autoCompletedByUpdate).toMatchObject({
+        status: "conclusao",
+        version: 8,
+      });
+      expect(autoCompletedByUpdate.completedAt).not.toBeNull();
+
       await expect(
         setWorkspaceDeliveryState(database, ownerContext, created.id, {
-          version: 5,
+          version: 7,
           status: "fila",
         }),
       ).rejects.toBeInstanceOf(DeliveryVersionConflictError);
@@ -1360,7 +1446,7 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
     });
   });
 
-  it("exige tarefas concluídas e preserva pais arquivados já vinculados", async () => {
+  it("permite concluir manualmente na criação e preserva pais arquivados já vinculados", async () => {
     await withRollback(async (database) => {
       const owner = await insertUser(database, "Owner Pais");
       const workspace = await insertWorkspace(database, owner, "Pais");
@@ -1373,13 +1459,16 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
       );
       const ownerContext = context(owner, workspace, "owner");
 
-      await expect(
-        createWorkspaceDelivery(
-          database,
-          ownerContext,
-          deliveryInput(project.id, [owner.id], { status: "conclusao" }),
-        ),
-      ).rejects.toBeInstanceOf(DeliveryStateConflictError);
+      const manuallyCompletedOnCreate = await createWorkspaceDelivery(
+        database,
+        ownerContext,
+        deliveryInput(project.id, [owner.id], {
+          name: "Concluída manualmente na criação",
+          status: "conclusao",
+        }),
+      );
+      expect(manuallyCompletedOnCreate.status).toBe("conclusao");
+      expect(manuallyCompletedOnCreate.completedAt).not.toBeNull();
       const completed = await createWorkspaceDelivery(
         database,
         ownerContext,
@@ -1700,6 +1789,304 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
         (await getWorkspaceDelivery(database, ownerContext, delivery.id)).business
           .archivedAt,
       ).not.toBeNull();
+    });
+  });
+
+  it("cria entregas no workspace do contrato ou projeto mesmo com outro workspace ativo", async () => {
+    await withRollback(async (database) => {
+      const owner = await insertUser(database, "MultiWorkspaceOwner");
+      const otherUser = await insertUser(database, "OtherWorkspaceOwner");
+      const activeWorkspace = await insertWorkspace(
+        database,
+        owner,
+        "Workspace Ativo",
+      );
+      const targetWorkspace = await insertWorkspace(
+        database,
+        owner,
+        "Workspace Alvo",
+      );
+      const foreignWorkspace = await insertWorkspace(
+        database,
+        otherUser,
+        "Workspace Terceiro",
+      );
+      const business = await insertBusiness(
+        database,
+        targetWorkspace.id,
+        "Cliente Alvo",
+        owner.id,
+      );
+      const foreignBusiness = await insertBusiness(
+        database,
+        foreignWorkspace.id,
+        "Cliente Terceiro",
+        otherUser.id,
+      );
+      const recurringContractId = randomUUID();
+      await database.insert(contracts).values({
+        id: recurringContractId,
+        workspaceId: targetWorkspace.id,
+        ownerUserId: owner.id,
+        businessId: business.id,
+        name: "Contrato Recorrente",
+        contractType: "recurring",
+        amountCents: 0,
+        startDate: "2026-11-01",
+      });
+      const oneOffContractId = randomUUID();
+      await database.insert(contracts).values({
+        id: oneOffContractId,
+        workspaceId: targetWorkspace.id,
+        ownerUserId: owner.id,
+        businessId: business.id,
+        name: "Contrato Pontual Sem Data",
+        contractType: "one_off",
+        amountCents: 0,
+        startDate: null,
+      });
+      const foreignContractId = randomUUID();
+      await database.insert(contracts).values({
+        id: foreignContractId,
+        workspaceId: foreignWorkspace.id,
+        ownerUserId: otherUser.id,
+        businessId: foreignBusiness.id,
+        name: "Contrato Externo",
+        contractType: "recurring",
+        amountCents: 0,
+        startDate: "2026-11-01",
+      });
+
+      const activeContext = context(owner, activeWorkspace, "owner");
+
+      // 1. Primeira entrega institucional recorrente em outro workspace acessível
+      const firstInstitutional = await createWorkspaceDelivery(
+        database,
+        activeContext,
+        {
+          name: "Entrega Diária 1",
+          institutionalContractId: recurringContractId,
+          recurrence: "daily",
+          category: "",
+          priority: "normal",
+          status: "fila",
+          briefing: "",
+          dueDate: null,
+          tagLabels: [],
+          responsibleUserIds: [owner.id],
+          tasks: [
+            { name: "Entrega Diária 1", durationMinutes: 60, status: "pendente" },
+          ],
+        },
+      );
+      expect(firstInstitutional.workspaceId).toBe(targetWorkspace.id);
+      expect(firstInstitutional.dueDate).toBeNull();
+
+      // 2. Segunda entrega recorrente no projeto institucional já materializado
+      const secondInstitutional = await createWorkspaceDelivery(
+        database,
+        activeContext,
+        {
+          name: "Entrega Diária 2",
+          projectId: firstInstitutional.project.id,
+          recurrence: "weekly",
+          category: "",
+          priority: "normal",
+          status: "fila",
+          briefing: "",
+          dueDate: null,
+          tagLabels: [],
+          responsibleUserIds: [owner.id],
+          tasks: [
+            { name: "Entrega Diária 2", durationMinutes: 60, status: "pendente" },
+          ],
+        },
+      );
+      expect(secondInstitutional.workspaceId).toBe(targetWorkspace.id);
+      const routines = await database
+        .select()
+        .from(projectDeliveryRoutines)
+        .where(eq(projectDeliveryRoutines.projectId, firstInstitutional.project.id));
+      expect(routines.map(({ recurrenceType }) => recurrenceType).sort()).toEqual([
+        "daily",
+        "weekly",
+      ]);
+
+      // 3. Contrato pontual sem startDate também materializa o projeto institucional
+      const oneOffInstitutional = await createWorkspaceDelivery(
+        database,
+        activeContext,
+        {
+          name: "Entrega Pontual Institucional",
+          institutionalContractId: oneOffContractId,
+          recurrence: "one_off",
+          category: "",
+          priority: "normal",
+          status: "fila",
+          briefing: "",
+          dueDate: "2026-12-01",
+          tagLabels: [],
+          responsibleUserIds: [owner.id],
+          tasks: [
+            {
+              name: "Entrega Pontual Institucional",
+              durationMinutes: 60,
+              status: "pendente",
+            },
+          ],
+        },
+      );
+      expect(oneOffInstitutional.workspaceId).toBe(targetWorkspace.id);
+      expect(oneOffInstitutional.dueDate).toBe("2026-12-01");
+
+      // 3.1. Leitura e atualização funcionam para entrega em outro workspace autorizado
+      const fetchedFromOtherWorkspace = await getWorkspaceDelivery(
+        database,
+        activeContext,
+        oneOffInstitutional.id,
+      );
+      expect(fetchedFromOtherWorkspace.id).toBe(oneOffInstitutional.id);
+      const updatedFromOtherWorkspace = await updateWorkspaceDelivery(
+        database,
+        activeContext,
+        oneOffInstitutional.id,
+        updateInput(fetchedFromOtherWorkspace, {
+          name: "Entrega Pontual Atualizada",
+        }),
+      );
+      expect(updatedFromOtherWorkspace.name).toBe("Entrega Pontual Atualizada");
+
+      // 3.2. Movimentação na pauta funciona para entregas de outro workspace autorizado
+      const movedBoardResult = await updateWorkspaceDeliveryBoard(
+        database,
+        activeContext,
+        {
+          view: "status",
+          updates: [
+            {
+              id: firstInstitutional.id,
+              version: firstInstitutional.version,
+              position: 0,
+              columnKey: "planejamento",
+            },
+            {
+              id: secondInstitutional.id,
+              version: secondInstitutional.version,
+              position: 0,
+              columnKey: "fila",
+            },
+            {
+              id: updatedFromOtherWorkspace.id,
+              version: updatedFromOtherWorkspace.version,
+              position: 1,
+              columnKey: "fila",
+            },
+          ],
+        },
+      );
+      expect(movedBoardResult.workspaceId).toBe(targetWorkspace.id);
+      expect(
+        movedBoardResult.items.find(({ id }) => id === firstInstitutional.id),
+      ).toMatchObject({
+        status: "planejamento",
+        boardOrder: { status: 0 },
+      });
+
+      // 3.3. Lote da pauta rejeita mistura de workspaces e workspaces sem permissão
+      const activeBusiness = await insertBusiness(
+        database,
+        activeWorkspace.id,
+        "Cliente Ativo",
+        owner.id,
+      );
+      const activeProject = await insertProject(
+        database,
+        activeWorkspace.id,
+        activeBusiness.id,
+        "Projeto Ativo",
+      );
+      const activeDelivery = await createWorkspaceDelivery(
+        database,
+        activeContext,
+        deliveryInput(activeProject.id, [owner.id], {
+          name: "Entrega Workspace Ativo",
+          status: "fila",
+        }),
+      );
+      const refreshedSecond = movedBoardResult.items.find(
+        ({ id }) => id === secondInstitutional.id,
+      )!;
+      await expect(
+        updateWorkspaceDeliveryBoard(database, activeContext, {
+          view: "status",
+          updates: [
+            {
+              id: activeDelivery.id,
+              version: activeDelivery.version,
+              position: 0,
+              columnKey: "planejamento",
+            },
+            {
+              id: refreshedSecond.id,
+              version: refreshedSecond.version,
+              position: 1,
+              columnKey: "planejamento",
+            },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(DeliveryNotFoundError);
+
+      const foreignProject = await insertProject(
+        database,
+        foreignWorkspace.id,
+        foreignBusiness.id,
+        "Projeto Externo",
+      );
+      const foreignContext = context(otherUser, foreignWorkspace, "owner");
+      const foreignDelivery = await createWorkspaceDelivery(
+        database,
+        foreignContext,
+        deliveryInput(foreignProject.id, [otherUser.id], {
+          name: "Entrega Externa",
+          status: "fila",
+        }),
+      );
+      await expect(
+        updateWorkspaceDeliveryBoard(database, activeContext, {
+          view: "status",
+          updates: [
+            {
+              id: foreignDelivery.id,
+              version: foreignDelivery.version,
+              position: 0,
+              columnKey: "planejamento",
+            },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(DeliveryNotFoundError);
+
+      // 4. Contrato em workspace sem acesso continua sendo rejeitado
+      await expect(
+        createWorkspaceDelivery(database, activeContext, {
+          name: "Entrega Sem Permissão",
+          institutionalContractId: foreignContractId,
+          recurrence: "daily",
+          category: "",
+          priority: "normal",
+          status: "fila",
+          briefing: "",
+          dueDate: null,
+          tagLabels: [],
+          responsibleUserIds: [owner.id],
+          tasks: [
+            {
+              name: "Entrega Sem Permissão",
+              durationMinutes: 60,
+              status: "pendente",
+            },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(DeliveryRelationsInvalidError);
     });
   });
 });

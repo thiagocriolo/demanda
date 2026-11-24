@@ -52,6 +52,55 @@ function contractWeekNumber(startDate: string, date: string): number {
   return Math.max(1, Math.floor(daysBetween(startDate, date) / 7) + 1);
 }
 
+type InstitutionalRecurrence = "one_off" | "daily" | "weekly" | "monthly";
+
+function lastBusinessDayOfMonth(year: number, month: number): string {
+  const date = new Date(Date.UTC(year, month + 1, 0));
+  while (date.getUTCDay() === 0 || date.getUTCDay() === 6) {
+    date.setUTCDate(date.getUTCDate() - 1);
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+/** Returns the active cycle date without using `deliveries.due_date`.
+ * Institutional deliveries deliberately remain outside the Agenda. */
+export function institutionalOccurrenceDate(
+  recurrenceType: InstitutionalRecurrence,
+  today: string,
+): string {
+  if (recurrenceType === "daily") return today;
+  if (recurrenceType === "weekly") {
+    const current = new Date(`${today}T00:00:00.000Z`);
+    return addDays(today, (5 - current.getUTCDay() + 7) % 7);
+  }
+  if (recurrenceType === "monthly") {
+    const current = new Date(`${today}T00:00:00.000Z`);
+    const currentMonth = lastBusinessDayOfMonth(
+      current.getUTCFullYear(),
+      current.getUTCMonth(),
+    );
+    if (today <= currentMonth) return currentMonth;
+    return lastBusinessDayOfMonth(
+      current.getUTCFullYear(),
+      current.getUTCMonth() + 1,
+    );
+  }
+  return today;
+}
+
+function institutionalArchiveName(
+  name: string,
+  recurrenceType: InstitutionalRecurrence,
+  occurrenceDate: string,
+  contractStartDate: string,
+): string {
+  if (recurrenceType === "weekly") {
+    return `${name} - Semana ${String(contractWeekNumber(contractStartDate, occurrenceDate)).padStart(2, "0")}`;
+  }
+  if (recurrenceType === "monthly") return `${name} - Mês ${occurrenceDate.slice(0, 7)}`;
+  return `${name} - Dia ${occurrenceDate}`;
+}
+
 function parseJson<T>(value: string, fallback: T): T {
   try {
     return JSON.parse(value) as T;
@@ -204,7 +253,6 @@ async function rollInstitutionalProjectWeekInTransaction(
   today: string,
 ): Promise<void> {
   if (project.endDate && today > project.endDate) return;
-  const currentWeek = contractWeekNumber(project.startDate, today);
   const routines = await database
     .select()
     .from(projectDeliveryRoutines)
@@ -217,22 +265,28 @@ async function rollInstitutionalProjectWeekInTransaction(
   const now = new Date();
 
   for (const routine of routines) {
-    for (let week = 1; week <= currentWeek; week += 1) {
-      const occurrenceDate = contractWeekStart(project.startDate, week);
-      if (project.endDate && occurrenceDate > project.endDate) break;
-      const [existing] = await database
-        .select({ id: deliveries.id })
-        .from(deliveries)
-        .where(
-          and(
-            eq(deliveries.workspaceId, workspaceId),
-            eq(deliveries.projectRoutineId, routine.id),
-            eq(deliveries.routineOccurrenceDate, occurrenceDate),
-          ),
-        )
-        .limit(1);
-      if (existing) continue;
-
+    const recurrenceType: InstitutionalRecurrence =
+      routine.recurrenceType === "daily" ||
+      routine.recurrenceType === "weekly" ||
+      routine.recurrenceType === "monthly" ||
+      routine.recurrenceType === "one_off"
+        ? routine.recurrenceType
+        : "weekly";
+    if (recurrenceType === "one_off") continue;
+    const occurrenceDate = institutionalOccurrenceDate(recurrenceType, today);
+    if (project.endDate && occurrenceDate > project.endDate) continue;
+    const [existing] = await database
+      .select({ id: deliveries.id })
+      .from(deliveries)
+      .where(
+        and(
+          eq(deliveries.workspaceId, workspaceId),
+          eq(deliveries.projectRoutineId, routine.id),
+          eq(deliveries.routineOccurrenceDate, occurrenceDate),
+        ),
+      )
+      .limit(1);
+    if (!existing) {
       const deliveryId = randomUUID();
       await database.insert(deliveries).values({
         id: deliveryId,
@@ -253,19 +307,13 @@ async function rollInstitutionalProjectWeekInTransaction(
         updatedAt: now,
       });
       const snapshots = parseJson<SnapshotTask[]>(routine.tasks, []);
-      const deliveryDeliveries = snapshots.length
+      const deliveryTasksSnapshot = snapshots.length
         ? snapshots
-        : [
-            {
-              name: "Concluir entrega",
-              durationMinutes: 60,
-              status: "pendente",
-            },
-          ];
+        : [{ name: "Concluir entrega", durationMinutes: 60, status: "pendente" }];
       await database.insert(deliveryTasks).values(
-        deliveryDeliveries.map((item, sortOrder) => ({
+        deliveryTasksSnapshot.map((item, sortOrder) => ({
           workspaceId,
-          deliveryId: deliveryId,
+          deliveryId,
           name: item.name,
           durationMinutes: item.durationMinutes,
           statusKey: item.status,
@@ -276,27 +324,22 @@ async function rollInstitutionalProjectWeekInTransaction(
       );
       const tagIds = parseJson<string[]>(routine.tagIds, []);
       if (tagIds.length)
-        await database
-          .insert(deliveryTags)
-          .values(
-            tagIds.map((tagId, sortOrder) => ({
-              workspaceId,
-              deliveryId: deliveryId,
-              tagId,
-              sortOrder,
-            })),
-          );
-      await database
-        .insert(deliveryResponsibles)
-        .values({
-          workspaceId,
-          deliveryId: deliveryId,
-          userId: routine.responsibleUserId,
-          sortOrder: 0,
-        });
+        await database.insert(deliveryTags).values(
+          tagIds.map((tagId, sortOrder) => ({
+            workspaceId,
+            deliveryId,
+            tagId,
+            sortOrder,
+          })),
+        );
+      await database.insert(deliveryResponsibles).values({
+        workspaceId,
+        deliveryId,
+        userId: routine.responsibleUserId,
+        sortOrder: 0,
+      });
     }
 
-    const previousWeekStart = contractWeekStart(project.startDate, currentWeek);
     const expired = await database
       .select({ id: deliveries.id, occurrenceDate: deliveries.routineOccurrenceDate })
       .from(deliveries)
@@ -304,20 +347,21 @@ async function rollInstitutionalProjectWeekInTransaction(
         and(
           eq(deliveries.workspaceId, workspaceId),
           eq(deliveries.projectRoutineId, routine.id),
-          lt(deliveries.routineOccurrenceDate, previousWeekStart),
+          lt(deliveries.routineOccurrenceDate, occurrenceDate),
           isNull(deliveries.archivedAt),
         ),
       );
     for (const delivery of expired) {
       if (!delivery.occurrenceDate) continue;
-      const week = contractWeekNumber(
-        project.startDate,
-        delivery.occurrenceDate,
-      );
       await database
         .update(deliveries)
         .set({
-          name: `${routine.name} - Semana ${String(week).padStart(2, "0")}`,
+          name: institutionalArchiveName(
+            routine.name,
+            recurrenceType,
+            delivery.occurrenceDate,
+            project.startDate,
+          ),
           archivedAt: now,
           updatedAt: now,
         })

@@ -16,7 +16,14 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
-import { applicationSchema, check, createdAt, timestamp, updatedAt, uuid } from "./base";
+import {
+  applicationSchema,
+  check,
+  createdAt,
+  timestamp,
+  updatedAt,
+  uuid,
+} from "./base";
 
 import type {
   ContactEmailType,
@@ -65,8 +72,10 @@ export const contacts = applicationSchema.table(
       table.status,
       table.archivedAt,
     ),
-    uniqueIndex("contacts_owner_linked_user_unique")
-      .on(table.ownerUserId, table.linkedUserId),
+    uniqueIndex("contacts_owner_linked_user_unique").on(
+      table.ownerUserId,
+      table.linkedUserId,
+    ),
     check(
       "contacts_type_allowed",
       sql`${table.contactType} in ('person', 'company', 'other')`,
@@ -300,6 +309,10 @@ export const businesses = applicationSchema.table(
       sql`${table.stageKey} ~ '^[a-z0-9][a-z0-9_-]{0,63}$'`,
     ),
     check(
+      "businesses_stage_key_allowed",
+      sql`${table.stageKey} in ('negociacao', 'contratacao', 'ativo', 'encerrado', 'arquivado')`,
+    ),
+    check(
       "businesses_updated_not_before_creation",
       sql`${table.updatedAt} >= ${table.createdAt}`,
     ),
@@ -342,10 +355,16 @@ export const businessResponsibles = applicationSchema.table(
       table.contactId,
     ),
     index("business_responsibles_user_index").on(table.userId),
-    uniqueIndex("business_responsibles_business_contact_unique")
-      .on(table.workspaceId, table.businessId, table.contactId),
-    uniqueIndex("business_responsibles_business_user_unique")
-      .on(table.workspaceId, table.businessId, table.userId),
+    uniqueIndex("business_responsibles_business_contact_unique").on(
+      table.workspaceId,
+      table.businessId,
+      table.contactId,
+    ),
+    uniqueIndex("business_responsibles_business_user_unique").on(
+      table.workspaceId,
+      table.businessId,
+      table.userId,
+    ),
     index("business_responsibles_workspace_business_order_index").on(
       table.workspaceId,
       table.businessId,

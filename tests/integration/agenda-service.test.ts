@@ -341,6 +341,78 @@ describe("BE-10: Agenda persistente", () => {
       expect(storedDelivery).toMatchObject({ dueDate: null, version: 2 });
     }));
 
+  it("exclui projetos institucionais da agenda e mantem apenas entregas pontuais", () =>
+    withRollback(async (transaction) => {
+      const data = await fixture(transaction, "Institutional");
+      const [business] = await transaction
+        .select({ id: businesses.id })
+        .from(businesses)
+        .where(eq(businesses.workspaceId, data.workspace.id))
+        .limit(1);
+      if (!business) throw new Error("Negocio nao encontrado.");
+
+      const recurringProjectId = randomUUID();
+      const oneOffProjectId = randomUUID();
+      await transaction.insert(projects).values([
+        {
+          id: recurringProjectId,
+          workspaceId: data.workspace.id,
+          businessId: business.id,
+          isInstitutional: true,
+          contractType: "recurring",
+          name: "Institucional",
+          statusKey: "execucao",
+          endDate: null,
+        },
+        {
+          id: oneOffProjectId,
+          workspaceId: data.workspace.id,
+          businessId: business.id,
+          isInstitutional: true,
+          contractType: "one_off",
+          name: "Institucional",
+          statusKey: "execucao",
+          endDate: null,
+        },
+      ]);
+
+      const recurringDeliveryId = randomUUID();
+      const oneOffDeliveryId = randomUUID();
+      await transaction.insert(deliveries).values([
+        {
+          id: recurringDeliveryId,
+          workspaceId: data.workspace.id,
+          projectId: recurringProjectId,
+          businessId: business.id,
+          name: "Rotina institucional",
+          dueDate: null,
+        },
+        {
+          id: oneOffDeliveryId,
+          workspaceId: data.workspace.id,
+          projectId: oneOffProjectId,
+          businessId: business.id,
+          name: "Entrega pontual institucional",
+          dueDate: "2026-08-20",
+        },
+      ]);
+
+      const snapshot = await getWorkspaceAgenda(transaction, data.ownerContext);
+
+      expect(snapshot.projects.map(({ id }) => id)).not.toContain(
+        recurringProjectId,
+      );
+      expect(snapshot.projects.map(({ id }) => id)).not.toContain(
+        oneOffProjectId,
+      );
+      expect(snapshot.deliveries.map(({ id }) => id)).not.toContain(
+        recurringDeliveryId,
+      );
+      expect(snapshot.deliveries.map(({ id }) => id)).toContain(
+        oneOffDeliveryId,
+      );
+    }));
+
   it("serializa dois movimentos concorrentes sem duplicar posicoes", async () => {
     const data = await fixture(database, "Concurrent");
     try {

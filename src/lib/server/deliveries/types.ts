@@ -81,10 +81,17 @@ export type DeliveryTaskMutationInput = {
   status: TaskStatus;
 };
 
+export type InstitutionalDeliveryRecurrence =
+  | "one_off"
+  | "daily"
+  | "weekly"
+  | "monthly";
+
 export type DeliveryContentInput = {
   name: string;
   projectId?: string;
   institutionalContractId?: string;
+  recurrence?: InstitutionalDeliveryRecurrence;
   category: string;
   priority: string;
   briefing: string;

@@ -52,6 +52,36 @@ ela não deve realizar alterações ao ser acessada.
 Todos os comandos precisam conter `id`, `action`, `resource` e `data`. Use IDs
 curtos, estáveis e únicos dentro do documento.
 
+## Campos de criação
+
+Envie apenas campos pertencentes ao recurso. Campos omitidos recebem o padrão
+da aplicação; não invente campos nem valores de enumeração.
+
+- `contact`: `name` (obrigatório), `contactType` (`person`, `company` ou
+  `other`), `status` (`lead`, `prospect`, `active`, `inactive` ou `archived`),
+  `profession`, `phones`, `emails` e `notes`. Cada telefone é `{ type, label,
+value, isPrimary }`; tipos aceitos: `mobile`, `whatsapp`, `work`, `home` e
+  `other`. Cada e-mail usa os tipos `personal`, `work` ou `other`. `archived`
+  cria o contato e o arquiva; não é um sexto status persistido.
+- `business`: `name`, `responsibleContactName` ou `responsibleContactRef`
+  (obrigatório), `category`, `stage` e `notes`.
+- `contract`: `name`, `businessName` ou `businessRef`, `contractType`,
+  `amountCents`, `startDate`, `endDate`, `firstDueDate`, `paymentMethod`,
+  `paymentTerms`, `financeNotes` e `installments`.
+- `project`: `name`, `contractName` ou `contractRef`, `serviceIds`, `status`,
+  `startDate`, `endDate`, `engagementType`, `briefing`, `tagLabels`,
+  `responsibleUserIds` e os campos financeiros legados `contractType`,
+  `amountCents`, `firstDueDate`, `paymentMethod`, `paymentTerms`,
+  `financeNotes` e `installments`.
+- `delivery` (entrega ou tarefa): `name`, `projectName` ou `projectRef`,
+  `category`, `priority`, `status`, `briefing`, `dueDate`, `engagementType`,
+  `tagLabels`, `responsibleUserIds` e `tasks`. Cada item de `tasks` aceita
+  `name`, `durationMinutes`, `executionAt` e `status`.
+
+Datas usam `AAAA-MM-DD`, dinheiro usa `amountCents` e referências por ID só
+podem apontar a comandos do mesmo documento. Para nomes externos, use o nome
+completo e inequívoco.
+
 ## Referências e fila
 
 O Demanda executa o documento como uma árvore. Uma falha bloqueia apenas os
@@ -61,7 +91,7 @@ Para registros criados no mesmo documento, use referências de comando. Nunca
 reutilize somente o nome de um registro recém-criado.
 
 - Negócio: `data.responsibleContactRef`
-- Projeto: `data.businessRef`
+- Projeto: `data.contractRef`
 - Tarefa: `data.projectRef`
 - Contrato: `data.businessRef`
 
@@ -82,14 +112,14 @@ cada subtarefa.
 
 ```json
 {
-  "id": "task-atualizar-site",
+  "id": "delivery-atualizar-site",
   "dependsOn": ["project-gestao-trafego"],
   "action": "create",
-  "resource": "task",
+  "resource": "delivery",
   "data": {
     "name": "Atualizar o site",
     "projectRef": "project-gestao-trafego",
-    "subtasks": [
+    "tasks": [
       { "name": "Atualizar botões e layout", "durationMinutes": 60 },
       {
         "name": "Implementar pixel e app do Google",
@@ -132,7 +162,7 @@ do modelo de serviço.
   "data": {
     "name": "Calendário editorial",
     "serviceTemplateRef": "service-social",
-    "subtasks": [{ "name": "Definir pauta" }]
+    "tasks": [{ "name": "Definir pauta" }]
   }
 }
 ```
@@ -140,8 +170,8 @@ do modelo de serviço.
 ## Comandos executáveis agora
 
 Somente a ação `create` é permitida. Os recursos disponíveis são `contact`
-(pessoa), `business`, `workspace`, `contract`, `project`, `task` (também usada
-para entregas), `service`, `service_template`, `delivery_template` e
+(pessoa), `business`, `workspace`, `contract`, `project`, `delivery`, `service`,
+`service_template`, `delivery_template` e
 `finance_entry`. Não gere `update`, `delete`, permissões, agenda ou cronograma.
 
 ### Workspace e serviço
@@ -228,13 +258,25 @@ Atualizar o site com duas subtarefas e a tarefa Subir campanha.”
       }
     },
     {
-      "id": "project-gestao-trafego",
+      "id": "contract-siebra",
       "dependsOn": ["business-siebra"],
+      "action": "create",
+      "resource": "contract",
+      "data": {
+        "name": "Gestão mensal",
+        "businessRef": "business-siebra",
+        "contractType": "recorrente",
+        "amountCents": 0
+      }
+    },
+    {
+      "id": "project-gestao-trafego",
+      "dependsOn": ["contract-siebra"],
       "action": "create",
       "resource": "project",
       "data": {
         "name": "Gestão de Tráfego",
-        "businessRef": "business-siebra",
+        "contractRef": "contract-siebra",
         "contractType": "cíclico"
       }
     },
@@ -242,11 +284,11 @@ Atualizar o site com duas subtarefas e a tarefa Subir campanha.”
       "id": "task-atualizar-site",
       "dependsOn": ["project-gestao-trafego"],
       "action": "create",
-      "resource": "task",
+      "resource": "delivery",
       "data": {
         "name": "Atualizar o site",
         "projectRef": "project-gestao-trafego",
-        "subtasks": [
+        "tasks": [
           { "name": "Atualizar botões e layout" },
           { "name": "Implementar pixel e app do Google" }
         ]
@@ -256,7 +298,7 @@ Atualizar o site com duas subtarefas e a tarefa Subir campanha.”
       "id": "task-subir-campanha",
       "dependsOn": ["project-gestao-trafego"],
       "action": "create",
-      "resource": "task",
+      "resource": "delivery",
       "data": {
         "name": "Subir campanha",
         "projectRef": "project-gestao-trafego"

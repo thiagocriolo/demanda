@@ -169,6 +169,20 @@
       "when": 1794400000017,
       "tag": "0023_exclude_institutional_projects_from_agenda",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1794400000018,
+      "tag": "0024_canonical_business_stages",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1794400000019,
+      "tag": "0025_restore_one_off_institutional_dates",
+      "breakpoints": true
     }
   ]
 }

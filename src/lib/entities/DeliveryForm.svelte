@@ -26,10 +26,21 @@
   } from "$lib/settings/client";
   import type { Choice, StyledChoice } from "$lib/settings/types";
   import { deliveryRelationsFromRecord } from "$lib/deliveries/client";
+  import {
+    canSelectDeliveryResponsible,
+    currentRecordResponsiblesForWorkspace,
+    hasDeliveryResponsibleWorkspace,
+    resolveDeliveryResponsibleSelection,
+  } from "$lib/deliveries/responsible-scope";
   import GlobalSelector, {
     type GlobalSelectorItem,
   } from "$lib/ui/GlobalSelector.svelte";
-  import { getActiveWorkspace } from "$lib/workspaces/workspace-storage";
+  import {
+    getActiveWorkspace,
+    loadWorkspaces,
+    refreshWorkspaceSnapshot,
+    type Workspace,
+  } from "$lib/workspaces/workspace-storage";
   import { GLOBAL_WORKSPACE_SCOPE_ID } from "$lib/workspaces/workspace-scope";
   import {
     Archive,
@@ -67,6 +78,7 @@
     responsavelId: string;
     responsavel: string;
     dataEntrega: string;
+    recurrence: "one_off" | "daily" | "weekly" | "monthly";
     categoria: string;
     prioridade: string;
     status: string;
@@ -138,6 +150,8 @@
   let workspaceMembers = $state<ProjectResponsible[]>([]);
   let members = $state<ProjectResponsible[]>([]);
   let availableTags = $state<ProjectTag[]>([]);
+  let workspaces = $state<Workspace[]>([]);
+  let optionsWorkspaceId = $state("");
   let defaultTaskDuration = $state("1");
   let currentWorkspaceId = $state("personal");
   let businessRequest: AbortController | undefined;
@@ -223,14 +237,28 @@
   let selectedContract = $derived(
     contracts.find(({ id }) => id === form.contractId),
   );
-  let contractItems = $derived(
-    contracts.map((contract) => ({
-      id: contract.id,
-      label: contract.name,
-      description: contract.business.name,
-      updatedAt: contract.updatedAt,
-    })),
+  let isRecurringInstitutionalProject = $derived(
+    isInstitutionalProject && selectedContract?.contractType === "recurring",
   );
+  let workspaceNames = $derived(
+    new Map(workspaces.map((workspace) => [workspace.id, workspace.name])),
+  );
+  let contractItems = $derived.by(() => {
+    const showWorkspace = workspaces.length > 1;
+    return contracts.map((contract) => {
+      const workspaceName = showWorkspace
+        ? workspaceNames.get(contract.workspaceId)
+        : undefined;
+      return {
+        id: contract.id,
+        label: contract.name,
+        description: workspaceName
+          ? `${contract.business.name} · ${workspaceName}`
+          : contract.business.name,
+        updatedAt: contract.updatedAt,
+      };
+    });
+  });
   let businessItems = $derived(
     businesses.map((business) => ({
       id: business.id,
@@ -256,10 +284,35 @@
         : []),
     ],
   );
+  let hasContractWorkspace = $derived(
+    hasDeliveryResponsibleWorkspace({
+      contractId: form.contractId,
+      contractWorkspaceId: selectedContract?.workspaceId,
+      optionsWorkspaceId,
+    }),
+  );
+  let canSelectResponsible = $derived(
+    canSelectDeliveryResponsible({
+      viewOnly,
+      hasContractWorkspace,
+      hasProject: Boolean(form.projetoId),
+      contractsLoading,
+      projectLoading,
+      contractsError: Boolean(contractsError),
+      projectError: Boolean(projectError),
+    }),
+  );
+  let recordResponsiblesForWorkspace = $derived(
+    currentRecordResponsiblesForWorkspace({
+      currentRecordResponsibles: currentResponsibleRelations,
+      recordWorkspaceId: isUuid(record?.workspaceId) ? record!.workspaceId : "",
+      activeWorkspaceId: activeCatalogWorkspaceId(),
+    }),
+  );
   let memberItems = $derived(
     uniqueSelectorItems([
       ...members.map(responsibleItem),
-      ...currentResponsibleRelations.map(responsibleItem),
+      ...recordResponsiblesForWorkspace.map(responsibleItem),
     ]),
   );
   let tagItems = $derived(
@@ -269,7 +322,7 @@
     ]),
   );
   $effect(() => {
-    if (isInstitutionalProject && form.dataEntrega) form.dataEntrega = "";
+    if (isRecurringInstitutionalProject && form.dataEntrega) form.dataEntrega = "";
   });
 
   function text(...values: Array<string | undefined>): string {
@@ -295,6 +348,7 @@
       responsavelId: text(source?.responsavelId, source?.assigned_user_id),
       responsavel: text(source?.responsavel),
       dataEntrega: deliveryDueDate(source),
+      recurrence: "one_off",
       categoria: text(source?.categoria, source?.stage),
       prioridade: text(source?.prioridade, source?.priority),
       status: source?.status ?? "",
@@ -339,6 +393,17 @@
 
   function setTaskCompleted(task: DeliveryTask, completed: boolean): void {
     task.status = completed ? "concluida" : "pendente";
+    if (!completed || form.status === "conclusao" || form.status === "arquivado") {
+      return;
+    }
+    const namedTasks = tasks.filter(({ nome }) => nome.trim());
+    const targetTasks = namedTasks.length ? namedTasks : tasks;
+    if (
+      targetTasks.length > 0 &&
+      targetTasks.every(({ status }) => taskCompleted(status))
+    ) {
+      form.status = "conclusao";
+    }
   }
 
   function deliveryDueDate(source?: EntityRecord): string {
@@ -651,12 +716,32 @@
     return relationId(project) === businessReferenceId(selectedBusiness);
   }
 
+  function isUuid(value: string | undefined): boolean {
+    return Boolean(
+      value &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
+          value.trim(),
+        ),
+    );
+  }
+
+  function activeCatalogWorkspaceId(): string {
+    if (selectedContract?.workspaceId) return selectedContract.workspaceId;
+    if (isUuid(record?.workspaceId)) return record!.workspaceId;
+    return "";
+  }
+
   function hydrateRelations(): void {
     const selectedBusiness = businesses.find(({ id }) => id === form.negocioId);
     if (selectedBusiness) {
       form.negocioNome = businessReferenceName(selectedBusiness);
     }
-    if (!businessCatalogLoaded || !projectCatalogLoaded) return;
+    if (!projectCatalogLoaded) return;
+
+    if (form.contractId && form.projetoId === `institutional:${form.contractId}`) {
+      form.projetoNome = "Institucional";
+      return;
+    }
 
     const selectedProject = projects.find(({ id }) => id === form.projetoId);
     const project = selectedProject;
@@ -686,10 +771,13 @@
           form.negocioNome = businessReferenceName(relatedBusiness);
         }
       }
-      if (projectBelongsToBusiness(project, form.negocioId)) {
+      if (
+        (projectContractId && form.contractId === projectContractId) ||
+        (businessCatalogLoaded && projectBelongsToBusiness(project, form.negocioId))
+      ) {
         form.projetoId = project.id;
         form.projetoNome = project.nome;
-      } else {
+      } else if (businessCatalogLoaded) {
         form.projetoId = "";
         form.projetoNome = "";
       }
@@ -699,21 +787,38 @@
     }
   }
 
-  async function loadProjectCatalog(): Promise<void> {
+  async function loadProjectCatalog(workspaceId = ""): Promise<void> {
     projectRequest?.abort();
+    if (!workspaceId) {
+      projectRequest = undefined;
+      optionsWorkspaceId = "";
+      projectLoading = false;
+      projectCatalogLoaded = false;
+      projectError = "";
+      projects = initialServerProject ? [initialServerProject] : [];
+      workspaceMembers = [];
+      availableTags = [];
+      syncProjectMembers();
+      return;
+    }
     const request = new AbortController();
     projectRequest = request;
+    optionsWorkspaceId = workspaceId;
     projectLoading = true;
     projectCatalogLoaded = false;
     projectError = "";
+    workspaceMembers = [];
+    members = [];
+    availableTags = [];
 
     try {
       const [apiProjects, options] = await Promise.all([
         listAllActiveProjects({
+          workspaceId,
           includeEmptyInstitutional: true,
           signal: request.signal,
         }),
-        getProjectOptions({ signal: request.signal }),
+        getProjectOptions({ workspaceId, signal: request.signal }),
       ]);
       if (request.signal.aborted) return;
       if (
@@ -760,7 +865,19 @@
     contractsLoading = true;
     contractsError = "";
     try {
-      contracts = await listAllActiveContracts({ signal: request.signal });
+      const scopedWorkspaceId =
+        resolvedMode !== "create" && isUuid(record?.workspaceId)
+          ? record!.workspaceId
+          : undefined;
+      contracts = await listAllActiveContracts({
+        ...(scopedWorkspaceId ? { workspaceId: scopedWorkspaceId } : {}),
+        signal: request.signal,
+      });
+      if (request.signal.aborted) return;
+      const selected = contracts.find(({ id }) => id === form.contractId);
+      if (selected && selected.workspaceId !== optionsWorkspaceId) {
+        void loadProjectCatalog(selected.workspaceId);
+      }
     } catch (error) {
       if (request.signal.aborted) return;
       contractsError = error instanceof ContractApiError
@@ -813,32 +930,24 @@
   function syncProjectMembers(): void {
     const project = projects.find(({ id }) => id === form.projetoId);
     const isInstitutionalProject =
+      Boolean(form.contractId) &&
       form.projetoId === `institutional:${form.contractId}`;
-    if (!project && !isInstitutionalProject) {
-      members = [];
-      selectedResponsibles = [];
-      form.responsavelId = "";
-      form.responsavel = "";
-      return;
-    }
+    const resolved = resolveDeliveryResponsibleSelection({
+      hasContractWorkspace,
+      hasProject: Boolean(project || isInstitutionalProject),
+      workspaceMembers,
+      currentRecordResponsibles: currentResponsibleRelations,
+      recordWorkspaceId: isUuid(record?.workspaceId) ? record!.workspaceId : "",
+      activeWorkspaceId: activeCatalogWorkspaceId(),
+      selectedResponsibleIds: selectedResponsibles.map(({ id }) => id),
+      fallbackResponsibleId: form.responsavelId,
+    });
 
-    members = workspaceMembers;
-    const available = uniqueSelectorItems([
-      ...members.map(responsibleItem),
-      ...currentResponsibleRelations.map(responsibleItem),
-    ]);
-    if (!selectedResponsibles.length && form.responsavelId) {
-      const selected = available.find(({ id }) => id === form.responsavelId);
-      if (selected) selectedResponsibles = [selected];
-    } else {
-      selectedResponsibles = selectedResponsibles
-        .slice(0, 1)
-        .flatMap((selection) => {
-          const selected = available.find(({ id }) => id === selection.id);
-          return selected ? [selected] : [];
-        });
-    }
-    const firstResponsible = selectedResponsibles[0];
+    members = resolved.members;
+    const firstResponsible = resolved.selectedResponsible
+      ? responsibleItem(resolved.selectedResponsible)
+      : undefined;
+    selectedResponsibles = firstResponsible ? [firstResponsible] : [];
     form.responsavelId = firstResponsible?.id ?? "";
     form.responsavel = firstResponsible?.label ?? "";
   }
@@ -871,9 +980,22 @@
 
     const workspace = getActiveWorkspace();
     currentWorkspaceId = workspace.id;
+    workspaces = loadWorkspaces();
+    if (!workspaces.length) {
+      void refreshWorkspaceSnapshot()
+        .then((items) => {
+          workspaces = items;
+        })
+        .catch(() => undefined);
+    }
     void loadBusinessCatalog();
     void loadContractCatalog();
-    void loadProjectCatalog();
+    const initialWorkspaceId = isUuid(initialRecord?.workspaceId)
+      ? initialRecord!.workspaceId
+      : "";
+    if (initialWorkspaceId) {
+      void loadProjectCatalog(initialWorkspaceId);
+    }
 
     if (resolvedMode !== "view" && tasks.length === 0) {
       tasks = [newTask()];
@@ -910,6 +1032,25 @@
     form.negocioNome = contract?.business.name ?? "";
     form.projetoId = "";
     form.projetoNome = "";
+    if (!contract) {
+      selectedResponsibles = [];
+      form.responsavelId = "";
+      form.responsavel = "";
+      selectedTags = [];
+      void loadProjectCatalog("");
+      return;
+    }
+    if (
+      contract.workspaceId !== optionsWorkspaceId ||
+      (!projectCatalogLoaded && !projectLoading)
+    ) {
+      selectedResponsibles = [];
+      form.responsavelId = "";
+      form.responsavel = "";
+      selectedTags = [];
+      void loadProjectCatalog(contract.workspaceId);
+      return;
+    }
     syncProjectMembers();
   }
 
@@ -1090,10 +1231,11 @@
       responsibleUserIds: JSON.stringify(responsibleUserIds),
       tags: tagLabels.join(", "),
       tagLabels: JSON.stringify(tagLabels),
-      dataEntrega: isInstitutionalProject ? "" : form.dataEntrega,
-      data_entrega: isInstitutionalProject ? "" : form.dataEntrega,
-      dueDate: isInstitutionalProject ? "" : form.dataEntrega,
-      due_date: isInstitutionalProject ? "" : form.dataEntrega,
+      dataEntrega: isRecurringInstitutionalProject ? "" : form.dataEntrega,
+      data_entrega: isRecurringInstitutionalProject ? "" : form.dataEntrega,
+      dueDate: isRecurringInstitutionalProject ? "" : form.dataEntrega,
+      due_date: isRecurringInstitutionalProject ? "" : form.dataEntrega,
+      recurrence: isRecurringInstitutionalProject ? form.recurrence : "one_off",
       duracao,
       duration: duracao,
       tarefas: JSON.stringify(savedTasks),
@@ -1224,7 +1366,8 @@
                     <span>{projectError}</span>
                     <button
                       type="button"
-                      onclick={() => void loadProjectCatalog()}
+                      onclick={() =>
+                        void loadProjectCatalog(activeCatalogWorkspaceId())}
                     >
                       Tentar novamente
                     </button>
@@ -1240,20 +1383,35 @@
                 presentation="search"
                 selection="single"
                 label="Pessoa responsável"
-                placeholder="Selecione a pessoa responsável"
+                placeholder={hasContractWorkspace || form.projetoId
+                  ? "Selecione a pessoa responsável"
+                  : "Selecione um contrato primeiro"}
                 emptyMessage="Nenhum membro disponível neste workspace."
                 icon={UsersRound}
                 controlIcon={UsersRound}
                 showInitials
                 required
                 onchange={selectResponsible}
-                disabled={viewOnly ||
-                  !form.projetoId ||
-                  projectLoading ||
-                  Boolean(projectError)}
+                disabled={!canSelectResponsible}
               />
 
-              {#if !isInstitutionalProject}
+              {#if isRecurringInstitutionalProject}
+                <div class="control">
+                  <span class="control-icon" aria-hidden="true">
+                    <CalendarDays size={16} strokeWidth={1.8} />
+                  </span>
+                  <select
+                    bind:value={form.recurrence}
+                    disabled={viewOnly}
+                    aria-label="Recorrência da entrega"
+                  >
+                    <option value="daily">Diário</option>
+                    <option value="weekly">Semanal</option>
+                    <option value="monthly">Mensal</option>
+                    <option value="one_off">Pontual</option>
+                  </select>
+                </div>
+              {:else if !isRecurringInstitutionalProject}
                 <div
                   class:date-control--empty={!form.dataEntrega}
                   class="control date-control"
@@ -1571,8 +1729,10 @@
                 class="success"
                 type="submit"
                 disabled={businessLoading ||
+                  contractsLoading ||
                   projectLoading ||
                   Boolean(businessError) ||
+                  Boolean(contractsError) ||
                   Boolean(projectError)}
               >
                 <Save size={16} strokeWidth={2} />
@@ -1589,8 +1749,10 @@
                 class="success"
                 type="submit"
                 disabled={businessLoading ||
+                  contractsLoading ||
                   projectLoading ||
                   Boolean(businessError) ||
+                  Boolean(contractsError) ||
                   Boolean(projectError)}
               >
                 <Save size={16} strokeWidth={2} />
@@ -1835,8 +1997,18 @@
     visibility: hidden;
   }
 
-  .date-control--empty:not(:focus-within) input::-webkit-datetime-edit {
+  .date-control--empty:not(:focus-within) input,
+  .view-mode .date-control--empty:not(:focus-within) input:disabled {
     color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .date-control--empty:not(:focus-within) input::-webkit-datetime-edit,
+  .view-mode
+    .date-control--empty:not(:focus-within)
+    input:disabled::-webkit-datetime-edit {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
   }
 
   .textarea-control .control-icon {

@@ -110,9 +110,9 @@ describe("ações de modelos do assistente", () => {
         command: {
           kind: "project",
           name: "Institucional",
-          businessRef: "business",
+          contractRef: "contract",
         },
-        dependsOn: ["business"],
+        dependsOn: ["contract"],
       },
       {
         id: "delivery",

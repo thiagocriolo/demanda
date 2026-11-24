@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { BusinessMutationInput } from "../../businesses/types";
+import {
+  canonicalBusinessStage,
+  isActiveBusinessStage,
+} from "../../businesses/stages";
 import { normalizeKey } from "../db/helpers";
 
 const collapsedText = (maximum: number) =>
@@ -18,12 +22,24 @@ const normalizedKey = z
   .transform(normalizeKey)
   .pipe(z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/));
 
-const businessStage = normalizedKey
-  .refine((value) => value !== "arquivado", {
-    message: "A etapa arquivado e reservada ao ciclo de arquivamento.",
+const businessStage = z
+  .string()
+  .trim()
+  .min(1)
+  .max(128)
+  .transform((value, context) => {
+    const stage = canonicalBusinessStage(value);
+    if (!stage) {
+      context.addIssue({
+        code: "custom",
+        message: "Status de negócio inválido.",
+      });
+      return z.NEVER;
+    }
+    return stage;
   })
-  .refine((value) => value !== "novo", {
-    message: "A etapa novo não é permitida; use negociacao.",
+  .refine(isActiveBusinessStage, {
+    message: "A etapa arquivado é reservada ao ciclo de arquivamento.",
   });
 
 const responsibleIds = z

@@ -515,7 +515,7 @@ export async function saveCronogramaBlock(
   taskId: string,
   input: CronogramaBlockInput,
 ): Promise<CronogramaSnapshot> {
-  const workspaceId = workspaceIdFromContext(context);
+  const workspaceId = input.workspaceId ?? workspaceIdFromContext(context);
   return database
     .transaction(async (transaction) => {
       await requireWorkspacePermissionForUpdate(
@@ -650,7 +650,7 @@ export async function deleteCronogramaBlock(
   taskId: string,
   input: CronogramaDeleteInput,
 ): Promise<CronogramaSnapshot> {
-  const workspaceId = workspaceIdFromContext(context);
+  const workspaceId = input.workspaceId ?? workspaceIdFromContext(context);
   return database.transaction(async (transaction) => {
     await requireWorkspacePermissionForUpdate(
       transaction,

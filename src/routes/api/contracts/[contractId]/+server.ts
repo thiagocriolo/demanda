@@ -6,6 +6,7 @@ import type { RequestHandler } from "./$types";
 import {
   _contractMutationSchema,
   _contractPayload,
+  _recurringInstallments,
   _validInstallments,
 } from "../+server";
 import {
@@ -197,9 +198,13 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
             eq(contractInstallments.contractId, params.contractId),
           ),
         );
-      if (parsed.data.installments.length)
+      const installmentValues =
+        parsed.data.contractType === "recurring"
+          ? _recurringInstallments(parsed.data)
+          : parsed.data.installments;
+      if (installmentValues.length)
         await transaction.insert(contractInstallments).values(
-          parsed.data.installments.map((item) => ({
+          installmentValues.map((item) => ({
             workspaceId: workspace.workspace.id,
             contractId: params.contractId,
             number: item.number,
