@@ -37,10 +37,18 @@ function deliveryRecord(overrides: Partial<EntityRecord>): EntityRecord {
 }
 
 describe("loadAgendaItems", () => {
-  it("exclui projetos institucionais da agenda e da gaveta, mantendo entregas pontuais", () => {
+  it("exclui entregas de projetos recorrentes e projetos institucionais da agenda, mantendo entregas de projetos pontuais", () => {
     const regularProject = projectRecord({
       id: "project-regular",
       nome: "Campanha",
+      contract_type: "one_off",
+      dataFim: "",
+    });
+    const regularRecurringProject = projectRecord({
+      id: "project-regular-recurring",
+      nome: "Gestão Mensal",
+      isInstitutional: "false",
+      contract_type: "recurring",
       dataFim: "",
     });
     const recurringInstitutional = projectRecord({
@@ -64,6 +72,12 @@ describe("loadAgendaItems", () => {
       projectWorkspaceId: "ws-1",
       dataEntrega: "2026-12-01",
     });
+    const regularRecurringDelivery = deliveryRecord({
+      id: "delivery-regular-recurring",
+      projetoId: regularRecurringProject.id,
+      projectWorkspaceId: "ws-1",
+      dataEntrega: "",
+    });
     const recurringInstitutionalDelivery = deliveryRecord({
       id: "delivery-inst-recurring",
       projetoId: recurringInstitutional.id,
@@ -78,15 +92,24 @@ describe("loadAgendaItems", () => {
     });
 
     const items = loadAgendaItems(
-      [regularProject, recurringInstitutional, oneOffInstitutional],
+      [
+        regularProject,
+        regularRecurringProject,
+        recurringInstitutional,
+        oneOffInstitutional,
+      ],
       [
         regularDelivery,
+        regularRecurringDelivery,
         recurringInstitutionalDelivery,
         oneOffInstitutionalDelivery,
       ],
     );
 
-    expect(items.projects.map(({ id }) => id)).toEqual([regularProject.id]);
+    expect(items.projects.map(({ id }) => id)).toEqual([
+      regularProject.id,
+      regularRecurringProject.id,
+    ]);
     expect(items.deliveries.map(({ id }) => id)).toEqual([
       regularDelivery.id,
       oneOffInstitutionalDelivery.id,

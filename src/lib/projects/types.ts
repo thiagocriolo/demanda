@@ -47,7 +47,7 @@ export type Project = {
   briefing: string;
   tags: ProjectTag[];
   responsibles: ProjectResponsible[];
-  /** @deprecated Finance is being migrated to Contract. */
+  /** Project execution frequency: one-off ("one_off") or recurring ("recurring"). */
   contractType: ProjectContractType;
   /** @deprecated Finance is being migrated to Contract. */
   amountCents: number;
@@ -79,7 +79,7 @@ export type ProjectMutationInput = {
   briefing: string;
   tagLabels: string[];
   responsibleUserIds?: string[];
-  /** @deprecated Finance belongs to Contract. */
+  /** Project execution frequency: one-off ("one_off") or recurring ("recurring"). */
   contractType?: ProjectContractType;
   /** @deprecated Finance belongs to Contract. */
   amountCents?: number;

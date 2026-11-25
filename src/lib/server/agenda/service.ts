@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type {
   AgendaMode,
   AgendaMoveInput,
@@ -110,10 +110,7 @@ async function ensureAgendaEntries(
       and(
         eq(deliveries.workspaceId, workspaceId),
         eq(projects.isActive, true),
-        or(
-          eq(projects.isInstitutional, false),
-          eq(projects.contractType, "one_off"),
-        ),
+        eq(projects.contractType, "one_off"),
         isNull(deliveries.archivedAt),
       ),
     )

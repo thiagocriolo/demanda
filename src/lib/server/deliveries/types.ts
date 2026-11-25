@@ -15,6 +15,7 @@ export type DeliveryProject = {
   id: string;
   name: string;
   status: string;
+  contractType: "one_off" | "recurring";
   archivedAt: string | null;
 };
 
@@ -59,6 +60,7 @@ export type Delivery = {
   status: string;
   briefing: string;
   dueDate: string | null;
+  recurrence: DeliveryRecurrence | null;
   engagementType: "fee" | "personal";
   tags: DeliveryTag[];
   responsibles: DeliveryResponsible[];
@@ -81,17 +83,14 @@ export type DeliveryTaskMutationInput = {
   status: TaskStatus;
 };
 
-export type InstitutionalDeliveryRecurrence =
-  | "one_off"
-  | "daily"
-  | "weekly"
-  | "monthly";
+export type DeliveryRecurrence = "daily" | "weekly" | "monthly";
+export type InstitutionalDeliveryRecurrence = DeliveryRecurrence;
 
 export type DeliveryContentInput = {
   name: string;
   projectId?: string;
   institutionalContractId?: string;
-  recurrence?: InstitutionalDeliveryRecurrence;
+  recurrence?: DeliveryRecurrence;
   category: string;
   priority: string;
   briefing: string;

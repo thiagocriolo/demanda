@@ -193,11 +193,7 @@ export function loadAgendaItems(
     (record) => !isInstitutionalProjectRecord(record),
   );
   const deliveryProjects = activeProjects.filter(
-    (record) =>
-      !(
-        isInstitutionalProjectRecord(record) &&
-        isRecurringContractRecord(record)
-      ),
+    (record) => !isRecurringContractRecord(record),
   );
   const projects = participatingProjects.map((record, index) =>
     projectItem(

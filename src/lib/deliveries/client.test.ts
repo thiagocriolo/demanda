@@ -272,6 +272,32 @@ describe("deliveries client", () => {
     ]);
   });
 
+  it("preserva recorrência válida e omite valores pontuais no adaptador", () => {
+    const recurringRecord = deliveryToEntityRecord({
+      ...delivery,
+      project: { ...delivery.project, contractType: "recurring" },
+      dueDate: null,
+      recurrence: "weekly",
+    });
+    expect(recurringRecord.projectContractType).toBe("recurring");
+    expect(recurringRecord.recurrence).toBe("weekly");
+    expect(
+      entityValuesToDeliveryCreateInput(recurringRecord, recurringRecord),
+    ).toMatchObject({
+      dueDate: null,
+      recurrence: "weekly",
+    });
+
+    const oneOffInput = entityValuesToDeliveryCreateInput({
+      nome: "Entrega pontual",
+      projetoId: projectId,
+      recurrence: "one_off",
+      dataEntrega: "2026-12-10",
+    });
+    expect(oneOffInput).not.toHaveProperty("recurrence");
+    expect(oneOffInput.dueDate).toBe("2026-12-10");
+  });
+
   it("omits the project ID for an institutional delivery", () => {
     const institutionalContractId = crypto.randomUUID();
 

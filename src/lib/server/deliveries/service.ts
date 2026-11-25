@@ -259,6 +259,7 @@ async function hydrateDeliveries(
       id: projects.id,
       name: projects.name,
       status: projects.statusKey,
+      contractType: projects.contractType,
       archivedAt: projects.archivedAt,
       businessId: businesses.id,
       businessName: businesses.name,
@@ -273,6 +274,37 @@ async function hydrateDeliveries(
         inArray(projects.id, projectIds),
       ),
     );
+
+  const routineIds = [
+    ...new Set(
+      rows.flatMap(({ projectRoutineId }) =>
+        projectRoutineId ? [projectRoutineId] : [],
+      ),
+    ),
+  ];
+  const routineRows = routineIds.length
+    ? await database
+        .select({
+          id: projectDeliveryRoutines.id,
+          recurrenceType: projectDeliveryRoutines.recurrenceType,
+        })
+        .from(projectDeliveryRoutines)
+        .where(
+          and(
+            eq(projectDeliveryRoutines.workspaceId, workspaceId),
+            inArray(projectDeliveryRoutines.id, routineIds),
+          ),
+        )
+    : [];
+  const recurrenceByRoutineId = new Map(
+    routineRows.flatMap(({ id, recurrenceType }) =>
+      recurrenceType === "daily" ||
+      recurrenceType === "weekly" ||
+      recurrenceType === "monthly"
+        ? [[id, recurrenceType] as const]
+        : [],
+    ),
+  );
 
   const taskRows = await database
     .select()
@@ -405,6 +437,8 @@ async function hydrateDeliveries(
           id: relation.id,
           name: relation.name,
           status: relation.status,
+          contractType:
+            relation.contractType === "recurring" ? "recurring" : "one_off",
           archivedAt: iso(relation.archivedAt),
         },
         category: row.categoryKey ?? "",
@@ -412,6 +446,9 @@ async function hydrateDeliveries(
         status: row.statusKey,
         briefing: row.description,
         dueDate: row.dueDate,
+        recurrence: row.projectRoutineId
+          ? (recurrenceByRoutineId.get(row.projectRoutineId) ?? null)
+          : null,
         engagementType: row.engagementType,
         tags: tagsByDelivery.get(row.id) ?? [],
         responsibles: responsiblesByDelivery.get(row.id) ?? [],
@@ -441,14 +478,13 @@ async function validateAndLockProject(
   projectId: string;
   businessId: string;
   engagementType: "fee" | "personal";
-  isRecurringInstitutional: boolean;
+  isRecurring: boolean;
 }> {
   const [row] = await database
     .select({
       projectId: projects.id,
       businessId: projects.businessId,
       engagementType: projects.engagementType,
-      isInstitutional: projects.isInstitutional,
       contractType: projects.contractType,
       projectArchivedAt: projects.archivedAt,
       businessArchivedAt: businesses.archivedAt,
@@ -471,8 +507,7 @@ async function validateAndLockProject(
     projectId: row.projectId,
     businessId: row.businessId,
     engagementType: row.engagementType,
-    isRecurringInstitutional:
-      row.isInstitutional && row.contractType === "recurring",
+    isRecurring: row.contractType === "recurring",
   };
 }
 
@@ -489,13 +524,12 @@ async function materializeInstitutionalProject(
   projectId: string;
   businessId: string;
   engagementType: "fee" | "personal";
-  isRecurringInstitutional: boolean;
+  isRecurring: boolean;
 }> {
   const [contract] = await database
     .select({
       id: contracts.id,
       businessId: contracts.businessId,
-      contractType: contracts.contractType,
       startDate: contracts.startDate,
       endDate: contracts.endDate,
       archivedAt: contracts.archivedAt,
@@ -513,6 +547,7 @@ async function materializeInstitutionalProject(
       projectId: projects.id,
       businessId: projects.businessId,
       engagementType: projects.engagementType,
+      contractType: projects.contractType,
     })
     .from(projects)
     .where(
@@ -526,8 +561,10 @@ async function materializeInstitutionalProject(
     .for("update");
   if (existing) {
     return {
-      ...existing,
-      isRecurringInstitutional: contract.contractType === "recurring",
+      projectId: existing.projectId,
+      businessId: existing.businessId,
+      engagementType: existing.engagementType,
+      isRecurring: existing.contractType === "recurring",
     };
   }
 
@@ -541,15 +578,15 @@ async function materializeInstitutionalProject(
     name: INSTITUTIONAL_PROJECT_NAME,
     statusKey: INSTITUTIONAL_PROJECT_STATUS,
     startDate: contract.startDate,
-    endDate: contract.contractType === "one_off" ? contract.endDate : null,
+    endDate: contract.endDate,
     engagementType: "personal",
-    contractType: contract.contractType,
+    contractType: "one_off",
   });
   return {
     projectId,
     businessId: contract.businessId,
     engagementType: "personal",
-    isRecurringInstitutional: contract.contractType === "recurring",
+    isRecurring: false,
   };
 }
 
@@ -1067,8 +1104,15 @@ export async function createWorkspaceDeliveryInTransaction(
   const id = randomUUID();
   let projectRoutineId: string | undefined;
   let routineOccurrenceDate: string | undefined;
-  const recurrenceType = input.recurrence ?? "one_off";
-  if (project.isRecurringInstitutional && recurrenceType !== "one_off") {
+  if (project.isRecurring) {
+    const recurrenceType = input.recurrence;
+    if (
+      recurrenceType !== "daily" &&
+      recurrenceType !== "weekly" &&
+      recurrenceType !== "monthly"
+    ) {
+      throw new DeliveryRelationsInvalidError();
+    }
     routineOccurrenceDate = institutionalOccurrenceDate(
       recurrenceType,
       new Date().toISOString().slice(0, 10),
@@ -1111,7 +1155,7 @@ export async function createWorkspaceDeliveryInTransaction(
     categoryKey: input.category || null,
     priorityKey: input.priority,
     statusKey: input.status,
-    dueDate: project.isRecurringInstitutional ? null : input.dueDate,
+    dueDate: project.isRecurring ? null : input.dueDate,
     engagementType: input.engagementType ?? "personal",
     sortOrder: input.sortOrder ?? 0,
     boardOrder: {},
@@ -1324,17 +1368,95 @@ export async function updateWorkspaceDelivery(
       if (existing.projectId !== project.projectId) delete boardOrder.project;
       if (existing.businessId !== project.businessId)
         delete boardOrder.business;
+      let nextProjectRoutineId = existing.projectRoutineId;
+      let nextRoutineOccurrenceDate = existing.routineOccurrenceDate;
+      if (project.isRecurring) {
+        const requestedRecurrence = input.recurrence;
+        if (existing.projectRoutineId) {
+          if (requestedRecurrence) {
+            await transaction
+              .update(projectDeliveryRoutines)
+              .set({
+                projectId: project.projectId,
+                name: input.name,
+                description: input.briefing,
+                categoryKey: input.category || null,
+                priorityKey: input.priority,
+                statusKey: effectiveStatus,
+                responsibleUserId: input.responsibleUserIds[0]!,
+                tagIds: JSON.stringify(tagRows.map(({ id }) => id)),
+                tasks: JSON.stringify(
+                  input.tasks.map((task) => ({
+                    name: task.name,
+                    durationMinutes: task.durationMinutes,
+                    status: "pendente",
+                  })),
+                ),
+                recurrenceType: requestedRecurrence,
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(projectDeliveryRoutines.workspaceId, workspaceId),
+                  eq(projectDeliveryRoutines.id, existing.projectRoutineId),
+                ),
+              );
+          }
+        } else {
+          if (
+            requestedRecurrence !== "daily" &&
+            requestedRecurrence !== "weekly" &&
+            requestedRecurrence !== "monthly"
+          ) {
+            throw new DeliveryRelationsInvalidError();
+          }
+          nextRoutineOccurrenceDate = institutionalOccurrenceDate(
+            requestedRecurrence,
+            now.toISOString().slice(0, 10),
+          );
+          nextProjectRoutineId = randomUUID();
+          await transaction.insert(projectDeliveryRoutines).values({
+            id: nextProjectRoutineId,
+            workspaceId,
+            projectId: project.projectId,
+            name: input.name,
+            description: input.briefing,
+            categoryKey: input.category || null,
+            priorityKey: input.priority,
+            statusKey: effectiveStatus,
+            responsibleUserId: input.responsibleUserIds[0]!,
+            tagIds: JSON.stringify(tagRows.map(({ id }) => id)),
+            tasks: JSON.stringify(
+              input.tasks.map((task) => ({
+                name: task.name,
+                durationMinutes: task.durationMinutes,
+                status: "pendente",
+              })),
+            ),
+            recurrenceType: requestedRecurrence,
+            recurrenceUnit: null,
+            recurrenceDays: "[]",
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+      } else {
+        nextProjectRoutineId = null;
+        nextRoutineOccurrenceDate = null;
+      }
       const deliveryRows = await transaction
         .update(deliveries)
         .set({
           projectId: project.projectId,
           businessId: project.businessId,
+          projectRoutineId: nextProjectRoutineId,
+          routineOccurrenceDate: nextRoutineOccurrenceDate,
           name: input.name,
           description: input.briefing,
           categoryKey: input.category || null,
           priorityKey: input.priority,
           statusKey: effectiveStatus,
-          dueDate: project.isRecurringInstitutional ? null : input.dueDate,
+          dueDate: project.isRecurring ? null : input.dueDate,
           engagementType: input.engagementType ?? "personal",
           sortOrder: input.sortOrder ?? existing.sortOrder,
           boardOrder,
@@ -1350,7 +1472,7 @@ export async function updateWorkspaceDelivery(
           ),
         );
       if (affectedRows(deliveryRows) !== 1) throw new DeliveryVersionConflictError();
-      if (project.isRecurringInstitutional) {
+      if (project.isRecurring) {
         await transaction
           .delete(agendaEntries)
           .where(
@@ -1395,7 +1517,7 @@ export async function updateWorkspaceDelivery(
             {
               field: "dueDate",
               before: existing.dueDate,
-              after: project.isRecurringInstitutional ? null : input.dueDate,
+              after: project.isRecurring ? null : input.dueDate,
             },
           ].filter((change) => change.before !== change.after),
         },

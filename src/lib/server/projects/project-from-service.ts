@@ -94,6 +94,11 @@ export async function createWorkspaceProjectFromService(
         briefing: input.briefing ?? source.defaultBriefing,
         tagLabels: input.tagLabels ?? sourceTagRows.map(({ label }) => label),
         responsibleUserIds: input.responsibleUserIds ?? [],
+        contractType:
+          input.contractType ??
+          (source.defaultContractType === "recurring"
+            ? "recurring"
+            : "one_off"),
       });
       if (!parsedEffective.success) throw new ProjectRelationsInvalidError();
       const effective = parsedEffective.data;

@@ -20,6 +20,7 @@ export {
 
 export {
   InstitutionalProjectProtectedError,
+  ProjectFrequencyLockedError,
   ProjectNotFoundError,
   ProjectRelationsInvalidError,
   ServiceNameConflictError,

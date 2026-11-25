@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
 import {
   requireActiveWorkspacePermission,
@@ -11,7 +11,6 @@ import {
   deliveryTemplateTasks,
   deliveryTemplateTags,
   deliveryTemplates,
-  contracts,
   projectDeliveryRoutines,
   projects,
   serviceDeliveryTemplates,
@@ -519,7 +518,7 @@ export async function materializeWorkspaceProjectRoutines(
       .select({
         id: projects.id,
         businessId: projects.businessId,
-        isInstitutional: projects.isInstitutional,
+        contractType: projects.contractType,
         startDate: projects.startDate,
         endDate: projects.endDate,
       })
@@ -528,52 +527,24 @@ export async function materializeWorkspaceProjectRoutines(
         and(
           eq(projects.workspaceId, workspaceId),
           isNull(projects.archivedAt),
-          isNotNull(projects.startDate),
         ),
       );
     for (const project of activeProjects) {
-      // Institutional projects are managed by the contract-week rollover below;
-      // they must never receive the generic 90-day pre-materialization.
-      if (!project.startDate || project.isInstitutional) continue;
+      if (project.contractType === "recurring") {
+        await rollInstitutionalProjectWeekInTransaction(
+          transaction,
+          workspaceId,
+          { ...project, startDate: project.startDate ?? today },
+          today,
+        );
+        continue;
+      }
+      if (!project.startDate) continue;
       await materializeProjectRoutinesInTransaction(
         transaction,
         workspaceId,
         { ...project, startDate: project.startDate },
         addDays(today, HORIZON_DAYS),
-      );
-    }
-    const recurringInstitutionalProjects = await transaction
-      .select({
-        id: projects.id,
-        businessId: projects.businessId,
-        startDate: contracts.startDate,
-        endDate: contracts.endDate,
-      })
-      .from(projects)
-      .innerJoin(
-        contracts,
-        and(
-          eq(contracts.workspaceId, projects.workspaceId),
-          eq(contracts.id, projects.contractId),
-        ),
-      )
-      .where(
-        and(
-          eq(projects.workspaceId, workspaceId),
-          eq(projects.isInstitutional, true),
-          eq(contracts.contractType, "recurring"),
-          isNull(projects.archivedAt),
-          isNull(contracts.archivedAt),
-          isNotNull(contracts.startDate),
-        ),
-      );
-    for (const project of recurringInstitutionalProjects) {
-      if (!project.startDate) continue;
-      await rollInstitutionalProjectWeekInTransaction(
-        transaction,
-        workspaceId,
-        { ...project, startDate: project.startDate },
-        today,
       );
     }
   });

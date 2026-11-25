@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { Project, ProjectMutationInput } from "../../projects/types";
+import { DELIVERY_COMPLETED_STATUS } from "../../deliveries/completion";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
 import {
   requireWorkspacePermissionForUpdate,
@@ -20,6 +21,7 @@ import {
 } from "../db/schema";
 import {
   InstitutionalProjectProtectedError,
+  ProjectFrequencyLockedError,
   ProjectNotFoundError,
   ProjectRelationsInvalidError,
 } from "./errors";
@@ -215,6 +217,7 @@ export async function createProjectInTransaction(
     new Set(),
     () => new ProjectRelationsInvalidError(),
   );
+  const contractType = input.contractType ?? "one_off";
   const id = randomUUID();
   await transaction.insert(projects).values({
     id,
@@ -228,7 +231,7 @@ export async function createProjectInTransaction(
     startDate: input.startDate,
     endDate: input.endDate,
     engagementType: input.engagementType ?? "personal",
-    contractType: "one_off",
+    contractType,
     amountCents: 0,
     firstDueDate: null,
     paymentMethod: null,
@@ -284,6 +287,7 @@ export async function createWorkspaceProject(
           { field: "status", before: null, after: input.status },
           { field: "startDate", before: null, after: input.startDate },
           { field: "endDate", before: null, after: input.endDate },
+          { field: "contractType", before: null, after: project.contractType },
         ],
       });
       return project;
@@ -353,6 +357,25 @@ export async function updateWorkspaceProject(
       // Contract, workspace and business are immutable once a project exists.
       const nextBusinessId = existing.businessId;
       const businessChanged = existing.businessId !== nextBusinessId;
+      const nextContractType = input.contractType ?? existing.contractType;
+      if (nextContractType !== existing.contractType) {
+        const [openDelivery] = await transaction
+          .select({ id: deliveries.id })
+          .from(deliveries)
+          .where(
+            and(
+              eq(deliveries.workspaceId, workspaceId),
+              eq(deliveries.projectId, projectId),
+              isNull(deliveries.archivedAt),
+              ne(deliveries.statusKey, DELIVERY_COMPLETED_STATUS),
+            ),
+          )
+          .limit(1)
+          .for("update");
+        if (openDelivery) {
+          throw new ProjectFrequencyLockedError();
+        }
+      }
       const now = new Date();
       const updatedRows = await transaction
         .update(projects)
@@ -364,7 +387,7 @@ export async function updateWorkspaceProject(
           startDate: input.startDate,
           endDate: input.endDate,
           engagementType: input.engagementType ?? "personal",
-          contractType: "one_off",
+          contractType: nextContractType,
           amountCents: 0,
           firstDueDate: null,
           paymentMethod: null,
@@ -392,6 +415,7 @@ export async function updateWorkspaceProject(
           { field: "briefing", before: existing.briefing, after: input.briefing },
           { field: "startDate", before: existing.startDate, after: input.startDate },
           { field: "endDate", before: existing.endDate, after: input.endDate },
+          { field: "contractType", before: existing.contractType, after: nextContractType },
         ].filter((change) => change.before !== change.after),
       });
       const updated = {
@@ -403,7 +427,7 @@ export async function updateWorkspaceProject(
         startDate: input.startDate,
         endDate: input.endDate,
         engagementType: input.engagementType ?? "personal",
-        contractType: "one_off",
+        contractType: nextContractType,
         amountCents: 0,
         firstDueDate: null,
         paymentMethod: null,
@@ -476,6 +500,7 @@ export async function updateWorkspaceProject(
   } catch (error) {
     if (
       error instanceof InstitutionalProjectProtectedError ||
+      error instanceof ProjectFrequencyLockedError ||
       error instanceof ProjectNotFoundError ||
       error instanceof ProjectRelationsInvalidError
     ) {

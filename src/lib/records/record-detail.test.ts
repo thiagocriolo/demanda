@@ -100,6 +100,7 @@ describe("projectDetail", () => {
     expect(detail.fields).toEqual([
       { label: "Contrato", value: "Contrato anual Aurora" },
       { label: "Negócio", value: "Estúdio Aurora" },
+      { label: "Frequência", value: "Pontual" },
       { label: "Início", value: "20/11/2026" },
       { label: "Conclusão", value: "20/12/2026" },
       { label: "Exibição", value: "On" },

@@ -16,6 +16,7 @@ import {
 import { createDatabasePool } from "../../src/lib/server/db/pool";
 import {
   businesses,
+  contracts,
   projectInstallments,
   projects,
   projectTags,
@@ -39,6 +40,7 @@ import {
   InstitutionalProjectProtectedError,
   listWorkspaceProjects,
   listWorkspaceServices,
+  ProjectFrequencyLockedError,
   ProjectNotFoundError,
   ProjectRelationsInvalidError,
   ServiceNameConflictError,
@@ -1095,6 +1097,109 @@ describe("BE-07: servicos e projetos", () => {
         (await getWorkspaceProject(database, ownerContext, project.id)).business
           .archivedAt,
       ).not.toBeNull();
+    });
+  });
+
+  it("persiste frequencia do projeto e bloqueia troca enquanto houver entregas em aberto", async () => {
+    await withRollback(async (database) => {
+      const owner = await insertUser(database, "FrequencyOwner");
+      const workspace = await insertWorkspace(
+        database,
+        owner.id,
+        "Projetos por frequencia",
+      );
+      const business = await insertBusiness(
+        database,
+        workspace.id,
+        "Cliente Frequencia",
+        owner.id,
+      );
+      const contractId = randomUUID();
+      await database.insert(contracts).values({
+        id: contractId,
+        workspaceId: workspace.id,
+        ownerUserId: owner.id,
+        businessId: business.id,
+        name: "Contrato Frequencia",
+        contractType: "one_off",
+        amountCents: 0,
+      });
+      const ownerContext = context(owner, workspace, "owner");
+
+      const created = await createWorkspaceProject(
+        database,
+        ownerContext,
+        projectInput("Projeto Recorrente", business.id, [], [], {
+          contractId,
+          contractType: "recurring",
+        }),
+      );
+      expect(created.contractType).toBe("recurring");
+
+      // Sem entregas em aberto, permite alterar de recorrente para pontual
+      const switchedToOneOff = await updateWorkspaceProject(
+        database,
+        ownerContext,
+        created.id,
+        projectInput("Projeto Recorrente", business.id, [], [], {
+          contractId,
+          contractType: "one_off",
+        }),
+      );
+      expect(switchedToOneOff.contractType).toBe("one_off");
+
+      // Com entrega em aberto (status diferente de conclusao e nao arquivada), bloqueia troca
+      const openDeliveryId = randomUUID();
+      await database.insert(deliveries).values({
+        id: openDeliveryId,
+        workspaceId: workspace.id,
+        projectId: created.id,
+        businessId: business.id,
+        name: "Entrega aberta",
+        priorityKey: "normal",
+        statusKey: "fila",
+      });
+      await expect(
+        updateWorkspaceProject(
+          database,
+          ownerContext,
+          created.id,
+          projectInput("Projeto Recorrente", business.id, [], [], {
+            contractId,
+            contractType: "recurring",
+          }),
+        ),
+      ).rejects.toBeInstanceOf(ProjectFrequencyLockedError);
+
+      // Marcar a entrega como feita ("conclusao") libera a troca de frequencia
+      const now = new Date();
+      await database
+        .update(deliveries)
+        .set({ statusKey: "conclusao", completedAt: now, updatedAt: now })
+        .where(eq(deliveries.id, openDeliveryId));
+
+      // Entrega arquivada tambem nao bloqueia troca de frequencia
+      await database.insert(deliveries).values({
+        id: randomUUID(),
+        workspaceId: workspace.id,
+        projectId: created.id,
+        businessId: business.id,
+        name: "Entrega arquivada",
+        priorityKey: "normal",
+        statusKey: "fila",
+        archivedAt: now,
+      });
+
+      const switchedBackToRecurring = await updateWorkspaceProject(
+        database,
+        ownerContext,
+        created.id,
+        projectInput("Projeto Recorrente", business.id, [], [], {
+          contractId,
+          contractType: "recurring",
+        }),
+      );
+      expect(switchedBackToRecurring.contractType).toBe("recurring");
     });
   });
 });

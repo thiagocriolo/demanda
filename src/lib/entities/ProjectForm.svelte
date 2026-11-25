@@ -11,9 +11,7 @@
   } from "$lib/projects/client";
   import type {
     ProjectOptions,
-    ProjectServiceSummary,
     ProjectTag,
-    Service,
   } from "$lib/projects/types";
   import { recordPageHref } from "$lib/records/record-page";
   import {
@@ -40,6 +38,7 @@
     ListChecks,
     Pencil,
     Plus,
+    Repeat,
     Save,
     Tags,
     Trash2,
@@ -59,12 +58,15 @@
   type ProjectDeliveryDraft = {
     id: string;
     name: string;
+    status: string;
+    archivedAt: string | null;
   };
 
   type ProjectFormState = {
     nome: string;
     contractId: string;
     contractName: string;
+    contractType: "one_off" | "recurring";
     negocioId: string;
     negocio: string;
     status: string;
@@ -97,9 +99,6 @@
   let formNode: HTMLFormElement | undefined;
   let startDateInput: HTMLInputElement | undefined;
   let endDateInput: HTMLInputElement | undefined;
-  let sourceServiceId = $state("");
-  let availableServices = $state<Service[]>([]);
-  let currentServiceRelations = $state<ProjectServiceSummary[]>([]);
   let selectedTags = $state<GlobalSelectorItem[]>([]);
   let currentTagRelations = $state<ProjectTag[]>([]);
   let projectOptions = $state<ProjectOptions>();
@@ -135,6 +134,18 @@
   let visibilityUpdating = $state(false);
 
   let form = $state<ProjectFormState>(projectFromRecord());
+  let hasOpenDeliveries = $derived(
+    form.deliveries.some(
+      (delivery) =>
+        !delivery.archivedAt && delivery.status !== "conclusao",
+    ),
+  );
+  let frequencyLocked = $derived(
+    resolvedMode === "edit" &&
+      (hasOpenDeliveries ||
+        projectDeliveriesLoading ||
+        Boolean(projectDeliveriesError)),
+  );
   let workspaceNames = $derived(
     new Map(workspaces.map((workspace) => [workspace.id, workspace.name])),
   );
@@ -174,9 +185,6 @@
     }
     return items;
   });
-  let sourceServiceItems = $derived(
-    sourceSelectorItems(availableServices, currentServiceRelations),
-  );
   let tagItems = $derived(
     selectorItemsForTags(projectOptions?.tags ?? [], currentTagRelations),
   );
@@ -230,9 +238,6 @@
     form = projectFromRecord(record);
     projectActive = record?.isActive !== "false";
     const relations = projectRelationsFromRecord(record);
-    sourceServiceId =
-      relations.sourceServiceId ?? relations.services.at(0)?.id ?? "";
-    currentServiceRelations = relations.services;
     currentTagRelations = relations.tags;
     selectedTags = tagSelections(relations.tags);
 
@@ -295,6 +300,8 @@
       form.deliveries = relatedDeliveries.map((delivery) => ({
         id: delivery.id,
         name: delivery.name,
+        status: delivery.status,
+        archivedAt: delivery.archivedAt,
       }));
     } catch (cause) {
       if (request.signal.aborted) return;
@@ -308,20 +315,6 @@
     }
   }
 
-  function unique(values: string[]): string[] {
-    return values
-      .map((value) => value.trim())
-      .filter(
-        (value, index, all) =>
-          value.length > 0 &&
-          all.findIndex(
-            (candidate) =>
-              candidate.toLocaleLowerCase("pt-BR") ===
-              value.toLocaleLowerCase("pt-BR"),
-          ) === index,
-      );
-  }
-
   function uniqueSelectorItems(
     items: GlobalSelectorItem[],
   ): GlobalSelectorItem[] {
@@ -330,44 +323,6 @@
         Boolean(item.label.trim()) &&
         items.findIndex((candidate) => candidate.id === item.id) === index,
     );
-  }
-
-  function serviceItem(
-    service: Service | ProjectServiceSummary,
-  ): GlobalSelectorItem {
-    return {
-      id: service.id,
-      label: service.name,
-      description:
-        service.description ||
-        (service.archivedAt ? "Serviço arquivado" : undefined),
-      updatedAt: "updatedAt" in service ? service.updatedAt : undefined,
-    };
-  }
-
-  function selectorItemsForServices(
-    services: Service[],
-    current: ProjectServiceSummary[],
-  ): GlobalSelectorItem[] {
-    return uniqueSelectorItems([
-      ...services.filter(({ archivedAt }) => !archivedAt).map(serviceItem),
-      ...current.map(serviceItem),
-    ]);
-  }
-
-  function sourceSelectorItems(
-    services: Service[],
-    current: ProjectServiceSummary[],
-  ): GlobalSelectorItem[] {
-    const items = selectorItemsForServices(services, current);
-    if (sourceServiceId && !items.some(({ id }) => id === sourceServiceId)) {
-      items.push({
-        id: sourceServiceId,
-        label: "Modelo atual",
-        description: "Serviço de origem preservado",
-      });
-    }
-    return items;
   }
 
   function tagItem(tag: ProjectTag): GlobalSelectorItem {
@@ -440,16 +395,6 @@
       });
       if (optionsRequest !== request) return;
       projectOptions = options;
-      availableServices = options.services;
-      if (
-        resolvedMode === "create" &&
-        sourceServiceId &&
-        !options.services.some(
-          ({ id, archivedAt }) => id === sourceServiceId && !archivedAt,
-        )
-      ) {
-        sourceServiceId = "";
-      }
       const tags = selectorItemsForTags(options.tags, currentTagRelations);
       selectedTags = selectedTags.flatMap((selected) => {
         const item = tags.find(({ id }) => id === selected.id);
@@ -461,7 +406,7 @@
       optionsError =
         error instanceof ProjectApiError
           ? error.message
-          : "Não foi possível carregar serviços e tags. Tente novamente.";
+          : "Não foi possível carregar as tags. Tente novamente.";
     } finally {
       if (optionsRequest === request) optionsLoading = false;
     }
@@ -479,11 +424,24 @@
     return formatDateForDisplay(value);
   }
 
+  function projectContractType(record?: EntityRecord): "one_off" | "recurring" {
+    const raw = first(
+      record,
+      "contractType",
+      "contract_type",
+      "tipoContrato",
+    ).toLocaleLowerCase("pt-BR");
+    return raw === "recurring" || raw === "recorrente"
+      ? "recurring"
+      : "one_off";
+  }
+
   function projectFromRecord(record?: EntityRecord): ProjectFormState {
     return {
       nome: first(record, "nome", "name"),
       contractId: first(record, "contractId"),
       contractName: first(record, "contractName"),
+      contractType: projectContractType(record),
       negocioId: first(record, "negocioId", "business_id"),
       negocio: first(record, "negocio", "business_name", "cliente"),
       status: first(record, "status") || "planejamento",
@@ -494,89 +452,6 @@
     };
   }
 
-  function normalizeText(value: string): string {
-    return value
-      .normalize("NFD")
-      .replace(/\p{M}/gu, "")
-      .trim()
-      .replace(/\s+/gu, " ")
-      .toLocaleLowerCase("pt-BR");
-  }
-
-  function selectSourceService(id: string): void {
-    sourceServiceId = id;
-    if (resolvedMode !== "create") return;
-    const service = availableServices.find((candidate) => candidate.id === id);
-    if (service) applySourceServiceDefaults(service);
-  }
-
-  function applySourceServiceDefaults(service: Service): void {
-    if (!form.dataInicio) {
-      form.dataInicio = displayDate(new Date().toISOString().slice(0, 10));
-    }
-    const startDate = normalizeDate(form.dataInicio);
-    const endDate =
-      startDate && service.defaultDurationDays !== null
-        ? addDays(startDate, service.defaultDurationDays)
-        : "";
-    form.status = service.defaultStatus;
-    form.dataFim = displayDate(endDate);
-    form.briefing = service.defaultBriefing;
-    selectedTags = service.tags.map(tagItem);
-  }
-
-  function refreshSourceEndDate(): void {
-    if (resolvedMode !== "create" || !sourceServiceId) return;
-    const service = availableServices.find(
-      (candidate) => candidate.id === sourceServiceId,
-    );
-    const startDate = normalizeDate(form.dataInicio);
-    if (!service) return;
-    if (startDate && service.defaultDurationDays !== null) {
-      form.dataFim = displayDate(
-        addDays(startDate, service.defaultDurationDays),
-      );
-    }
-  }
-
-  function sameValues(left: string[], right: string[]): boolean {
-    const normalized = (values: string[]) =>
-      unique(values)
-        .map(normalizeText)
-        .sort((a, b) => a.localeCompare(b));
-    return (
-      JSON.stringify(normalized(left)) === JSON.stringify(normalized(right))
-    );
-  }
-
-  function sourceOverrideFields(): string[] {
-    if (resolvedMode !== "create" || !sourceServiceId) return [];
-    const source = availableServices.find(({ id }) => id === sourceServiceId);
-    if (!source) return [];
-    const overrides: string[] = [];
-    const startDate = normalizeDate(form.dataInicio);
-    const expectedEnd =
-      startDate && source.defaultDurationDays !== null
-        ? addDays(startDate, source.defaultDurationDays)
-        : "";
-    if (form.status !== source.defaultStatus) overrides.push("status");
-    if ((normalizeDate(form.dataFim) ?? "") !== expectedEnd) {
-      overrides.push("endDate");
-    }
-    if (form.briefing.trim() !== source.defaultBriefing.trim()) {
-      overrides.push("briefing");
-    }
-    if (
-      !sameValues(
-        selectedTags.map(({ label }) => label),
-        source.tags.map(({ name }) => name),
-      )
-    ) {
-      overrides.push("tagLabels");
-    }
-    return overrides;
-  }
-
   function selectContract(id: string): void {
     form.contractId = id;
     const contract = contracts.find((item) => item.id === id);
@@ -585,8 +460,6 @@
       form.negocioId = contract.business.id;
       form.negocio = contract.business.name;
       if (contract.workspaceId !== optionsWorkspaceId) {
-        if (resolvedMode === "create") sourceServiceId = "";
-        availableServices = [];
         projectOptions = undefined;
         void loadOptions(contract.workspaceId);
       }
@@ -597,9 +470,7 @@
       optionsWorkspaceId = "";
       optionsError = "";
       optionsLoading = false;
-      availableServices = [];
       projectOptions = undefined;
-      if (resolvedMode === "create") sourceServiceId = "";
     }
   }
 
@@ -623,9 +494,6 @@
     form[field] = masked;
     input.setCustomValidity("");
     validationError = "";
-    if (field === "dataInicio") {
-      refreshSourceEndDate();
-    }
   }
 
   function handleDatePickerChange(
@@ -637,7 +505,6 @@
     validationError = "";
     if (field === "dataInicio") {
       startDateInput?.setCustomValidity("");
-      refreshSourceEndDate();
     } else {
       endDateInput?.setCustomValidity("");
     }
@@ -663,15 +530,6 @@
     return null;
   }
 
-  function addDays(dateValue: string, days: number): string {
-    const normalized = normalizeDate(dateValue);
-    if (!normalized) return "";
-    const [year, month, day] = normalized.split("-").map(Number);
-    const date = new Date(Date.UTC(year, month - 1, day));
-    date.setUTCDate(date.getUTCDate() + days);
-    return date.toISOString().slice(0, 10);
-  }
-
   function submit(event: SubmitEvent): void {
     event.preventDefault();
     if (viewOnly || !formNode) return;
@@ -683,25 +541,9 @@
       return;
     }
     if (optionsLoading || optionsError) {
-      validationError = optionsError || "Aguarde o carregamento do catálogo.";
+      validationError = optionsError || "Aguarde o carregamento das tags.";
       return;
     }
-
-    const selectedSource = sourceServiceId
-      ? sourceServiceItems.find(({ id }) => id === sourceServiceId)
-      : undefined;
-    if (
-      resolvedMode === "create" &&
-      sourceServiceId &&
-      (!selectedSource ||
-        !availableServices.some(
-          ({ id, archivedAt }) => id === sourceServiceId && !archivedAt,
-        ))
-    ) {
-      validationError = "Selecione um serviço válido.";
-      return;
-    }
-    const serviceIds = sourceServiceId ? [sourceServiceId] : [];
 
     const startDate = validateDate(
       startDateInput,
@@ -717,23 +559,26 @@
     const savedStartDate =
       startDate ||
       (resolvedMode === "create" ? new Date().toISOString().slice(0, 10) : "");
-    const selectedServiceLabels = selectedSource ? [selectedSource.label] : [];
     const contractId = contract?.id ?? form.contractId;
     const contractName = contract?.name ?? form.contractName;
     const businessId = contract?.business.id ?? form.negocioId;
     const businessName = contract?.business.name ?? form.negocio;
     const tagLabels = selectedTags.map(({ label }) => label);
+    const effectiveContractType =
+      resolvedMode === "edit" && frequencyLocked
+        ? projectContractType(record)
+        : form.contractType;
 
-    const values = {
+    const values: Record<string, string> = {
       nome: form.nome.trim(),
       name: form.nome.trim(),
-      servicos: selectedServiceLabels.join(", "),
-      service_tags: selectedServiceLabels.join(", "),
-      serviceIds: JSON.stringify(serviceIds),
-      sourceServiceId,
-      sourceOverrideFields: JSON.stringify(sourceOverrideFields()),
+      ...(resolvedMode === "create" ? { serviceIds: "[]" } : {}),
       contractId,
       contractName,
+      contractType: effectiveContractType,
+      contract_type: effectiveContractType,
+      tipoContrato:
+        effectiveContractType === "recurring" ? "Recorrente" : "Pontual",
       negocioId: businessId,
       business_id: businessId,
       negocio: businessName,
@@ -835,78 +680,68 @@
               </div>
             </div>
 
-            <div class="field full">
-              <GlobalSelector
-                items={contractItems}
-                bind:value={form.contractId}
-                presentation="search"
-                selection="single"
-                label="Contrato"
-                placeholder={contractsLoading
-                  ? "Carregando contratos..."
-                  : "Selecione o contrato"}
-                emptyMessage="Nenhum contrato encontrado."
-                icon={BriefcaseBusiness}
-                controlIcon={BriefcaseBusiness}
-                required={resolvedMode === "create"}
-                disabled={viewOnly ||
-                  resolvedMode !== "create" ||
-                  contractsLoading ||
-                  Boolean(contractsError)}
-                onchange={selectContract}
-              />
-              {#if contractsLoading}
-                <p class="catalog-state" aria-live="polite">
-                  Carregando contratos...
-                </p>
-              {:else if contractsError}
-                <div class="catalog-error" role="alert">
-                  <span>{contractsError}</span>
-                  <button type="button" onclick={() => void loadContracts()}>
-                    Tentar novamente
-                  </button>
-                </div>
-              {/if}
-            </div>
+            <div class="field full two-column-grid">
+              <div class="field">
+                <GlobalSelector
+                  items={contractItems}
+                  bind:value={form.contractId}
+                  presentation="search"
+                  selection="single"
+                  label="Contrato"
+                  placeholder={contractsLoading
+                    ? "Carregando contratos..."
+                    : "Selecione o contrato"}
+                  emptyMessage="Nenhum contrato encontrado."
+                  icon={BriefcaseBusiness}
+                  controlIcon={BriefcaseBusiness}
+                  required={resolvedMode === "create"}
+                  disabled={viewOnly ||
+                    resolvedMode !== "create" ||
+                    contractsLoading ||
+                    Boolean(contractsError)}
+                  onchange={selectContract}
+                />
+                {#if contractsLoading}
+                  <p class="catalog-state" aria-live="polite">
+                    Carregando contratos...
+                  </p>
+                {:else if contractsError}
+                  <div class="catalog-error" role="alert">
+                    <span>{contractsError}</span>
+                    <button type="button" onclick={() => void loadContracts()}>
+                      Tentar novamente
+                    </button>
+                  </div>
+                {/if}
+              </div>
 
-            <div class="field full service-field">
-              <GlobalSelector
-                items={sourceServiceItems}
-                bind:value={sourceServiceId}
-                presentation="search"
-                selection="single"
-                label="Serviço (opcional)"
-                placeholder={resolvedMode === "create" &&
-                !activeOptionsWorkspaceId
-                  ? "Selecione um contrato para escolher um serviço"
-                  : optionsLoading
-                    ? "Carregando serviços..."
-                    : "Selecione um serviço para usar como modelo"}
-                emptyMessage="Nenhum serviço disponível."
-                icon={Tags}
-                controlIcon={Tags}
-                disabled={viewOnly ||
-                  resolvedMode !== "create" ||
-                  !activeOptionsWorkspaceId ||
-                  optionsLoading ||
-                  Boolean(optionsError)}
-                onchange={selectSourceService}
-              />
-              {#if optionsLoading}
-                <p class="catalog-state" role="status">
-                  Carregando serviços e tags…
-                </p>
-              {:else if optionsError}
-                <div class="catalog-error" role="alert">
-                  <span>{optionsError}</span>
-                  <button
-                    type="button"
-                    onclick={() => void loadOptions(activeOptionsWorkspaceId)}
+              <div class="field">
+                <div
+                  class="control"
+                  class:control--disabled={!viewOnly && frequencyLocked}
+                >
+                  <span class="control-icon" aria-hidden="true">
+                    <Repeat size={15} strokeWidth={1.8} />
+                  </span>
+                  <select
+                    name="contractType"
+                    disabled={viewOnly || frequencyLocked}
+                    aria-label="Frequência do projeto"
+                    title={hasOpenDeliveries
+                      ? "Não é possível alterar a frequência enquanto houver entregas em aberto."
+                      : undefined}
+                    bind:value={form.contractType}
                   >
-                    Tentar novamente
-                  </button>
+                    <option value="one_off">Pontual</option>
+                    <option value="recurring">Recorrente</option>
+                  </select>
                 </div>
-              {/if}
+                {#if resolvedMode === "edit" && hasOpenDeliveries}
+                  <p class="catalog-state">
+                    Frequência bloqueada enquanto houver entregas em aberto.
+                  </p>
+                {/if}
+              </div>
             </div>
 
             <div class="field">
@@ -1016,7 +851,9 @@
                 placeholder={resolvedMode === "create" &&
                 !activeOptionsWorkspaceId
                   ? "Selecione um contrato para escolher as tags"
-                  : "Selecione as tags"}
+                  : optionsLoading
+                    ? "Carregando tags..."
+                    : "Selecione as tags"}
                 emptyMessage="Nenhuma tag disponível neste workspace."
                 icon={Tags}
                 controlIcon={Tags}
@@ -1027,6 +864,19 @@
                   optionsLoading ||
                   Boolean(optionsError)}
               />
+              {#if optionsLoading}
+                <p class="catalog-state" role="status">Carregando tags…</p>
+              {:else if optionsError}
+                <div class="catalog-error" role="alert">
+                  <span>{optionsError}</span>
+                  <button
+                    type="button"
+                    onclick={() => void loadOptions(activeOptionsWorkspaceId)}
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              {/if}
             </div>
           </div>
         </section>
@@ -1369,6 +1219,22 @@
 
   .field.full {
     grid-column: 1 / -1;
+  }
+
+  .two-column-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+
+  .control--disabled {
+    background: var(--surface-soft);
+    opacity: 0.72;
+  }
+
+  .control--disabled select:disabled {
+    cursor: not-allowed;
   }
 
   .control {
@@ -1752,7 +1618,8 @@
   }
 
   @media (max-width: 520px) {
-    .about-grid {
+    .about-grid,
+    .two-column-grid {
       grid-template-columns: minmax(0, 1fr);
     }
 

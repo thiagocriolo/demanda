@@ -18,6 +18,17 @@ export class InstitutionalProjectProtectedError extends Error {
   }
 }
 
+export class ProjectFrequencyLockedError extends Error {
+  readonly status = 409;
+
+  constructor() {
+    super(
+      "Não é possível alterar a frequência do projeto enquanto houver entregas em aberto.",
+    );
+    this.name = "ProjectFrequencyLockedError";
+  }
+}
+
 export class ServiceNotFoundError extends Error {
   readonly status = 404;
 

@@ -1,5 +1,4 @@
 import { error, json } from "@sveltejs/kit";
-import { randomUUID } from "node:crypto";
 import { and, asc, count, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { RequestHandler } from "./$types";
@@ -150,46 +149,6 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
             eq(contracts.id, params.contractId),
           ),
         );
-      if (parsed.data.contractType === "recurring") {
-        const [institutional] = await transaction
-          .select({ id: projects.id })
-          .from(projects)
-          .where(
-            and(
-              eq(projects.workspaceId, workspace.workspace.id),
-              eq(projects.contractId, params.contractId),
-              eq(projects.isInstitutional, true),
-            ),
-          )
-          .limit(1);
-        if (institutional) {
-          await transaction
-            .update(projects)
-            .set({
-              startDate: parsed.data.startDate,
-              endDate: null,
-              contractType: "recurring",
-              updatedAt,
-            })
-            .where(eq(projects.id, institutional.id));
-        } else {
-          await transaction.insert(projects).values({
-            id: randomUUID(),
-            workspaceId: workspace.workspace.id,
-            businessId: parsed.data.businessId,
-            contractId: params.contractId,
-            isInstitutional: true,
-            name: "Institucional",
-            statusKey: "execucao",
-            startDate: parsed.data.startDate,
-            endDate: null,
-            engagementType: "personal",
-            contractType: "recurring",
-            createdAt: updatedAt,
-            updatedAt,
-          });
-        }
-      }
       await transaction
         .delete(contractInstallments)
         .where(

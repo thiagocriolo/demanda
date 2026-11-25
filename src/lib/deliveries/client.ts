@@ -388,6 +388,7 @@ export function deliveryToEntityRecord(delivery: Delivery): EntityRecord {
     project_id: delivery.project.id,
     project_name: delivery.project.name,
     projectStatus: delivery.project.status,
+    projectContractType: delivery.project.contractType ?? "one_off",
     projectArchivedAt: delivery.project.archivedAt ?? "",
     projectWorkspaceId: delivery.workspaceId,
     project_workspace_id: delivery.workspaceId,
@@ -410,6 +411,7 @@ export function deliveryToEntityRecord(delivery: Delivery): EntityRecord {
     data_entrega: delivery.dueDate ?? "",
     dueDate: delivery.dueDate ?? "",
     due_date: delivery.dueDate ?? "",
+    recurrence: delivery.recurrence ?? "",
     tipoEngajamento: delivery.engagementType === "fee" ? "Fee" : "Pessoal",
     engagementType: delivery.engagementType ?? "personal",
     duracao: durationHours(delivery.durationMinutes),
@@ -640,6 +642,16 @@ function mutationFields(
     name,
   );
 
+  const rawRecurrence = (
+    values.recurrence ?? current?.recurrence ?? ""
+  ).trim();
+  const recurrence =
+    rawRecurrence === "daily" ||
+    rawRecurrence === "weekly" ||
+    rawRecurrence === "monthly"
+      ? rawRecurrence
+      : undefined;
+
   return {
     name,
     projectId: (
@@ -653,9 +665,7 @@ function mutationFields(
     institutionalContractId: (
       values.institutionalContractId ?? current?.institutionalContractId ?? ""
     ).trim() || undefined,
-    recurrence: (
-      values.recurrence ?? current?.recurrence ?? "one_off"
-    ) as DeliveryCreateInput["recurrence"],
+    ...(recurrence ? { recurrence } : {}),
     category: (
       values.categoria ??
       values.stage ??

@@ -122,7 +122,7 @@ const projectMutationObject = z
     briefing: z.string().trim().max(10_000),
     tagLabels,
     responsibleUserIds: uniqueUuidArray(0, 20).default([]),
-    contractType: z.enum(["one_off", "recurring"]).default("one_off"),
+    contractType: z.enum(["one_off", "recurring"]).optional(),
     amountCents: moneyCents.default(0),
     firstDueDate: nullableIsoDate.default(null),
     paymentMethod: optionalText(120).default(""),

@@ -352,6 +352,7 @@ describe("BE-10: Agenda persistente", () => {
       if (!business) throw new Error("Negocio nao encontrado.");
 
       const recurringProjectId = randomUUID();
+      const regularRecurringProjectId = randomUUID();
       const oneOffProjectId = randomUUID();
       await transaction.insert(projects).values([
         {
@@ -361,6 +362,16 @@ describe("BE-10: Agenda persistente", () => {
           isInstitutional: true,
           contractType: "recurring",
           name: "Institucional",
+          statusKey: "execucao",
+          endDate: null,
+        },
+        {
+          id: regularRecurringProjectId,
+          workspaceId: data.workspace.id,
+          businessId: business.id,
+          isInstitutional: false,
+          contractType: "recurring",
+          name: "Operacao Recorrente",
           statusKey: "execucao",
           endDate: null,
         },
@@ -377,6 +388,7 @@ describe("BE-10: Agenda persistente", () => {
       ]);
 
       const recurringDeliveryId = randomUUID();
+      const regularRecurringDeliveryId = randomUUID();
       const oneOffDeliveryId = randomUUID();
       await transaction.insert(deliveries).values([
         {
@@ -385,6 +397,14 @@ describe("BE-10: Agenda persistente", () => {
           projectId: recurringProjectId,
           businessId: business.id,
           name: "Rotina institucional",
+          dueDate: null,
+        },
+        {
+          id: regularRecurringDeliveryId,
+          workspaceId: data.workspace.id,
+          projectId: regularRecurringProjectId,
+          businessId: business.id,
+          name: "Rotina recorrente regular",
           dueDate: null,
         },
         {
@@ -405,8 +425,14 @@ describe("BE-10: Agenda persistente", () => {
       expect(snapshot.projects.map(({ id }) => id)).not.toContain(
         oneOffProjectId,
       );
+      expect(snapshot.projects.map(({ id }) => id)).toContain(
+        regularRecurringProjectId,
+      );
       expect(snapshot.deliveries.map(({ id }) => id)).not.toContain(
         recurringDeliveryId,
+      );
+      expect(snapshot.deliveries.map(({ id }) => id)).not.toContain(
+        regularRecurringDeliveryId,
       );
       expect(snapshot.deliveries.map(({ id }) => id)).toContain(
         oneOffDeliveryId,

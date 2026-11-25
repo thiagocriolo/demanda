@@ -314,25 +314,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     };
     await database.transaction(async (transaction) => {
       await transaction.insert(contracts).values(contract);
-      // A recurring agreement always owns one system-managed operational
-      // project. Deliveries are added to this project and renewed by cycle.
-      if (contract.contractType === "recurring") {
-        await transaction.insert(projects).values({
-          id: randomUUID(),
-          workspaceId: contract.workspaceId,
-          businessId: contract.businessId,
-          contractId: contract.id,
-          isInstitutional: true,
-          name: "Institucional",
-          statusKey: "execucao",
-          startDate: contract.startDate,
-          endDate: null,
-          engagementType: "personal",
-          contractType: "recurring",
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
       if (installmentValues.length)
         await transaction.insert(contractInstallments).values(
           installmentValues.map((item) => ({

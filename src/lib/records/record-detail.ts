@@ -174,6 +174,10 @@ export function projectDetail(project: Project): RecordDetail {
     fields: [
       { label: "Contrato", value: text(project.contract?.name) },
       { label: "Negócio", value: project.business.name },
+      {
+        label: "Frequência",
+        value: project.contractType === "recurring" ? "Recorrente" : "Pontual",
+      },
       { label: "Início", value: date(project.startDate) },
       { label: "Conclusão", value: date(project.endDate) },
       { label: "Exibição", value: project.isActive ? "On" : "Off" },

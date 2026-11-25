@@ -289,6 +289,7 @@ describe("cliente de projetos", () => {
 
     expect(record.contractId).toBe(contractId);
     expect(record.contractName).toBe("Contrato anual Aurora");
+    expect(record.contractType).toBe("one_off");
     expect(input).toEqual({
       name: project.name,
       contractId,
@@ -299,6 +300,7 @@ describe("cliente de projetos", () => {
       endDate: project.endDate,
       briefing: project.briefing,
       tagLabels: project.tags.map(({ name }) => name),
+      contractType: "one_off",
     });
     expect(projectRelationsFromRecord(record)).toEqual({
       business: project.business,
@@ -320,6 +322,19 @@ describe("cliente de projetos", () => {
     });
     expect(record.status).toBe("arquivado");
     expect(entityValuesToProjectInput(record, record).status).toBe("execucao");
+  });
+
+  it("preserva a frequência recorrente no round-trip visual", () => {
+    const record = projectToEntityRecord({
+      ...project,
+      contractType: "recurring",
+    });
+    expect(record.contractType).toBe("recurring");
+    expect(record.contract_type).toBe("recurring");
+    expect(record.tipoContrato).toBe("Recorrente");
+    expect(entityValuesToProjectInput(record, record).contractType).toBe(
+      "recurring",
+    );
   });
 
   it("permite limpar tags explicitamente", () => {

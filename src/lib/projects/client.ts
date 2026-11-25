@@ -467,6 +467,7 @@ export function projectToEntityRecord(project: Project): EntityRecord {
       project.responsibles.map(({ userId }) => userId),
     ),
     tipoContrato: contractType,
+    contractType: project.contractType,
     contract_type: project.contractType,
     valor: formatCents(project.amountCents),
     amount: formatCents(project.amountCents),
@@ -533,6 +534,22 @@ export function entityValuesToProjectInput(
     current?.negocioId ??
     ""
   ).trim();
+  const rawContractType = (
+    values.contractType ??
+    values.contract_type ??
+    values.tipoContrato ??
+    current?.contractType ??
+    current?.contract_type ??
+    ""
+  )
+    .trim()
+    .toLocaleLowerCase("pt-BR");
+  const contractType =
+    rawContractType === "recurring" || rawContractType === "recorrente"
+      ? ("recurring" as const)
+      : rawContractType === "one_off" || rawContractType === "pontual"
+        ? ("one_off" as const)
+        : undefined;
 
   return {
     name: (values.nome ?? values.name ?? "").trim(),
@@ -552,6 +569,7 @@ export function entityValuesToProjectInput(
       ""
     ).trim(),
     tagLabels: uniqueStrings(tagLabels),
+    ...(contractType ? { contractType } : {}),
     ...(["fee", "personal"].includes(
       (values.tipoEngajamento ?? values.engagementType ?? "").toLocaleLowerCase(
         "pt-BR",

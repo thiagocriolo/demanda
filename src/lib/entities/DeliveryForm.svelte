@@ -78,7 +78,7 @@
     responsavelId: string;
     responsavel: string;
     dataEntrega: string;
-    recurrence: "one_off" | "daily" | "weekly" | "monthly";
+    recurrence: "daily" | "weekly" | "monthly";
     categoria: string;
     prioridade: string;
     status: string;
@@ -227,19 +227,36 @@
         )
       : [],
   );
-  let isInstitutionalProject = $derived(
-    form.projetoId === `institutional:${form.contractId}` ||
-      projects.some(
-        (project) =>
-          project.id === form.projetoId && project.isInstitutional === "true",
-      ),
-  );
   let selectedContract = $derived(
     contracts.find(({ id }) => id === form.contractId),
   );
-  let isRecurringInstitutionalProject = $derived(
-    isInstitutionalProject && selectedContract?.contractType === "recurring",
+  let selectedProject = $derived(
+    projects.find(({ id }) => id === form.projetoId),
   );
+  let hasSelectedProject = $derived(Boolean(form.projetoId));
+  let isRecurringProject = $derived.by(() => {
+    if (!form.projetoId) return false;
+    if (selectedProject) {
+      const frequency = text(
+        selectedProject.contract_type,
+        selectedProject.contractType,
+      ).toLocaleLowerCase("pt-BR");
+      return frequency === "recurring" || frequency === "recorrente";
+    }
+    if (
+      initialRecord?.projetoId &&
+      form.projetoId === initialRecord.projetoId
+    ) {
+      const initialFrequency = text(
+        initialRecord.projectContractType,
+        initialRecord.contract_type,
+      ).toLocaleLowerCase("pt-BR");
+      return (
+        initialFrequency === "recurring" || initialFrequency === "recorrente"
+      );
+    }
+    return false;
+  });
   let workspaceNames = $derived(
     new Map(workspaces.map((workspace) => [workspace.id, workspace.name])),
   );
@@ -322,7 +339,9 @@
     ]),
   );
   $effect(() => {
-    if (isRecurringInstitutionalProject && form.dataEntrega) form.dataEntrega = "";
+    if ((isRecurringProject || !hasSelectedProject) && form.dataEntrega) {
+      form.dataEntrega = "";
+    }
   });
 
   function text(...values: Array<string | undefined>): string {
@@ -330,9 +349,16 @@
   }
 
   function formFromRecord(source?: EntityRecord): DeliveryFormState {
+    const rawRecurrence = text(source?.recurrence);
+    const recurrence: "daily" | "weekly" | "monthly" =
+      rawRecurrence === "daily" ||
+      rawRecurrence === "weekly" ||
+      rawRecurrence === "monthly"
+        ? rawRecurrence
+        : "daily";
     return {
       nome: source?.nome ?? "",
-      contractId: "",
+      contractId: text(source?.contractId),
       negocioId: text(
         source?.negocioId,
         source?.negocio_id,
@@ -348,7 +374,7 @@
       responsavelId: text(source?.responsavelId, source?.assigned_user_id),
       responsavel: text(source?.responsavel),
       dataEntrega: deliveryDueDate(source),
-      recurrence: "one_off",
+      recurrence,
       categoria: text(source?.categoria, source?.stage),
       prioridade: text(source?.prioridade, source?.priority),
       status: source?.status ?? "",
@@ -667,6 +693,9 @@
       negocioId: businessId,
       negocio_id: businessId,
       business_id: businessId,
+      contractId: text(source.contractId),
+      contractType: text(source.projectContractType) || "one_off",
+      contract_type: text(source.projectContractType) || "one_off",
       status: source.projectArchivedAt
         ? "arquivado"
         : source.projectStatus || "",
@@ -1032,6 +1061,7 @@
     form.negocioNome = contract?.business.name ?? "";
     form.projetoId = "";
     form.projetoNome = "";
+    form.dataEntrega = "";
     if (!contract) {
       selectedResponsibles = [];
       form.responsavelId = "";
@@ -1231,11 +1261,11 @@
       responsibleUserIds: JSON.stringify(responsibleUserIds),
       tags: tagLabels.join(", "),
       tagLabels: JSON.stringify(tagLabels),
-      dataEntrega: isRecurringInstitutionalProject ? "" : form.dataEntrega,
-      data_entrega: isRecurringInstitutionalProject ? "" : form.dataEntrega,
-      dueDate: isRecurringInstitutionalProject ? "" : form.dataEntrega,
-      due_date: isRecurringInstitutionalProject ? "" : form.dataEntrega,
-      recurrence: isRecurringInstitutionalProject ? form.recurrence : "one_off",
+      dataEntrega: isRecurringProject ? "" : form.dataEntrega,
+      data_entrega: isRecurringProject ? "" : form.dataEntrega,
+      dueDate: isRecurringProject ? "" : form.dataEntrega,
+      due_date: isRecurringProject ? "" : form.dataEntrega,
+      recurrence: isRecurringProject ? form.recurrence : "",
       duracao,
       duration: duracao,
       tarefas: JSON.stringify(savedTasks),
@@ -1395,25 +1425,26 @@
                 disabled={!canSelectResponsible}
               />
 
-              {#if isRecurringInstitutionalProject}
+              {#if isRecurringProject}
                 <div class="control">
                   <span class="control-icon" aria-hidden="true">
                     <CalendarDays size={16} strokeWidth={1.8} />
                   </span>
                   <select
                     bind:value={form.recurrence}
+                    required
                     disabled={viewOnly}
                     aria-label="Recorrência da entrega"
                   >
                     <option value="daily">Diário</option>
                     <option value="weekly">Semanal</option>
                     <option value="monthly">Mensal</option>
-                    <option value="one_off">Pontual</option>
                   </select>
                 </div>
-              {:else if !isRecurringInstitutionalProject}
+              {:else}
                 <div
                   class:date-control--empty={!form.dataEntrega}
+                  class:control--disabled={!viewOnly && !hasSelectedProject}
                   class="control date-control"
                 >
                   <span class="control-icon" aria-hidden="true">
@@ -1422,13 +1453,17 @@
                   <input
                     bind:value={form.dataEntrega}
                     type="date"
-                    placeholder="Data de entrega"
-                    disabled={viewOnly}
+                    placeholder={hasSelectedProject
+                      ? "Data de entrega"
+                      : "Selecione um projeto primeiro"}
+                    disabled={viewOnly || !hasSelectedProject}
                     aria-label="Data de entrega da entrega"
                   />
                   {#if !form.dataEntrega}
                     <span class="date-placeholder" aria-hidden="true"
-                      >Data de entrega</span
+                      >{hasSelectedProject
+                        ? "Data de entrega"
+                        : "Selecione um projeto primeiro"}</span
                     >
                   {/if}
                 </div>
@@ -1960,6 +1995,15 @@
   .control:focus-within {
     border-color: var(--primary);
     box-shadow: none;
+  }
+
+  .control--disabled {
+    background: var(--surface-soft);
+    opacity: 0.72;
+  }
+
+  .control--disabled input:disabled {
+    cursor: not-allowed;
   }
 
   .textarea-control {

@@ -80,6 +80,16 @@ describe("validação de tarefas", () => {
     expect(
       deliveryCreateSchema.safeParse({ ...createInput(), version: 1 }).success,
     ).toBe(false);
+    for (const recurrence of ["daily", "weekly", "monthly"] as const) {
+      expect(
+        deliveryCreateSchema.safeParse({ ...createInput(), recurrence })
+          .success,
+      ).toBe(true);
+    }
+    expect(
+      deliveryCreateSchema.safeParse({ ...createInput(), recurrence: "one_off" })
+        .success,
+    ).toBe(false);
   });
 
   it("exige exatamente um responsável por tarefa", () => {

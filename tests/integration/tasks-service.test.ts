@@ -1859,19 +1859,32 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
 
       const activeContext = context(owner, activeWorkspace, "owner");
 
-      // 1. Primeira entrega institucional recorrente em outro workspace acessível
-      const firstInstitutional = await createWorkspaceDelivery(
+      const recurringProjectId = randomUUID();
+      await database.insert(projects).values({
+        id: recurringProjectId,
+        workspaceId: targetWorkspace.id,
+        businessId: business.id,
+        contractId: recurringContractId,
+        isInstitutional: false,
+        contractType: "recurring",
+        name: "Operacao Recorrente",
+        statusKey: "execucao",
+        startDate: "2026-11-01",
+      });
+
+      // 1. Primeira entrega recorrente em projeto recorrente (independente de ser institucional)
+      const firstRecurring = await createWorkspaceDelivery(
         database,
         activeContext,
         {
           name: "Entrega Diária 1",
-          institutionalContractId: recurringContractId,
+          projectId: recurringProjectId,
           recurrence: "daily",
           category: "",
           priority: "normal",
           status: "fila",
           briefing: "",
-          dueDate: null,
+          dueDate: "2026-12-01",
           tagLabels: [],
           responsibleUserIds: [owner.id],
           tasks: [
@@ -1879,16 +1892,18 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
           ],
         },
       );
-      expect(firstInstitutional.workspaceId).toBe(targetWorkspace.id);
-      expect(firstInstitutional.dueDate).toBeNull();
+      expect(firstRecurring.workspaceId).toBe(targetWorkspace.id);
+      expect(firstRecurring.dueDate).toBeNull();
+      expect(firstRecurring.recurrence).toBe("daily");
+      expect(firstRecurring.project.contractType).toBe("recurring");
 
-      // 2. Segunda entrega recorrente no projeto institucional já materializado
-      const secondInstitutional = await createWorkspaceDelivery(
+      // 2. Segunda entrega recorrente no mesmo projeto recorrente
+      const secondRecurring = await createWorkspaceDelivery(
         database,
         activeContext,
         {
-          name: "Entrega Diária 2",
-          projectId: firstInstitutional.project.id,
+          name: "Entrega Semanal 2",
+          projectId: recurringProjectId,
           recurrence: "weekly",
           category: "",
           priority: "normal",
@@ -1898,28 +1913,50 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
           tagLabels: [],
           responsibleUserIds: [owner.id],
           tasks: [
-            { name: "Entrega Diária 2", durationMinutes: 60, status: "pendente" },
+            { name: "Entrega Semanal 2", durationMinutes: 60, status: "pendente" },
           ],
         },
       );
-      expect(secondInstitutional.workspaceId).toBe(targetWorkspace.id);
+      expect(secondRecurring.workspaceId).toBe(targetWorkspace.id);
+      expect(secondRecurring.recurrence).toBe("weekly");
       const routines = await database
         .select()
         .from(projectDeliveryRoutines)
-        .where(eq(projectDeliveryRoutines.projectId, firstInstitutional.project.id));
+        .where(eq(projectDeliveryRoutines.projectId, recurringProjectId));
       expect(routines.map(({ recurrenceType }) => recurrenceType).sort()).toEqual([
         "daily",
         "weekly",
       ]);
 
-      // 3. Contrato pontual sem startDate também materializa o projeto institucional
+      // 2.1. Projeto recorrente exige recorrência (diária, semanal ou mensal)
+      await expect(
+        createWorkspaceDelivery(database, activeContext, {
+          name: "Entrega Sem Recorrência",
+          projectId: recurringProjectId,
+          category: "",
+          priority: "normal",
+          status: "fila",
+          briefing: "",
+          dueDate: "2026-12-01",
+          tagLabels: [],
+          responsibleUserIds: [owner.id],
+          tasks: [
+            {
+              name: "Entrega Sem Recorrência",
+              durationMinutes: 60,
+              status: "pendente",
+            },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(DeliveryRelationsInvalidError);
+
+      // 3. Projeto institucional não implica recorrência, mesmo em contrato recorrente ou pontual
       const oneOffInstitutional = await createWorkspaceDelivery(
         database,
         activeContext,
         {
           name: "Entrega Pontual Institucional",
-          institutionalContractId: oneOffContractId,
-          recurrence: "one_off",
+          institutionalContractId: recurringContractId,
           category: "",
           priority: "normal",
           status: "fila",
@@ -1938,6 +1975,8 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
       );
       expect(oneOffInstitutional.workspaceId).toBe(targetWorkspace.id);
       expect(oneOffInstitutional.dueDate).toBe("2026-12-01");
+      expect(oneOffInstitutional.recurrence).toBeNull();
+      expect(oneOffInstitutional.project.contractType).toBe("one_off");
 
       // 3.1. Leitura e atualização funcionam para entrega em outro workspace autorizado
       const fetchedFromOtherWorkspace = await getWorkspaceDelivery(
@@ -1964,14 +2003,14 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
           view: "status",
           updates: [
             {
-              id: firstInstitutional.id,
-              version: firstInstitutional.version,
+              id: firstRecurring.id,
+              version: firstRecurring.version,
               position: 0,
               columnKey: "planejamento",
             },
             {
-              id: secondInstitutional.id,
-              version: secondInstitutional.version,
+              id: secondRecurring.id,
+              version: secondRecurring.version,
               position: 0,
               columnKey: "fila",
             },
@@ -1986,7 +2025,7 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
       );
       expect(movedBoardResult.workspaceId).toBe(targetWorkspace.id);
       expect(
-        movedBoardResult.items.find(({ id }) => id === firstInstitutional.id),
+        movedBoardResult.items.find(({ id }) => id === firstRecurring.id),
       ).toMatchObject({
         status: "planejamento",
         boardOrder: { status: 0 },
@@ -2014,7 +2053,7 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
         }),
       );
       const refreshedSecond = movedBoardResult.items.find(
-        ({ id }) => id === secondInstitutional.id,
+        ({ id }) => id === secondRecurring.id,
       )!;
       await expect(
         updateWorkspaceDeliveryBoard(database, activeContext, {
