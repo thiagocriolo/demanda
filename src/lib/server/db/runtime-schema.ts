@@ -458,14 +458,14 @@ async function ensureInstitutionalContractUniqueIndex(
   const indexName = "projects_workspace_contract_institutional_unique";
   if (await indexExists(database, "projects", indexName)) return;
 
-  await addColumnIfMissing(
-    database,
-    "projects",
-    "institutional_contract_id",
-    "char(36) GENERATED ALWAYS AS (case when `is_institutional` then `contract_id` else null end) STORED",
-  );
-
   try {
+    await addColumnIfMissing(
+      database,
+      "projects",
+      "institutional_contract_id",
+      "char(36) GENERATED ALWAYS AS (case when `is_institutional` then `contract_id` else null end) STORED",
+    );
+
     await addUniqueIndexIfMissing(
       database,
       "projects",
@@ -474,9 +474,12 @@ async function ensureInstitutionalContractUniqueIndex(
     );
     return;
   } catch (firstError) {
-    // MariaDB/InnoDB can reject indexing a VIRTUAL generated column whose base
-    // column participates in a foreign key. If an earlier deploy created the
-    // column as VIRTUAL, recreate it as STORED and retry once.
+    // MariaDB/InnoDB can reject adding a STORED generated column referencing a
+    // foreign-key column (errno 1901) or reject indexing a VIRTUAL generated
+    // column whose base column participates in a foreign key (errno 3175).
+    // If an earlier deploy created the column as VIRTUAL, try recreating it as
+    // STORED once; otherwise skip the optional unique index instead of failing
+    // startup (application transactions enforce per-contract uniqueness).
     const extra = await columnExtra(
       database,
       "projects",

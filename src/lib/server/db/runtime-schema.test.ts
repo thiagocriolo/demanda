@@ -11,6 +11,7 @@ type FakeCatalog = {
   foreignKeys: Set<string>;
   legacyProjects?: Array<{ id: string; workspace_id: string }>;
   rejectVirtualInstitutionalIndex?: boolean;
+  rejectStoredInstitutionalColumn?: boolean;
 };
 
 function flattenSql(query: SQL): { text: string; params: unknown[] } {
@@ -134,6 +135,21 @@ function createFakeDatabase(catalog: FakeCatalog) {
         normalized,
       );
       if (addColumnMatch) {
+        if (
+          catalog.rejectStoredInstitutionalColumn &&
+          addColumnMatch[1] === "projects" &&
+          addColumnMatch[2] === "institutional_contract_id" &&
+          normalized.includes("STORED")
+        ) {
+          throw Object.assign(new Error("Failed query"), {
+            cause: {
+              errno: 1901,
+              sqlState: "HY000",
+              sqlMessage:
+                "Function or expression 'case when `is_institutional` then `contract_id` else NULL end' cannot be used in the GENERATED ALWAYS AS clause of `institutional_contract_id`",
+            },
+          });
+        }
         const key = `${addColumnMatch[1]}.${addColumnMatch[2]}`;
         catalog.columns.add(key);
         if (normalized.includes("STORED")) {
@@ -449,5 +465,88 @@ describe("applyRuntimeSchema", () => {
           "ALTER TABLE `projects` ADD CONSTRAINT `projects_workspace_contract_institutional_unique` UNIQUE (`workspace_id`, `institutional_contract_id`)",
       ),
     ).toHaveLength(2);
+  });
+
+  it("ignora com segurança a criação da coluna gerada institutional_contract_id quando o MariaDB rejeita com errno 1901", async () => {
+    const { database, executed } = createFakeDatabase({
+      tables: new Set([
+        "contracts",
+        "contract_installments",
+        "deliveries",
+        "delivery_tasks",
+        "delivery_responsibles",
+        "delivery_tags",
+        "delivery_comments",
+        "project_delivery_routines",
+        "service_delivery_templates",
+        "delivery_template_tasks",
+        "personal_deliveries",
+        "projects",
+        "financial_entries",
+      ]),
+      columns: new Set([
+        "contracts.contract_type",
+        "contracts.start_date",
+        "contracts.end_date",
+        "contracts.owner_user_id",
+        "projects.is_active",
+        "projects.contract_id",
+        "projects.engagement_type",
+        "deliveries.engagement_type",
+        "deliveries.project_routine_id",
+        "deliveries.routine_occurrence_date",
+        "delivery_tasks.execution_at",
+        "delivery_tasks.delivery_id",
+        "delivery_responsibles.delivery_id",
+        "delivery_tags.delivery_id",
+        "delivery_comments.delivery_id",
+        "tool_uses.delivery_id",
+        "agenda_entries.delivery_id",
+        "cronograma_blocks.delivery_id",
+        "cronograma_blocks.task_id",
+        "project_delivery_routines.tasks",
+        "project_delivery_routines.source_service_delivery_template_id",
+        "service_delivery_templates.recurrence_type",
+        "service_delivery_templates.recurrence_unit",
+        "service_delivery_templates.recurrence_days",
+        "financial_entries.contract_id",
+        "financial_entries.contract_installment_id",
+        "financial_entries.owner_user_id",
+      ]),
+      indexes: new Set([
+        "contracts.contracts_workspace_id_id_business_id_unique",
+        "contracts.contracts_owner_workspace_updated_index",
+        "financial_entries.financial_entries_workspace_contract_index",
+        "financial_entries.financial_entries_owner_due_status_index",
+        "financial_entries.financial_entries_owner_contract_installment_unique",
+      ]),
+      foreignKeys: new Set([
+        "contracts.contracts_owner_user_id_users_id_fk",
+        "contracts.contracts_business_foreign_key",
+        "financial_entries.financial_entries_owner_user_id_users_id_fk",
+        "financial_entries.financial_entries_workspace_contract_foreign_key",
+        "financial_entries.financial_entries_workspace_contract_installment_foreign_key",
+        "projects.projects_workspace_contract_business_foreign_key",
+      ]),
+      rejectStoredInstitutionalColumn: true,
+    });
+
+    await expect(applyRuntimeSchema(database)).resolves.toBeUndefined();
+
+    const texts = executed.map((entry) => entry.text);
+    expect(
+      texts.some((q) =>
+        q.startsWith(
+          "ALTER TABLE `projects` ADD COLUMN `institutional_contract_id`",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      texts.some(
+        (q) =>
+          q ===
+          "ALTER TABLE `projects` ADD CONSTRAINT `projects_workspace_contract_institutional_unique` UNIQUE (`workspace_id`, `institutional_contract_id`)",
+      ),
+    ).toBe(false);
   });
 });
