@@ -110,6 +110,12 @@
   let dropPlaceholderWidth = $state<number | undefined>();
   let drawerDropTarget = $state(false);
   let selectedItem = $state<AgendaItem | null>(null);
+  let pendingRoutineMove = $state<{
+    itemId: string;
+    title: string;
+    targetDate: string | null;
+    beforeId?: string;
+  } | null>(null);
   let weeklyScroller = $state<HTMLDivElement | null>(null);
   let weeklyPan = $state<{
     pointerId: number;
@@ -276,6 +282,43 @@
     const moved = current.find((item) => item.id === itemId);
     if (!moved || beforeId === itemId) return;
 
+    if (mode === "deliveries" && moved.isRecurring && moved.date !== date) {
+      pendingRoutineMove = {
+        itemId,
+        title: moved.title,
+        targetDate: date,
+        beforeId,
+      };
+      return;
+    }
+
+    await commitMoveItem(itemId, date, beforeId, false);
+  }
+
+  async function confirmPendingRoutineMove(
+    propagateRoutine: boolean,
+  ): Promise<void> {
+    if (!pendingRoutineMove) return;
+    const pending = pendingRoutineMove;
+    pendingRoutineMove = null;
+    await commitMoveItem(
+      pending.itemId,
+      pending.targetDate,
+      pending.beforeId,
+      propagateRoutine,
+    );
+  }
+
+  async function commitMoveItem(
+    itemId: string,
+    date: string | null,
+    beforeId: string | undefined,
+    propagateRoutine: boolean,
+  ): Promise<void> {
+    const current = itemsByMode[mode];
+    const moved = current.find((item) => item.id === itemId);
+    if (!moved || beforeId === itemId) return;
+
     const sourceDate = moved.date;
     const target = current
       .filter((item) => item.date === date && item.id !== itemId)
@@ -301,7 +344,9 @@
     itemsByMode = { ...itemsByMode, [mode]: next };
     agendaError = "";
     try {
-      agendaSnapshot = await saveAgendaOrder(mode, next);
+      agendaSnapshot = await saveAgendaOrder(mode, next, fetch, {
+        ...(propagateRoutine ? { propagateRoutineDeliveryIds: [itemId] } : {}),
+      });
       rebuildAgenda();
       if (selectedItem?.id === itemId) {
         selectedItem =
@@ -1053,6 +1098,74 @@
   </div>
 {/if}
 
+{#if pendingRoutineMove}
+  <div
+    class="dialog-backdrop routine-confirm-backdrop"
+    role="presentation"
+    onclick={(event) => {
+      if (event.currentTarget === event.target) pendingRoutineMove = null;
+    }}
+  >
+    <div
+      class="item-dialog routine-confirm-dialog"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="agenda-routine-confirm-title"
+      aria-describedby="agenda-routine-confirm-desc"
+    >
+      <header>
+        <span class="dialog-icon tone-blue">
+          <CalendarDays size={18} />
+        </span>
+        <div>
+          <span>Entrega recorrente</span>
+          <h2 id="agenda-routine-confirm-title">
+            Atualizar o dia das próximas renovações?
+          </h2>
+        </div>
+        <button
+          type="button"
+          aria-label="Cancelar"
+          onclick={() => (pendingRoutineMove = null)}><X size={18} /></button
+        >
+      </header>
+      <div class="dialog-content">
+        <p id="agenda-routine-confirm-desc">
+          {#if pendingRoutineMove.targetDate}
+            Você moveu <strong>{pendingRoutineMove.title}</strong> para
+            <strong>{formatDayMonth(pendingRoutineMove.targetDate)}</strong>.
+            Deseja atualizar apenas esta entrega ou também definir este novo dia
+            como padrão para as próximas renovações?
+          {:else}
+            Você removeu a data de entrega de
+            <strong>{pendingRoutineMove.title}</strong>. Deseja remover apenas
+            desta entrega ou fazer as próximas renovações também nascerem sem
+            data?
+          {/if}
+        </p>
+      </div>
+      <footer>
+        <button
+          class="routine-cancel"
+          type="button"
+          onclick={() => (pendingRoutineMove = null)}>Cancelar</button
+        >
+        <button
+          class="routine-single"
+          type="button"
+          onclick={() => void confirmPendingRoutineMove(false)}
+          >Apenas esta entrega</button
+        >
+        <button
+          type="button"
+          onclick={() => void confirmPendingRoutineMove(true)}
+          >Esta e as próximas</button
+        >
+      </footer>
+    </div>
+  </div>
+{/if}
+
 <style>
   .agenda-page {
     position: relative;
@@ -1477,6 +1590,20 @@
     margin-right: auto;
     color: var(--red-500);
     background: color-mix(in srgb, var(--red-500) 8%, #fff);
+  }
+  .routine-confirm-backdrop {
+    z-index: 90;
+  }
+  .item-dialog footer .routine-cancel {
+    margin-right: auto;
+    color: var(--ink-600, var(--ink-500));
+    background: transparent;
+    border: 1px solid var(--border);
+  }
+  .item-dialog footer .routine-single {
+    color: var(--ink-800);
+    background: #fff;
+    border: 1px solid var(--border);
   }
   @media (max-width: 1080px) {
     .agenda-toolbar {

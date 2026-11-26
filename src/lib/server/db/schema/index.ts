@@ -6,6 +6,7 @@ export * from "./workspace";
 export * from "./social";
 export * from "./crm";
 export * from "./services";
+export * from "./service-packages";
 export * from "./contracts";
 export * from "./projects";
 export * from "./finance";

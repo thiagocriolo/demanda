@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { Project, ProjectMutationInput } from "../../projects/types";
 import { DELIVERY_COMPLETED_STATUS } from "../../deliveries/completion";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
@@ -355,8 +355,6 @@ export async function updateWorkspaceProject(
         () => new ProjectRelationsInvalidError(),
       );
       // Contract, workspace and business are immutable once a project exists.
-      const nextBusinessId = existing.businessId;
-      const businessChanged = existing.businessId !== nextBusinessId;
       const nextContractType = input.contractType ?? existing.contractType;
       if (nextContractType !== existing.contractType) {
         const [openDelivery] = await transaction
@@ -380,7 +378,7 @@ export async function updateWorkspaceProject(
       const updatedRows = await transaction
         .update(projects)
         .set({
-          businessId: nextBusinessId,
+          businessId: existing.businessId,
           name: input.name,
           statusKey: input.status,
           briefing: input.briefing,
@@ -420,7 +418,6 @@ export async function updateWorkspaceProject(
       });
       const updated = {
         ...existing,
-        businessId: nextBusinessId,
         name: input.name,
         statusKey: input.status,
         briefing: input.briefing,
@@ -435,21 +432,6 @@ export async function updateWorkspaceProject(
         financeNotes: null,
         updatedAt: now,
       };
-      if (businessChanged) {
-        await transaction
-          .update(deliveries)
-          .set({
-            boardOrder: sql`json_remove(${deliveries.boardOrder}, '$.business')`,
-            version: sql`${deliveries.version} + 1`,
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(deliveries.workspaceId, workspaceId),
-              eq(deliveries.projectId, projectId),
-            ),
-          );
-      }
       await transaction
         .delete(projectServices)
         .where(

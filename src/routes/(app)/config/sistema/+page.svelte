@@ -10,6 +10,7 @@
   import ToggleRow from "$lib/settings/ToggleRow.svelte";
   import { freshSettings } from "$lib/settings/defaults";
   import {
+    createAccountSeed,
     exportSettingsBackup,
     importSettingsBackup,
     loadSettingsFromServer,
@@ -20,6 +21,7 @@
   import type { SettingsState } from "$lib/settings/types";
   import type { TabItem } from "$lib/ui/Tabs.svelte";
   import {
+    Database,
     Download,
     KeyRound,
     RefreshCcw,
@@ -74,6 +76,7 @@
       { value: "backup", label: "Backup" },
       { value: "restaurar", label: "Restaurar" },
       { value: "resetar", label: "Resetar" },
+      { value: "seed", label: "Seed" },
     ],
     avancado: [
       { value: "desenvolvimento", label: "Desenvolvimento" },
@@ -88,6 +91,8 @@
   let dataMessage = $state("");
   let restoreFile = $state<File>();
   let resetConfirmation = $state("");
+  let isSeeding = $state(false);
+  let seedMessage = $state("");
   let filters = $derived(filtersByTab[activeTab] ?? []);
   let hasUnsavedChanges = $derived(
     savedSettings !== "" && JSON.stringify(settings) !== savedSettings,
@@ -183,6 +188,7 @@
       settings = await resetPersonalSettings();
       savedSettings = JSON.stringify(settings);
       resetConfirmation = "";
+      seedMessage = "";
       await Promise.all([refreshWorkspaceSnapshot(), invalidateAll()]);
       dataMessage = "Todos os dados da conta foram apagados";
     } catch (error) {
@@ -190,6 +196,37 @@
         error instanceof Error
           ? error.message
           : "Não foi possível resetar os dados da conta.";
+    }
+  }
+
+  async function createSeed(): Promise<void> {
+    if (isSeeding) return;
+    isSeeding = true;
+    seedMessage = "";
+    try {
+      const result = await createAccountSeed();
+      if (!result.created) {
+        seedMessage = "Os dados de teste já foram criados nesta conta.";
+        return;
+      }
+      const {
+        workspaces,
+        people,
+        businesses,
+        contracts,
+        projects,
+        deliveries,
+        tasks,
+      } = result.totals;
+      seedMessage = `Seed concluído. Foram criados ${workspaces} workspaces, ${people} pessoas, ${businesses} negócios, ${contracts} contratos, ${projects} projetos, ${deliveries} entregas e ${tasks} tarefas.`;
+      await Promise.allSettled([refreshWorkspaceSnapshot(), invalidateAll()]);
+    } catch (error) {
+      seedMessage =
+        error instanceof Error
+          ? error.message
+          : "Não foi possível criar os dados de teste.";
+    } finally {
+      isSeeding = false;
     }
   }
 
@@ -553,6 +590,24 @@
       >
       {#if dataMessage}<p class="settings-notice">{dataMessage}</p>{/if}
     </SettingsCard>
+  {:else if activeTab === "dados" && activeFilter === "seed"}
+    <SettingsCard
+      title="Seed"
+      description="Adiciona dados fictícios à sua conta, incluindo contratos e parcelas no Financeiro."
+    >
+      <button
+        class="settings-button primary"
+        type="button"
+        disabled={isSeeding}
+        onclick={createSeed}
+      >
+        <Database size={16} />
+        {isSeeding ? "Criando dados de teste…" : "Criar dados de teste"}
+      </button>
+      <div role="status">
+        {#if seedMessage}<p class="settings-notice">{seedMessage}</p>{/if}
+      </div>
+    </SettingsCard>
   {:else if activeTab === "dados"}
     <SettingsCard
       title="Resetar dados"
@@ -575,10 +630,12 @@
       {#if dataMessage}<p class="settings-notice">{dataMessage}</p>{/if}
     </SettingsCard>
   {:else if activeTab === "avancado" && activeFilter === "desenvolvimento"}
-    <ComingSoon
+    <SettingsCard
       title="Gerar dados de teste"
-      description="Tarefas agora pertencem ao PostgreSQL. Use o script de seed do backend para gerar dados relacionais consistentes."
-    />
+      description="A opção Seed na aba Dados cria os registros fictícios e seus vínculos."
+    >
+      <a class="settings-button" href="/config/sistema/dados">Abrir Dados</a>
+    </SettingsCard>
   {:else}
     <ComingSoon
       title="Diagnóstico"

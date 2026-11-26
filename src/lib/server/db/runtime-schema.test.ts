@@ -9,7 +9,6 @@ type FakeCatalog = {
   columnExtras?: Map<string, string>;
   indexes: Set<string>;
   foreignKeys: Set<string>;
-  legacyProjects?: Array<{ id: string; workspace_id: string }>;
   rejectVirtualInstitutionalIndex?: boolean;
   rejectStoredInstitutionalColumn?: boolean;
 };
@@ -56,10 +55,6 @@ function createFakeDatabase(catalog: FakeCatalog) {
       const normalized = text.replace(/\s+/g, " ").trim();
       executed.push({ text: normalized, params });
 
-      if (normalized.includes("from information_schema.tables")) {
-        const table = String(params[0]);
-        return [catalog.tables.has(table) ? [{ present: 1 }] : []];
-      }
       if (normalized.includes("select extra from information_schema.columns")) {
         const key = `${String(params[0])}.${String(params[1])}`;
         return [[{ extra: catalog.columnExtras?.get(key) ?? "" }]];
@@ -75,9 +70,6 @@ function createFakeDatabase(catalog: FakeCatalog) {
       if (normalized.includes("from information_schema.table_constraints")) {
         const key = `${String(params[0])}.${String(params[1])}`;
         return [catalog.foreignKeys.has(key) ? [{ present: 1 }] : []];
-      }
-      if (normalized.startsWith("SELECT id, workspace_id FROM projects")) {
-        return [catalog.legacyProjects ?? []];
       }
 
       if (normalized.startsWith("CREATE TABLE IF NOT EXISTS `contracts`")) {
@@ -184,34 +176,74 @@ function createFakeDatabase(catalog: FakeCatalog) {
   return { database, executed };
 }
 
+function upToDateCatalog(): FakeCatalog {
+  return {
+    tables: new Set([
+      "contracts",
+      "contract_installments",
+      "service_packages",
+      "service_package_projects",
+      "service_package_deliveries",
+      "service_package_tasks",
+      "deliveries",
+      "delivery_tasks",
+      "delivery_responsibles",
+      "delivery_tags",
+      "delivery_comments",
+      "project_delivery_routines",
+      "service_delivery_templates",
+      "delivery_template_tasks",
+      "personal_deliveries",
+      "projects",
+      "financial_entries",
+    ]),
+    columns: new Set([
+      "contracts.contract_type",
+      "contracts.start_date",
+      "contracts.end_date",
+      "contracts.owner_user_id",
+      "contracts.source_service_package_id",
+      "projects.is_active",
+      "projects.contract_id",
+      "projects.engagement_type",
+      "projects.institutional_contract_id",
+      "deliveries.engagement_type",
+      "deliveries.project_routine_id",
+      "deliveries.routine_occurrence_date",
+      "delivery_tasks.execution_at",
+      "service_delivery_templates.recurrence_type",
+      "service_delivery_templates.recurrence_unit",
+      "service_delivery_templates.recurrence_days",
+      "financial_entries.contract_id",
+      "financial_entries.contract_installment_id",
+      "financial_entries.owner_user_id",
+    ]),
+    indexes: new Set([
+      "contracts.contracts_workspace_id_id_business_id_unique",
+      "contracts.contracts_owner_workspace_updated_index",
+      "financial_entries.financial_entries_workspace_contract_index",
+      "financial_entries.financial_entries_owner_due_status_index",
+      "financial_entries.financial_entries_owner_contract_installment_unique",
+      "projects.projects_workspace_contract_institutional_unique",
+    ]),
+    foreignKeys: new Set([
+      "contracts.contracts_owner_user_id_users_id_fk",
+      "contracts.contracts_business_foreign_key",
+      "contracts.contracts_source_service_package_fk",
+      "financial_entries.financial_entries_owner_user_id_users_id_fk",
+      "financial_entries.financial_entries_workspace_contract_foreign_key",
+      "financial_entries.financial_entries_workspace_contract_installment_foreign_key",
+      "projects.projects_workspace_contract_business_foreign_key",
+    ]),
+  };
+}
+
 describe("applyRuntimeSchema", () => {
-  it("cria contracts e migra projetos legados em bancos anteriores à migration 0013", async () => {
+  it("garante tabelas, colunas, índices e chaves ausentes sem executar backfills de dados", async () => {
     const { database, executed } = createFakeDatabase({
-      tables: new Set([
-        "deliveries",
-        "delivery_tasks",
-        "delivery_responsibles",
-        "delivery_tags",
-        "delivery_comments",
-        "project_delivery_routines",
-        "service_delivery_templates",
-        "delivery_template_tasks",
-        "personal_deliveries",
-        "projects",
-        "financial_entries",
-      ]),
+      tables: new Set(["deliveries", "delivery_tasks", "projects", "financial_entries"]),
       columns: new Set([
         "projects.is_active",
-        "delivery_tasks.delivery_id",
-        "delivery_responsibles.delivery_id",
-        "delivery_tags.delivery_id",
-        "delivery_comments.delivery_id",
-        "tool_uses.delivery_id",
-        "agenda_entries.delivery_id",
-        "cronograma_blocks.delivery_id",
-        "cronograma_blocks.task_id",
-        "project_delivery_routines.tasks",
-        "project_delivery_routines.source_service_delivery_template_id",
         "service_delivery_templates.recurrence_type",
         "service_delivery_templates.recurrence_unit",
         "service_delivery_templates.recurrence_days",
@@ -222,12 +254,6 @@ describe("applyRuntimeSchema", () => {
         "projects.projects_workspace_business_institutional_unique",
       ]),
       foreignKeys: new Set(),
-      legacyProjects: [
-        {
-          id: "00000000-0000-4000-8000-000000000010",
-          workspace_id: "00000000-0000-4000-8000-000000000001",
-        },
-      ],
     });
 
     await applyRuntimeSchema(database);
@@ -241,11 +267,6 @@ describe("applyRuntimeSchema", () => {
         q.startsWith("CREATE TABLE IF NOT EXISTS `contract_installments`"),
       ),
     ).toBe(true);
-    expect(
-      texts.some((q) =>
-        q.startsWith("ALTER TABLE `contracts` ADD COLUMN `contract_type`"),
-      ),
-    ).toBe(false);
     expect(
       texts.some(
         (q) =>
@@ -266,15 +287,6 @@ describe("applyRuntimeSchema", () => {
           "ALTER TABLE `delivery_tasks` ADD COLUMN `execution_at` timestamp(3) NULL",
       ),
     ).toBe(true);
-    expect(texts.some((q) => q.startsWith("INSERT INTO contracts"))).toBe(true);
-    expect(
-      texts.some((q) => q.startsWith("UPDATE projects SET contract_id = ?")),
-    ).toBe(true);
-    expect(
-      texts.some((q) =>
-        q.startsWith("INSERT IGNORE INTO `contract_installments`"),
-      ),
-    ).toBe(true);
     expect(
       texts.some(
         (q) =>
@@ -289,156 +301,34 @@ describe("applyRuntimeSchema", () => {
         ),
       ),
     ).toBe(true);
-    expect(texts.some((q) => q.includes("SET `stage_key` = 'ativo'"))).toBe(
-      true,
-    );
+    expect(texts.some((q) => q.startsWith("UPDATE "))).toBe(false);
+    expect(texts.some((q) => q.startsWith("DELETE "))).toBe(false);
+    expect(texts.some((q) => q.startsWith("INSERT "))).toBe(false);
   });
 
-  it("não executa DDL destrutivo ou redundante em banco já migrado até 0025", async () => {
-    const { database, executed } = createFakeDatabase({
-      tables: new Set([
-        "contracts",
-        "contract_installments",
-        "deliveries",
-        "delivery_tasks",
-        "delivery_responsibles",
-        "delivery_tags",
-        "delivery_comments",
-        "project_delivery_routines",
-        "service_delivery_templates",
-        "delivery_template_tasks",
-        "personal_deliveries",
-        "projects",
-        "financial_entries",
-      ]),
-      columns: new Set([
-        "contracts.contract_type",
-        "contracts.start_date",
-        "contracts.end_date",
-        "contracts.owner_user_id",
-        "projects.is_active",
-        "projects.contract_id",
-        "projects.engagement_type",
-        "projects.institutional_contract_id",
-        "deliveries.engagement_type",
-        "deliveries.project_routine_id",
-        "deliveries.routine_occurrence_date",
-        "delivery_tasks.execution_at",
-        "delivery_tasks.delivery_id",
-        "delivery_responsibles.delivery_id",
-        "delivery_tags.delivery_id",
-        "delivery_comments.delivery_id",
-        "tool_uses.delivery_id",
-        "agenda_entries.delivery_id",
-        "cronograma_blocks.delivery_id",
-        "cronograma_blocks.task_id",
-        "project_delivery_routines.tasks",
-        "project_delivery_routines.source_service_delivery_template_id",
-        "service_delivery_templates.recurrence_type",
-        "service_delivery_templates.recurrence_unit",
-        "service_delivery_templates.recurrence_days",
-        "financial_entries.contract_id",
-        "financial_entries.contract_installment_id",
-        "financial_entries.owner_user_id",
-      ]),
-      indexes: new Set([
-        "contracts.contracts_workspace_id_id_business_id_unique",
-        "contracts.contracts_owner_workspace_updated_index",
-        "financial_entries.financial_entries_workspace_contract_index",
-        "financial_entries.financial_entries_owner_due_status_index",
-        "financial_entries.financial_entries_owner_contract_installment_unique",
-        "projects.projects_workspace_contract_institutional_unique",
-      ]),
-      foreignKeys: new Set([
-        "contracts.contracts_owner_user_id_users_id_fk",
-        "contracts.contracts_business_foreign_key",
-        "financial_entries.financial_entries_owner_user_id_users_id_fk",
-        "financial_entries.financial_entries_workspace_contract_foreign_key",
-        "financial_entries.financial_entries_workspace_contract_installment_foreign_key",
-        "projects.projects_workspace_contract_business_foreign_key",
-      ]),
-    });
+  it("não executa DDL destrutivo, redundante nem escrita em dados em banco já atualizado", async () => {
+    const { database, executed } = createFakeDatabase(upToDateCatalog());
 
     await applyRuntimeSchema(database);
 
     const texts = executed.map((entry) => entry.text);
     expect(texts.some((q) => q.startsWith("ALTER TABLE"))).toBe(false);
-    expect(texts.some((q) => q.startsWith("RENAME TABLE"))).toBe(false);
-    expect(texts.some((q) => q.startsWith("SET FOREIGN_KEY_CHECKS"))).toBe(
-      false,
-    );
-    expect(texts.some((q) => q.startsWith("INSERT INTO contracts"))).toBe(
-      false,
-    );
+    expect(texts.some((q) => q.startsWith("UPDATE "))).toBe(false);
+    expect(texts.some((q) => q.startsWith("DELETE "))).toBe(false);
+    expect(texts.some((q) => q.startsWith("INSERT "))).toBe(false);
   });
 
   it("converte institutional_contract_id de VIRTUAL para STORED quando o banco rejeita índice em coluna virtual com FK", async () => {
-    const { database, executed } = createFakeDatabase({
-      tables: new Set([
-        "contracts",
-        "contract_installments",
-        "deliveries",
-        "delivery_tasks",
-        "delivery_responsibles",
-        "delivery_tags",
-        "delivery_comments",
-        "project_delivery_routines",
-        "service_delivery_templates",
-        "delivery_template_tasks",
-        "personal_deliveries",
-        "projects",
-        "financial_entries",
-      ]),
-      columns: new Set([
-        "contracts.contract_type",
-        "contracts.start_date",
-        "contracts.end_date",
-        "contracts.owner_user_id",
-        "projects.is_active",
-        "projects.contract_id",
-        "projects.engagement_type",
-        "projects.institutional_contract_id",
-        "deliveries.engagement_type",
-        "deliveries.project_routine_id",
-        "deliveries.routine_occurrence_date",
-        "delivery_tasks.execution_at",
-        "delivery_tasks.delivery_id",
-        "delivery_responsibles.delivery_id",
-        "delivery_tags.delivery_id",
-        "delivery_comments.delivery_id",
-        "tool_uses.delivery_id",
-        "agenda_entries.delivery_id",
-        "cronograma_blocks.delivery_id",
-        "cronograma_blocks.task_id",
-        "project_delivery_routines.tasks",
-        "project_delivery_routines.source_service_delivery_template_id",
-        "service_delivery_templates.recurrence_type",
-        "service_delivery_templates.recurrence_unit",
-        "service_delivery_templates.recurrence_days",
-        "financial_entries.contract_id",
-        "financial_entries.contract_installment_id",
-        "financial_entries.owner_user_id",
-      ]),
-      columnExtras: new Map([
-        ["projects.institutional_contract_id", "VIRTUAL GENERATED"],
-      ]),
-      indexes: new Set([
-        "contracts.contracts_workspace_id_id_business_id_unique",
-        "contracts.contracts_owner_workspace_updated_index",
-        "financial_entries.financial_entries_workspace_contract_index",
-        "financial_entries.financial_entries_owner_due_status_index",
-        "financial_entries.financial_entries_owner_contract_installment_unique",
-      ]),
-      foreignKeys: new Set([
-        "contracts.contracts_owner_user_id_users_id_fk",
-        "contracts.contracts_business_foreign_key",
-        "financial_entries.financial_entries_owner_user_id_users_id_fk",
-        "financial_entries.financial_entries_workspace_contract_foreign_key",
-        "financial_entries.financial_entries_workspace_contract_installment_foreign_key",
-        "projects.projects_workspace_contract_business_foreign_key",
-      ]),
-      rejectVirtualInstitutionalIndex: true,
-    });
+    const catalog = upToDateCatalog();
+    catalog.indexes.delete(
+      "projects.projects_workspace_contract_institutional_unique",
+    );
+    catalog.columnExtras = new Map([
+      ["projects.institutional_contract_id", "VIRTUAL GENERATED"],
+    ]);
+    catalog.rejectVirtualInstitutionalIndex = true;
+
+    const { database, executed } = createFakeDatabase(catalog);
 
     await applyRuntimeSchema(database);
 
@@ -468,68 +358,14 @@ describe("applyRuntimeSchema", () => {
   });
 
   it("ignora com segurança a criação da coluna gerada institutional_contract_id quando o MariaDB rejeita com errno 1901", async () => {
-    const { database, executed } = createFakeDatabase({
-      tables: new Set([
-        "contracts",
-        "contract_installments",
-        "deliveries",
-        "delivery_tasks",
-        "delivery_responsibles",
-        "delivery_tags",
-        "delivery_comments",
-        "project_delivery_routines",
-        "service_delivery_templates",
-        "delivery_template_tasks",
-        "personal_deliveries",
-        "projects",
-        "financial_entries",
-      ]),
-      columns: new Set([
-        "contracts.contract_type",
-        "contracts.start_date",
-        "contracts.end_date",
-        "contracts.owner_user_id",
-        "projects.is_active",
-        "projects.contract_id",
-        "projects.engagement_type",
-        "deliveries.engagement_type",
-        "deliveries.project_routine_id",
-        "deliveries.routine_occurrence_date",
-        "delivery_tasks.execution_at",
-        "delivery_tasks.delivery_id",
-        "delivery_responsibles.delivery_id",
-        "delivery_tags.delivery_id",
-        "delivery_comments.delivery_id",
-        "tool_uses.delivery_id",
-        "agenda_entries.delivery_id",
-        "cronograma_blocks.delivery_id",
-        "cronograma_blocks.task_id",
-        "project_delivery_routines.tasks",
-        "project_delivery_routines.source_service_delivery_template_id",
-        "service_delivery_templates.recurrence_type",
-        "service_delivery_templates.recurrence_unit",
-        "service_delivery_templates.recurrence_days",
-        "financial_entries.contract_id",
-        "financial_entries.contract_installment_id",
-        "financial_entries.owner_user_id",
-      ]),
-      indexes: new Set([
-        "contracts.contracts_workspace_id_id_business_id_unique",
-        "contracts.contracts_owner_workspace_updated_index",
-        "financial_entries.financial_entries_workspace_contract_index",
-        "financial_entries.financial_entries_owner_due_status_index",
-        "financial_entries.financial_entries_owner_contract_installment_unique",
-      ]),
-      foreignKeys: new Set([
-        "contracts.contracts_owner_user_id_users_id_fk",
-        "contracts.contracts_business_foreign_key",
-        "financial_entries.financial_entries_owner_user_id_users_id_fk",
-        "financial_entries.financial_entries_workspace_contract_foreign_key",
-        "financial_entries.financial_entries_workspace_contract_installment_foreign_key",
-        "projects.projects_workspace_contract_business_foreign_key",
-      ]),
-      rejectStoredInstitutionalColumn: true,
-    });
+    const catalog = upToDateCatalog();
+    catalog.columns.delete("projects.institutional_contract_id");
+    catalog.indexes.delete(
+      "projects.projects_workspace_contract_institutional_unique",
+    );
+    catalog.rejectStoredInstitutionalColumn = true;
+
+    const { database, executed } = createFakeDatabase(catalog);
 
     await expect(applyRuntimeSchema(database)).resolves.toBeUndefined();
 

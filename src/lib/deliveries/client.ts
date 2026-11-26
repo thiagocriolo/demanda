@@ -731,8 +731,14 @@ export function entityValuesToDeliveryUpdateInput(
 ): DeliveryUpdateInput {
   const fields = mutationFields(values, current);
   const { boardOrder: _boardOrder, ...content } = fields;
+  const rawPropagation = (values.routinePropagation ?? "").trim();
+  const routinePropagation =
+    rawPropagation === "single" || rawPropagation === "future"
+      ? rawPropagation
+      : undefined;
   return {
     ...content,
+    ...(routinePropagation ? { routinePropagation } : {}),
     tasks: canonicalUpdateTasks(fields.tasks, current),
     version: recordVersion(current),
   };

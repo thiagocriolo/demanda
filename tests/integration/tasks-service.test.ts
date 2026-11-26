@@ -1872,7 +1872,7 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
         startDate: "2026-11-01",
       });
 
-      // 1. Primeira entrega recorrente em projeto recorrente (independente de ser institucional)
+      // 1. Primeira entrega recorrente COM data de entrega em projeto recorrente
       const firstRecurring = await createWorkspaceDelivery(
         database,
         activeContext,
@@ -1880,10 +1880,10 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
           name: "Entrega Diária 1",
           projectId: recurringProjectId,
           recurrence: "daily",
-          category: "",
+          category: "criacao",
           priority: "normal",
           status: "fila",
-          briefing: "",
+          briefing: "Briefing inicial",
           dueDate: "2026-12-01",
           tagLabels: [],
           responsibleUserIds: [owner.id],
@@ -1893,11 +1893,11 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
         },
       );
       expect(firstRecurring.workspaceId).toBe(targetWorkspace.id);
-      expect(firstRecurring.dueDate).toBeNull();
+      expect(firstRecurring.dueDate).toBe("2026-12-01");
       expect(firstRecurring.recurrence).toBe("daily");
       expect(firstRecurring.project.contractType).toBe("recurring");
 
-      // 2. Segunda entrega recorrente no mesmo projeto recorrente
+      // 2. Segunda entrega recorrente SEM data (também passa pelo rollover sem data)
       const secondRecurring = await createWorkspaceDelivery(
         database,
         activeContext,
@@ -1905,10 +1905,10 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
           name: "Entrega Semanal 2",
           projectId: recurringProjectId,
           recurrence: "weekly",
-          category: "",
+          category: "criacao",
           priority: "normal",
           status: "fila",
-          briefing: "",
+          briefing: "Briefing semanal",
           dueDate: null,
           tagLabels: [],
           responsibleUserIds: [owner.id],
@@ -1918,7 +1918,72 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
         },
       );
       expect(secondRecurring.workspaceId).toBe(targetWorkspace.id);
+      expect(secondRecurring.dueDate).toBeNull();
       expect(secondRecurring.recurrence).toBe("weekly");
+
+      // 2.0. Edição com propagation "single" não altera rotina; "future" propaga campos (exceto prioridade e status)
+      const singleUpdated = await updateWorkspaceDelivery(
+        database,
+        activeContext,
+        secondRecurring.id,
+        updateInput(secondRecurring, {
+          name: "Apenas Esta Semana",
+          category: "reuniao",
+          priority: "urgente",
+          status: "producao",
+          dueDate: "2026-11-28",
+          recurrence: "weekly",
+          routinePropagation: "single",
+        }),
+      );
+      expect(singleUpdated.dueDate).toBe("2026-11-28");
+      const [routineAfterSingle] = await database
+        .select()
+        .from(projectDeliveryRoutines)
+        .where(
+          and(
+            eq(projectDeliveryRoutines.projectId, recurringProjectId),
+            eq(projectDeliveryRoutines.recurrenceType, "weekly"),
+          ),
+        );
+      expect(routineAfterSingle?.name).toBe("Entrega Semanal 2");
+      expect(routineAfterSingle?.categoryKey).toBe("criacao");
+      expect(routineAfterSingle?.recurrenceUnit).toBeNull();
+
+      const futureUpdated = await updateWorkspaceDelivery(
+        database,
+        activeContext,
+        singleUpdated.id,
+        updateInput(singleUpdated, {
+          name: "Semanal Atualizada",
+          briefing: "Novo briefing recorrente",
+          category: "reuniao",
+          priority: "urgente",
+          status: "producao",
+          dueDate: "2026-11-28",
+          recurrence: "weekly",
+          routinePropagation: "future",
+        }),
+      );
+      const [routineAfterFuture] = await database
+        .select()
+        .from(projectDeliveryRoutines)
+        .where(
+          and(
+            eq(projectDeliveryRoutines.projectId, recurringProjectId),
+            eq(projectDeliveryRoutines.recurrenceType, "weekly"),
+          ),
+        );
+      expect(routineAfterFuture).toMatchObject({
+        name: "Semanal Atualizada",
+        description: "Novo briefing recorrente",
+        categoryKey: "reuniao",
+        priorityKey: "normal",
+        statusKey: "planejamento",
+        recurrenceUnit: "due_date",
+        recurrenceDays: "[6]",
+      });
+
       const routines = await database
         .select()
         .from(projectDeliveryRoutines)
@@ -2009,8 +2074,8 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
               columnKey: "planejamento",
             },
             {
-              id: secondRecurring.id,
-              version: secondRecurring.version,
+              id: futureUpdated.id,
+              version: futureUpdated.version,
               position: 0,
               columnKey: "fila",
             },
@@ -2053,7 +2118,7 @@ describe("BE-08: serviço de tarefas e tarefas", () => {
         }),
       );
       const refreshedSecond = movedBoardResult.items.find(
-        ({ id }) => id === secondRecurring.id,
+        ({ id }) => id === futureUpdated.id,
       )!;
       await expect(
         updateWorkspaceDeliveryBoard(database, activeContext, {

@@ -13,12 +13,6 @@ import {
   Tag,
   UsersRound,
 } from "@lucide/svelte";
-import {
-  businessSeeds,
-  peopleSeeds,
-  projectSeeds,
-  deliverySeeds,
-} from "./seed-data";
 import type { EntityConfig, EntityFieldOption } from "./types";
 
 const businessCategoryTones: NonNullable<EntityFieldOption["tone"]>[] = [
@@ -128,7 +122,7 @@ export const peopleConfig: EntityConfig = {
       placeholder: "Bio",
     },
   ],
-  seeds: peopleSeeds,
+  seeds: [],
 };
 
 export const businessConfig: EntityConfig = {
@@ -186,7 +180,7 @@ export const businessConfig: EntityConfig = {
       placeholder: "Resumo do cliente",
     },
   ],
-  seeds: businessSeeds,
+  seeds: [],
 };
 
 export const contractConfig: EntityConfig = {
@@ -297,7 +291,7 @@ export const projectConfig: EntityConfig = {
       placeholder: "Tags",
     },
   ],
-  seeds: projectSeeds,
+  seeds: [],
 };
 
 export const deliveryConfig: EntityConfig = {
@@ -386,7 +380,7 @@ export const deliveryConfig: EntityConfig = {
       placeholder: "Briefing",
     },
   ],
-  seeds: deliverySeeds,
+  seeds: [],
 };
 
 export const entityConfigs = {

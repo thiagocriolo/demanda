@@ -62,7 +62,7 @@ export type DeliveryTaskInput = {
 };
 
 export type DeliveryRecurrence = "daily" | "weekly" | "monthly";
-export type InstitutionalDeliveryRecurrence = DeliveryRecurrence;
+export type DeliveryRoutinePropagation = "single" | "future";
 
 export type DeliveryContentInput = {
   name: string;
@@ -86,6 +86,7 @@ export type DeliveryCreateInput = DeliveryContentInput & { status: string };
 export type DeliveryUpdateInput = Omit<DeliveryContentInput, "boardOrder"> & {
   version: number;
   status: string;
+  routinePropagation?: DeliveryRoutinePropagation;
 };
 
 export type DeliveryStateInput = {

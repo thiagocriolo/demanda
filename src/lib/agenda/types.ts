@@ -25,6 +25,7 @@ export type AgendaItem = {
   progress: number;
   completed: number;
   total: number;
+  isRecurring?: boolean;
 };
 
 export type AgendaDensity = "roomy" | "comfortable" | "compact" | "micro";
@@ -50,4 +51,5 @@ export type AgendaQuery = {
 export type AgendaMoveInput = {
   mode: AgendaMode;
   items: AgendaPlacement[];
+  propagateRoutineDeliveryIds?: string[];
 };

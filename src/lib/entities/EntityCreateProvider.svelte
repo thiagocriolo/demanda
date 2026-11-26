@@ -34,6 +34,7 @@
   let { children } = $props<{ children: Snippet }>();
   let activeConfig = $state<EntityConfig | undefined>();
   let activeRecord = $state<EntityRecord | undefined>();
+  let initialServicePackageId = $state<string | undefined>();
   let formMode = $state<FormMode | undefined>();
   let deleting = $state(false);
   let requestPending = $state(false);
@@ -49,10 +50,12 @@
   };
 
   const createContext: EntityCreateContext = {
-    open: (key) => {
+    open: (key, options) => {
       invalidateRequest();
       activeConfig = entityConfigs[key];
       activeRecord = undefined;
+      initialServicePackageId =
+        key === "contratos" ? options?.servicePackageId : undefined;
       formMode = "create";
       deleting = false;
       requestError = "";
@@ -87,6 +90,7 @@
     invalidateRequest();
     activeConfig = undefined;
     activeRecord = undefined;
+    initialServicePackageId = undefined;
     formMode = undefined;
     deleting = false;
     requestPending = false;
@@ -344,6 +348,7 @@
     <ContractForm
       record={activeRecord}
       mode={formMode}
+      {initialServicePackageId}
       oncancel={reset}
       onsave={save}
       onedit={() => (formMode = "edit")}

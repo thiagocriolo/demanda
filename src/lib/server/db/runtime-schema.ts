@@ -1,47 +1,43 @@
-import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { rawRows, type Database } from "./database";
 
 type RuntimeSchemaGlobals = typeof globalThis & {
   __demandaRuntimeSchemaPromise?: Promise<void>;
+  __demandaRuntimeSchemaVersion?: string;
 };
 
+const RUNTIME_SCHEMA_VERSION = "2026-11-25-service-packages-v1";
 const runtimeSchemaGlobals = globalThis as RuntimeSchemaGlobals;
 
 /**
  * The managed Node.js runtime starts the generated entry file directly, so it
  * cannot run the Drizzle CLI during deployment. Keep the idempotent schema
- * transitions required by the running application here until that platform
- * exposes a migration command.
+ * guards required by the running application here until that platform exposes
+ * a migration command.
  */
 export function ensureRuntimeSchema(database: Database): Promise<void> {
-  runtimeSchemaGlobals.__demandaRuntimeSchemaPromise ??= applyRuntimeSchema(
-    database,
-  ).catch((cause) => {
-    runtimeSchemaGlobals.__demandaRuntimeSchemaPromise = undefined;
-    console.error(
-      "[runtime-schema] Failed to apply runtime schema:",
-      describeDatabaseError(cause),
-    );
-    throw cause;
-  });
+  if (
+    !runtimeSchemaGlobals.__demandaRuntimeSchemaPromise ||
+    runtimeSchemaGlobals.__demandaRuntimeSchemaVersion !== RUNTIME_SCHEMA_VERSION
+  ) {
+    runtimeSchemaGlobals.__demandaRuntimeSchemaVersion = RUNTIME_SCHEMA_VERSION;
+    runtimeSchemaGlobals.__demandaRuntimeSchemaPromise = applyRuntimeSchema(
+      database,
+    ).catch((cause) => {
+      runtimeSchemaGlobals.__demandaRuntimeSchemaPromise = undefined;
+      runtimeSchemaGlobals.__demandaRuntimeSchemaVersion = undefined;
+      console.error(
+        "[runtime-schema] Failed to apply runtime schema:",
+        describeDatabaseError(cause),
+      );
+      throw cause;
+    });
+  }
   return runtimeSchemaGlobals.__demandaRuntimeSchemaPromise;
 }
 
 export async function applyRuntimeSchema(database: Database): Promise<void> {
-  // Version 0019 is a semantic rename, rather than an additive migration.
-  // Managed deployments invoke this guard before serving requests, so old
-  // installations receive the same Delivery -> Task vocabulary as migrated
-  // installations while preserving every existing UUID and row.
-  await renameLegacyDeliverySchema(database);
-  await database.execute(
-    sql.raw("DROP TABLE IF EXISTS `legacy_import_records`"),
-  );
-
-  // Migrations 0013–0017 introduce commercial contracts, personal contract
-  // ownership, private finance ownership, contract periods, and per-contract
-  // institutional projects. Create missing tables before altering them so
-  // managed deployments upgrading from pre-0013 databases succeed cleanly.
+  await ensureServicePackagesSchema(database);
   await ensureContractsSchema(database);
 
   await addColumnIfMissing(
@@ -131,85 +127,107 @@ export async function applyRuntimeSchema(database: Database): Promise<void> {
     )
   `),
   );
+}
 
-  // Migration 0024: canonical business stages.
-  await database.execute(
-    sql.raw(
-      "UPDATE `businesses` SET `stage_key` = 'ativo' WHERE `stage_key` IN ('ativado', 'ativa', 'ativada')",
-    ),
-  );
-
-  // Institutional projects never participate in the Agenda as project cards.
-  // Recurring institutional projects also stay outside the Agenda for dates and
-  // deliveries, while one-off institutional deliveries keep their due dates.
-  await database.execute(
-    sql.raw(
-      "UPDATE projects SET end_date = NULL WHERE is_institutional = true AND contract_type = 'recurring' AND end_date IS NOT NULL",
-    ),
-  );
+async function ensureServicePackagesSchema(database: Database): Promise<void> {
   await database.execute(
     sql.raw(`
-      UPDATE deliveries d
-      INNER JOIN projects p
-        ON p.workspace_id = d.workspace_id AND p.id = d.project_id
-      SET d.due_date = NULL
-      WHERE p.is_institutional = true AND p.contract_type = 'recurring'
-        AND d.due_date IS NOT NULL
-    `),
-  );
-  await database.execute(
-    sql.raw(`
-      DELETE ae FROM agenda_entries ae
-      INNER JOIN projects p
-        ON p.workspace_id = ae.workspace_id AND p.id = ae.project_id
-      WHERE ae.entity_kind = 'project' AND p.is_institutional = true
-    `),
-  );
-  await database.execute(
-    sql.raw(`
-      DELETE ae FROM agenda_entries ae
-      INNER JOIN deliveries d
-        ON d.workspace_id = ae.workspace_id AND d.id = ae.delivery_id
-      INNER JOIN projects p
-        ON p.workspace_id = d.workspace_id AND p.id = d.project_id
-      WHERE ae.entity_kind = 'delivery' AND p.is_institutional = true
-        AND p.contract_type = 'recurring'
-    `),
+    CREATE TABLE IF NOT EXISTS \`service_packages\` (
+      \`id\` char(36) NOT NULL,
+      \`owner_user_id\` char(36) NOT NULL,
+      \`name\` varchar(140) NOT NULL,
+      \`description\` text NOT NULL,
+      \`icon\` varchar(80) NOT NULL DEFAULT 'package',
+      \`color\` varchar(32) NOT NULL DEFAULT 'blue',
+      \`amount_cents\` bigint NOT NULL DEFAULT 0,
+      \`duration_months\` int NULL,
+      \`installment_count\` int NOT NULL DEFAULT 1,
+      \`payment_method\` varchar(120) NULL,
+      \`payment_terms\` text NULL,
+      \`sort_order\` int NOT NULL DEFAULT 0,
+      \`created_at\` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      \`updated_at\` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      \`archived_at\` timestamp(3) NULL,
+      PRIMARY KEY (\`id\`),
+      KEY \`service_packages_owner_archived_updated_index\` (\`owner_user_id\`, \`archived_at\`, \`updated_at\`, \`id\`),
+      KEY \`service_packages_owner_order_index\` (\`owner_user_id\`, \`sort_order\`, \`id\`),
+      CONSTRAINT \`service_packages_owner_user_id_users_id_fk\`
+        FOREIGN KEY (\`owner_user_id\`) REFERENCES \`users\` (\`id\`) ON DELETE CASCADE
+    )
+  `),
   );
 
-  // Migration 0025: restore end_date/due_date for one-off institutional
-  // projects and deliveries when a contract end date is present.
   await database.execute(
     sql.raw(`
-      UPDATE \`projects\` p
-      INNER JOIN \`contracts\` c
-        ON c.\`workspace_id\` = p.\`workspace_id\` AND c.\`id\` = p.\`contract_id\`
-      SET p.\`end_date\` = c.\`end_date\`
-      WHERE p.\`is_institutional\` = true
-        AND c.\`contract_type\` = 'one_off'
-        AND p.\`end_date\` IS NULL
-        AND c.\`end_date\` IS NOT NULL
-    `),
+    CREATE TABLE IF NOT EXISTS \`service_package_projects\` (
+      \`id\` char(36) NOT NULL,
+      \`service_package_id\` char(36) NOT NULL,
+      \`is_institutional\` boolean NOT NULL DEFAULT false,
+      \`name\` varchar(140) NOT NULL,
+      \`briefing\` text NOT NULL,
+      \`project_type\` varchar(16) NOT NULL DEFAULT 'one_off',
+      \`duration_days\` int NULL,
+      \`sort_order\` int NOT NULL DEFAULT 0,
+      \`created_at\` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      \`updated_at\` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      PRIMARY KEY (\`id\`),
+      KEY \`service_package_projects_package_order_index\` (\`service_package_id\`, \`sort_order\`, \`id\`),
+      CONSTRAINT \`service_package_projects_package_fk\`
+        FOREIGN KEY (\`service_package_id\`) REFERENCES \`service_packages\` (\`id\`) ON DELETE CASCADE
+    )
+  `),
   );
+
   await database.execute(
     sql.raw(`
-      UPDATE \`deliveries\` d
-      INNER JOIN \`projects\` p
-        ON p.\`workspace_id\` = d.\`workspace_id\` AND p.\`id\` = d.\`project_id\`
-      INNER JOIN \`contracts\` c
-        ON c.\`workspace_id\` = p.\`workspace_id\` AND c.\`id\` = p.\`contract_id\`
-      SET d.\`due_date\` = c.\`end_date\`
-      WHERE p.\`is_institutional\` = true
-        AND c.\`contract_type\` = 'one_off'
-        AND d.\`due_date\` IS NULL
-        AND c.\`end_date\` IS NOT NULL
-    `),
+    CREATE TABLE IF NOT EXISTS \`service_package_deliveries\` (
+      \`id\` char(36) NOT NULL,
+      \`service_package_id\` char(36) NOT NULL,
+      \`service_project_id\` char(36) NOT NULL,
+      \`name\` varchar(140) NOT NULL,
+      \`description\` text NOT NULL,
+      \`priority_key\` varchar(64) NOT NULL DEFAULT 'normal',
+      \`recurrence_type\` varchar(16) NOT NULL DEFAULT 'one_off',
+      \`recurrence_unit\` varchar(16) NULL,
+      \`recurrence_days\` text NOT NULL,
+      \`sort_order\` int NOT NULL DEFAULT 0,
+      \`created_at\` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      \`updated_at\` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      PRIMARY KEY (\`id\`),
+      KEY \`service_package_deliveries_project_order_index\` (\`service_project_id\`, \`sort_order\`, \`id\`),
+      KEY \`service_package_deliveries_package_index\` (\`service_package_id\`),
+      CONSTRAINT \`service_package_deliveries_package_fk\`
+        FOREIGN KEY (\`service_package_id\`) REFERENCES \`service_packages\` (\`id\`) ON DELETE CASCADE,
+      CONSTRAINT \`service_package_deliveries_project_fk\`
+        FOREIGN KEY (\`service_project_id\`) REFERENCES \`service_package_projects\` (\`id\`) ON DELETE CASCADE
+    )
+  `),
+  );
+
+  await database.execute(
+    sql.raw(`
+    CREATE TABLE IF NOT EXISTS \`service_package_tasks\` (
+      \`id\` char(36) NOT NULL,
+      \`service_package_id\` char(36) NOT NULL,
+      \`service_delivery_id\` char(36) NOT NULL,
+      \`name\` varchar(120) NOT NULL,
+      \`duration_minutes\` int NOT NULL DEFAULT 60,
+      \`sort_order\` int NOT NULL DEFAULT 0,
+      \`created_at\` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      \`updated_at\` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      PRIMARY KEY (\`id\`),
+      KEY \`service_package_tasks_delivery_order_index\` (\`service_delivery_id\`, \`sort_order\`, \`id\`),
+      KEY \`service_package_tasks_package_index\` (\`service_package_id\`),
+      CONSTRAINT \`service_package_tasks_package_fk\`
+        FOREIGN KEY (\`service_package_id\`) REFERENCES \`service_packages\` (\`id\`) ON DELETE CASCADE,
+      CONSTRAINT \`service_package_tasks_delivery_fk\`
+        FOREIGN KEY (\`service_delivery_id\`) REFERENCES \`service_package_deliveries\` (\`id\`) ON DELETE CASCADE
+    )
+  `),
   );
 }
 
 async function ensureContractsSchema(database: Database): Promise<void> {
-  const contractsTableExisted = await tableExists(database, "contracts");
-
   await database.execute(
     sql.raw(`
     CREATE TABLE IF NOT EXISTS \`contracts\` (
@@ -275,12 +293,7 @@ async function ensureContractsSchema(database: Database): Promise<void> {
     "is_active",
     "boolean NOT NULL DEFAULT true",
   );
-  const addedProjectContractId = await addColumnIfMissing(
-    database,
-    "projects",
-    "contract_id",
-    "char(36) NULL",
-  );
+  await addColumnIfMissing(database, "projects", "contract_id", "char(36) NULL");
   await addColumnIfMissing(
     database,
     "projects",
@@ -288,7 +301,7 @@ async function ensureContractsSchema(database: Database): Promise<void> {
     "varchar(16) NOT NULL DEFAULT 'personal'",
   );
 
-  const addedContractType = await addColumnIfMissing(
+  await addColumnIfMissing(
     database,
     "contracts",
     "contract_type",
@@ -302,24 +315,18 @@ async function ensureContractsSchema(database: Database): Promise<void> {
     "owner_user_id",
     "char(36) NULL",
   );
-  await database.execute(
-    sql.raw(`
-      UPDATE contracts c
-      INNER JOIN businesses b ON b.id = c.business_id
-      SET c.owner_user_id = b.owner_user_id
-      WHERE c.owner_user_id IS NULL OR c.owner_user_id <> b.owner_user_id
-    `),
+  await addColumnIfMissing(
+    database,
+    "contracts",
+    "source_service_package_id",
+    "char(36) NULL",
   );
-  if (addedContractType) {
-    await database.execute(
-      sql.raw(`
-        UPDATE \`contracts\` c
-        INNER JOIN \`projects\` p
-          ON p.\`workspace_id\` = c.\`workspace_id\` AND p.\`contract_id\` = c.\`id\`
-        SET c.\`contract_type\` = p.\`contract_type\`
-      `),
-    );
-  }
+  await addForeignKeyIfMissing(
+    database,
+    "contracts",
+    "contracts_source_service_package_fk",
+    "(`source_service_package_id`) REFERENCES `service_packages` (`id`) ON DELETE SET NULL",
+  );
   await dropForeignKeyIfPresent(
     database,
     "contracts",
@@ -381,14 +388,6 @@ async function ensureContractsSchema(database: Database): Promise<void> {
     "owner_user_id",
     "char(36) NULL",
   );
-  await database.execute(
-    sql.raw(`
-      UPDATE financial_entries f
-      INNER JOIN workspaces w ON w.id = f.workspace_id
-      SET f.owner_user_id = w.owner_user_id
-      WHERE f.owner_user_id IS NULL
-    `),
-  );
   await addIndexIfMissing(
     database,
     "financial_entries",
@@ -426,10 +425,6 @@ async function ensureContractsSchema(database: Database): Promise<void> {
     "(`workspace_id`, `contract_installment_id`) REFERENCES `contract_installments` (`workspace_id`, `id`) ON DELETE CASCADE",
   );
 
-  if (!contractsTableExisted || addedProjectContractId) {
-    await backfillLegacyProjectContracts(database);
-  }
-
   await dropForeignKeyIfPresent(
     database,
     "projects",
@@ -442,8 +437,6 @@ async function ensureContractsSchema(database: Database): Promise<void> {
     "(`workspace_id`, `contract_id`, `business_id`) REFERENCES `contracts` (`workspace_id`, `id`, `business_id`) ON DELETE RESTRICT",
   );
 
-  // Migration 0017: institutional projects are unique per contract rather than
-  // per business so multiple contracts for the same business can coexist.
   await dropIndexIfPresent(
     database,
     "projects",
@@ -518,168 +511,6 @@ async function ensureInstitutionalContractUniqueIndex(
       describeDatabaseError(firstError),
     );
   }
-}
-
-async function backfillLegacyProjectContracts(
-  database: Database,
-): Promise<void> {
-  const legacyProjects = rawRows<{ id: string; workspace_id: string }>(
-    await database.execute(
-      sql`SELECT id, workspace_id FROM projects WHERE contract_id IS NULL`,
-    ),
-  );
-
-  for (const project of legacyProjects) {
-    const contractId = randomUUID();
-    await database.execute(sql`
-      INSERT INTO contracts (
-        id, workspace_id, owner_user_id, business_id, name, contract_type,
-        amount_cents, start_date, end_date, first_due_date, payment_method,
-        payment_terms, finance_notes, created_at, updated_at, archived_at
-      )
-      SELECT
-        ${contractId}, p.workspace_id, b.owner_user_id, p.business_id, p.name,
-        p.contract_type, COALESCE(p.amount_cents, 0), p.start_date, p.end_date,
-        p.first_due_date, p.payment_method, p.payment_terms, p.finance_notes,
-        p.created_at, p.updated_at, p.archived_at
-      FROM projects p
-      INNER JOIN businesses b ON b.id = p.business_id
-      WHERE p.workspace_id = ${project.workspace_id}
-        AND p.id = ${project.id}
-        AND p.contract_id IS NULL
-    `);
-    await database.execute(sql`
-      UPDATE projects
-      SET contract_id = ${contractId}
-      WHERE workspace_id = ${project.workspace_id}
-        AND id = ${project.id}
-        AND contract_id IS NULL
-    `);
-  }
-
-  await database.execute(
-    sql.raw(`
-      INSERT IGNORE INTO \`contract_installments\` (
-        \`id\`, \`workspace_id\`, \`contract_id\`, \`number\`, \`due_date\`,
-        \`amount_cents\`, \`status_key\`, \`created_at\`, \`updated_at\`
-      )
-      SELECT
-        UUID(), i.\`workspace_id\`, p.\`contract_id\`, i.\`number\`, i.\`due_date\`,
-        i.\`amount_cents\`, i.\`status_key\`, i.\`created_at\`, i.\`updated_at\`
-      FROM \`project_installments\` i
-      INNER JOIN \`projects\` p
-        ON p.\`workspace_id\` = i.\`workspace_id\` AND p.\`id\` = i.\`project_id\`
-      WHERE p.\`contract_id\` IS NOT NULL
-    `),
-  );
-
-  await database.execute(
-    sql.raw(`
-      UPDATE \`financial_entries\` f
-      INNER JOIN \`projects\` p
-        ON p.\`workspace_id\` = f.\`workspace_id\` AND p.\`id\` = f.\`project_id\`
-      INNER JOIN \`project_installments\` old_i
-        ON old_i.\`workspace_id\` = f.\`workspace_id\`
-        AND old_i.\`id\` = f.\`project_installment_id\`
-      INNER JOIN \`contract_installments\` new_i
-        ON new_i.\`workspace_id\` = old_i.\`workspace_id\`
-        AND new_i.\`contract_id\` = p.\`contract_id\`
-        AND new_i.\`number\` = old_i.\`number\`
-      SET f.\`contract_id\` = p.\`contract_id\`,
-        f.\`contract_installment_id\` = new_i.\`id\`,
-        f.\`source\` = 'contract'
-      WHERE f.\`source\` = 'project'
-        AND f.\`contract_id\` IS NULL
-        AND p.\`contract_id\` IS NOT NULL
-    `),
-  );
-}
-
-async function renameLegacyDeliverySchema(database: Database): Promise<void> {
-  const tables: Array<[string, string]> = [
-    ["tasks", "deliveries"],
-    ["task_subtasks", "delivery_tasks"],
-    ["task_responsibles", "delivery_responsibles"],
-    ["task_tags", "delivery_tags"],
-    ["task_comments", "delivery_comments"],
-    ["project_task_routines", "project_delivery_routines"],
-    ["service_task_templates", "service_delivery_templates"],
-    ["delivery_template_subtasks", "delivery_template_tasks"],
-    ["personal_tasks", "personal_deliveries"],
-  ];
-  const columns: Array<[string, string, string]> = [
-    ["delivery_tasks", "task_id", "delivery_id"],
-    ["delivery_responsibles", "task_id", "delivery_id"],
-    ["delivery_tags", "task_id", "delivery_id"],
-    ["delivery_comments", "task_id", "delivery_id"],
-    ["tool_uses", "task_id", "delivery_id"],
-    ["agenda_entries", "task_id", "delivery_id"],
-    ["cronograma_blocks", "task_id", "delivery_id"],
-    ["cronograma_blocks", "subtask_id", "task_id"],
-    ["project_delivery_routines", "subtasks", "tasks"],
-    [
-      "project_delivery_routines",
-      "source_service_task_template_id",
-      "source_service_delivery_template_id",
-    ],
-  ];
-
-  const pendingTables: Array<[string, string]> = [];
-  for (const [oldName, newName] of tables) {
-    if (
-      (await tableExists(database, oldName)) &&
-      !(await tableExists(database, newName))
-    ) {
-      pendingTables.push([oldName, newName]);
-    }
-  }
-
-  let foreignKeyChecksDisabled = false;
-  try {
-    if (pendingTables.length > 0) {
-      // MySQL updates InnoDB foreign-key targets during RENAME TABLE. Disable
-      // validation only while renaming the mutually-referencing aggregate.
-      await database.execute(sql.raw("SET FOREIGN_KEY_CHECKS = 0"));
-      foreignKeyChecksDisabled = true;
-      for (const [oldName, newName] of pendingTables) {
-        await database.execute(
-          sql.raw(`RENAME TABLE \`${oldName}\` TO \`${newName}\``),
-        );
-      }
-    }
-
-    for (const [table, oldName, newName] of columns) {
-      if (
-        (await columnExists(database, table, oldName)) &&
-        !(await columnExists(database, table, newName))
-      ) {
-        if (!foreignKeyChecksDisabled) {
-          await database.execute(sql.raw("SET FOREIGN_KEY_CHECKS = 0"));
-          foreignKeyChecksDisabled = true;
-        }
-        await database.execute(
-          sql.raw(
-            `ALTER TABLE \`${table}\` RENAME COLUMN \`${oldName}\` TO \`${newName}\``,
-          ),
-        );
-      }
-    }
-  } finally {
-    if (foreignKeyChecksDisabled) {
-      await database.execute(sql.raw("SET FOREIGN_KEY_CHECKS = 1"));
-    }
-  }
-}
-
-async function tableExists(
-  database: Database,
-  tableName: string,
-): Promise<boolean> {
-  const result = await database.execute(
-    sql`select 1 as present from information_schema.tables
-        where table_schema = database() and table_name = ${tableName} limit 1`,
-  );
-  return rawRows<{ present: number }>(result).length > 0;
 }
 
 async function columnExists(

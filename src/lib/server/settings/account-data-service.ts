@@ -36,6 +36,7 @@ import {
   projectTags,
   projectDeliveryRoutines,
   projects,
+  servicePackages,
   serviceResponsibles,
   serviceTags,
   serviceDeliveryTemplates,
@@ -537,6 +538,14 @@ async function deleteOwnedDomainData(
       undefined,
     );
   }
+
+  await runOptionalTableOperation(
+    () =>
+      database
+        .delete(servicePackages)
+        .where(eq(servicePackages.ownerUserId, userId)),
+    undefined,
+  );
 
   const businessResponsibleConditions = [eq(businessResponsibles.userId, userId)];
   if (ownedWorkspaceIds.length > 0)

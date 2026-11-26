@@ -38,6 +38,7 @@ export const agendaMoveSchema = z
           .strict(),
       )
       .max(5_000),
+    propagateRoutineDeliveryIds: z.array(z.string().uuid()).max(500).optional(),
   })
   .strict()
   .superRefine((value, context) => {

@@ -19,6 +19,7 @@ import {
 } from "./base";
 import { businesses } from "./crm";
 import { users } from "./identity";
+import { servicePackages } from "./service-packages";
 import { workspaces } from "./workspace";
 
 /**
@@ -37,6 +38,10 @@ export const contracts = applicationSchema.table(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     businessId: uuid("business_id").notNull(),
+    sourceServicePackageId: uuid("source_service_package_id").references(
+      () => servicePackages.id,
+      { onDelete: "set null" },
+    ),
     name: varchar("name", { length: 140 }).notNull(),
     contractType: varchar("contract_type", { length: 16 })
       .$type<"one_off" | "recurring">()

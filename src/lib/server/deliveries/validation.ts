@@ -199,6 +199,7 @@ export const deliveryUpdateSchema = z
     ...contentShape,
     version,
     status: lifecycleStatus,
+    routinePropagation: z.enum(["single", "future"]).optional(),
     tasks: z.array(updateTask).min(1).max(10),
   })
   .strict()

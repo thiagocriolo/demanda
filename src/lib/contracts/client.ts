@@ -1,5 +1,6 @@
 import type { EntityRecord } from "../entities/types";
 import { moneyToCents } from "../finance/money";
+import type { ContractServicePackageSelection } from "../service-packages/types";
 import {
   createChangeChannel,
   jsonRequest,
@@ -10,6 +11,7 @@ export type Contract = {
   id: string;
   workspaceId: string;
   ownerUserId: string;
+  sourceServicePackageId?: string | null;
   name: string;
   business: { id: string; name: string };
   contractType: "one_off" | "recurring";
@@ -51,6 +53,7 @@ export type ContractMutationInput = {
   paymentTerms: string;
   financeNotes: string;
   installments: ContractInstallmentInput[];
+  servicePackage?: ContractServicePackageSelection;
 };
 
 export type ContractList = {
@@ -141,6 +144,10 @@ export async function createContract(
     jsonRequest("POST", input),
   );
   notifyContractsChanged();
+  if (input.servicePackage && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("demanda:projects-changed"));
+    window.dispatchEvent(new CustomEvent("demanda:deliveries-changed"));
+  }
   return contract;
 }
 
@@ -245,9 +252,56 @@ function contractInstallmentInputs(
   }
 }
 
+function parseServicePackageSelection(
+  value: string | undefined,
+): ContractServicePackageSelection | undefined {
+  if (!value?.trim()) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object") return undefined;
+    const source = parsed as Record<string, unknown>;
+    if (
+      typeof source.packageId !== "string" ||
+      !source.packageId.trim() ||
+      typeof source.responsibleUserId !== "string" ||
+      !source.responsibleUserId.trim()
+    ) {
+      return undefined;
+    }
+    return {
+      packageId: source.packageId.trim(),
+      responsibleUserId: source.responsibleUserId.trim(),
+      includedProjectIds: Array.isArray(source.includedProjectIds)
+        ? source.includedProjectIds.filter(
+            (id): id is string => typeof id === "string" && Boolean(id.trim()),
+          )
+        : undefined,
+      projectResponsibleOverrides:
+        source.projectResponsibleOverrides &&
+        typeof source.projectResponsibleOverrides === "object" &&
+        !Array.isArray(source.projectResponsibleOverrides)
+          ? Object.fromEntries(
+              Object.entries(
+                source.projectResponsibleOverrides as Record<string, unknown>,
+              ).filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[1] === "string" && Boolean(entry[1].trim()),
+              ),
+            )
+          : undefined,
+      customProjects: Array.isArray(source.customProjects)
+        ? (source.customProjects as ContractServicePackageSelection["customProjects"])
+        : undefined,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export function entityValuesToContractInput(
   values: Record<string, string>,
 ): ContractMutationInput {
+  const servicePackage = parseServicePackageSelection(values.servicePackage);
   return {
     workspaceId: (values.workspaceId ?? values.contractWorkspaceId ?? "").trim() || undefined,
     name: (values.nome ?? values.name ?? "").trim(),
@@ -267,6 +321,7 @@ export function entityValuesToContractInput(
     paymentTerms: values.condicoes?.trim() ?? "",
     financeNotes: values.financeNotes?.trim() ?? "",
     installments: contractInstallmentInputs(values.installments),
+    ...(servicePackage ? { servicePackage } : {}),
   };
 }
 

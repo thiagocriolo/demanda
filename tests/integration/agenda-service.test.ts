@@ -428,10 +428,10 @@ describe("BE-10: Agenda persistente", () => {
       expect(snapshot.projects.map(({ id }) => id)).toContain(
         regularRecurringProjectId,
       );
-      expect(snapshot.deliveries.map(({ id }) => id)).not.toContain(
+      expect(snapshot.deliveries.map(({ id }) => id)).toContain(
         recurringDeliveryId,
       );
-      expect(snapshot.deliveries.map(({ id }) => id)).not.toContain(
+      expect(snapshot.deliveries.map(({ id }) => id)).toContain(
         regularRecurringDeliveryId,
       );
       expect(snapshot.deliveries.map(({ id }) => id)).toContain(

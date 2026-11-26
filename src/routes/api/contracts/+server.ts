@@ -29,6 +29,12 @@ import {
   contracts,
   projects,
 } from "$lib/server/db/schema";
+import {
+  instantiateServicePackageForContractInTransaction,
+  ServicePackageNotFoundError,
+  ServicePackageValidationError,
+} from "$lib/server/service-packages/service";
+import { contractServicePackageSelectionSchema } from "$lib/server/service-packages/validation";
 
 const querySchema = z
   .object({
@@ -62,6 +68,7 @@ export const _contractMutationSchema = z
     paymentTerms: z.string().trim().max(2_000),
     financeNotes: z.string().trim().max(4_000),
     installments: z.array(installmentSchema).max(99),
+    servicePackage: contractServicePackageSelectionSchema.optional(),
   })
   .strict();
 
@@ -120,6 +127,7 @@ export function _contractPayload(
     id: contract.id,
     workspaceId: contract.workspaceId,
     ownerUserId: contract.ownerUserId,
+    sourceServicePackageId: contract.sourceServicePackageId ?? null,
     name: contract.name,
     business: { id: contract.businessId, name: businessName },
     contractType: contract.contractType,
@@ -297,6 +305,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     const {
       installments: _,
       workspaceId: _workspaceId,
+      servicePackage,
       ...input
     } = parsed.data;
     const now = new Date();
@@ -304,6 +313,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       id: randomUUID(),
       workspaceId: workspace.workspace.id,
       ownerUserId: context.user.id,
+      sourceServicePackageId: servicePackage?.packageId ?? null,
       ...input,
       paymentMethod: input.paymentMethod || null,
       paymentTerms: input.paymentTerms || null,
@@ -312,6 +322,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       updatedAt: now,
       archivedAt: null,
     };
+    let createdProjectCount = 0;
     await database.transaction(async (transaction) => {
       await transaction.insert(contracts).values(contract);
       if (installmentValues.length)
@@ -325,6 +336,23 @@ export const POST: RequestHandler = async ({ locals, request }) => {
             statusKey: item.status || null,
           })),
         );
+      if (servicePackage) {
+        const result = await instantiateServicePackageForContractInTransaction(
+          transaction,
+          {
+            ownerUserId: context.user.id,
+            workspaceId: contract.workspaceId,
+            contract: {
+              id: contract.id,
+              businessId: contract.businessId,
+              startDate: contract.startDate,
+              endDate: contract.endDate,
+            },
+            selection: servicePackage,
+          },
+        );
+        createdProjectCount = result.createdProjectCount;
+      }
     });
     const installments = await database
       .select()
@@ -336,10 +364,24 @@ export const POST: RequestHandler = async ({ locals, request }) => {
         ),
       )
       .orderBy(asc(contractInstallments.number));
-    return json(_contractPayload(contract, business.name, installments), {
-      status: 201,
-    });
+    return json(
+      _contractPayload(
+        contract,
+        business.name,
+        installments,
+        createdProjectCount,
+      ),
+      {
+        status: 201,
+      },
+    );
   } catch (cause) {
+    if (
+      cause instanceof ServicePackageNotFoundError ||
+      cause instanceof ServicePackageValidationError
+    ) {
+      error(400, cause.message);
+    }
     throwAuthorizationHttpError(cause);
   }
 };

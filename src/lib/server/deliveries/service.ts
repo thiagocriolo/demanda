@@ -10,6 +10,7 @@ import {
   isNotNull,
   isNull,
   lte,
+  ne,
   or,
   sql,
   type SQL,
@@ -21,7 +22,6 @@ import {
   contracts,
   projectDeliveryRoutines,
   projects,
-  agendaEntries,
   tags,
   deliveryResponsibles,
   deliveries,
@@ -34,7 +34,12 @@ import {
   INSTITUTIONAL_PROJECT_NAME,
   INSTITUTIONAL_PROJECT_STATUS,
 } from "../../projects/institutional";
-import { institutionalOccurrenceDate } from "../projects/project-routines";
+import {
+  INITIAL_DELIVERY_STATUS,
+  initialRoutineOccurrenceDate,
+  routineAnchorFromDueDate,
+  type RecurringDeliveryFrequency,
+} from "../projects/project-routines";
 import {
   requireWorkspacePermission,
   requireWorkspacePermissionForUpdate,
@@ -1101,6 +1106,7 @@ export async function createWorkspaceDeliveryInTransaction(
     input.tagLabels,
   );
   const now = new Date();
+  const today = now.toISOString().slice(0, 10);
   const id = randomUUID();
   let projectRoutineId: string | undefined;
   let routineOccurrenceDate: string | undefined;
@@ -1113,9 +1119,11 @@ export async function createWorkspaceDeliveryInTransaction(
     ) {
       throw new DeliveryRelationsInvalidError();
     }
-    routineOccurrenceDate = institutionalOccurrenceDate(
+    const anchor = routineAnchorFromDueDate(recurrenceType, input.dueDate);
+    routineOccurrenceDate = initialRoutineOccurrenceDate(
       recurrenceType,
-      new Date().toISOString().slice(0, 10),
+      input.dueDate,
+      today,
     );
     projectRoutineId = randomUUID();
     await transaction.insert(projectDeliveryRoutines).values({
@@ -1126,7 +1134,7 @@ export async function createWorkspaceDeliveryInTransaction(
       description: input.briefing,
       categoryKey: input.category || null,
       priorityKey: input.priority,
-      statusKey: input.status,
+      statusKey: INITIAL_DELIVERY_STATUS,
       responsibleUserId: input.responsibleUserIds[0]!,
       tagIds: JSON.stringify(tagRows.map(({ id }) => id)),
       tasks: JSON.stringify(
@@ -1137,8 +1145,8 @@ export async function createWorkspaceDeliveryInTransaction(
         })),
       ),
       recurrenceType,
-      recurrenceUnit: null,
-      recurrenceDays: "[]",
+      recurrenceUnit: anchor.recurrenceUnit,
+      recurrenceDays: anchor.recurrenceDays,
       createdAt: now,
       updatedAt: now,
     });
@@ -1155,7 +1163,7 @@ export async function createWorkspaceDeliveryInTransaction(
     categoryKey: input.category || null,
     priorityKey: input.priority,
     statusKey: input.status,
-    dueDate: project.isRecurring ? null : input.dueDate,
+    dueDate: input.dueDate,
     engagementType: input.engagementType ?? "personal",
     sortOrder: input.sortOrder ?? 0,
     boardOrder: {},
@@ -1370,10 +1378,36 @@ export async function updateWorkspaceDelivery(
         delete boardOrder.business;
       let nextProjectRoutineId = existing.projectRoutineId;
       let nextRoutineOccurrenceDate = existing.routineOccurrenceDate;
+      const today = now.toISOString().slice(0, 10);
       if (project.isRecurring) {
         const requestedRecurrence = input.recurrence;
         if (existing.projectRoutineId) {
-          if (requestedRecurrence) {
+          if (input.routinePropagation === "future") {
+            const [currentRoutine] = await transaction
+              .select({
+                recurrenceType: projectDeliveryRoutines.recurrenceType,
+              })
+              .from(projectDeliveryRoutines)
+              .where(
+                and(
+                  eq(projectDeliveryRoutines.workspaceId, workspaceId),
+                  eq(projectDeliveryRoutines.id, existing.projectRoutineId),
+                ),
+              )
+              .limit(1)
+              .for("update");
+            const fallbackRecurrence: RecurringDeliveryFrequency =
+              currentRoutine?.recurrenceType === "daily" ||
+              currentRoutine?.recurrenceType === "weekly" ||
+              currentRoutine?.recurrenceType === "monthly"
+                ? currentRoutine.recurrenceType
+                : "weekly";
+            const nextRecurrenceType: RecurringDeliveryFrequency =
+              requestedRecurrence ?? fallbackRecurrence;
+            const anchor = routineAnchorFromDueDate(
+              nextRecurrenceType,
+              input.dueDate,
+            );
             await transaction
               .update(projectDeliveryRoutines)
               .set({
@@ -1381,8 +1415,6 @@ export async function updateWorkspaceDelivery(
                 name: input.name,
                 description: input.briefing,
                 categoryKey: input.category || null,
-                priorityKey: input.priority,
-                statusKey: effectiveStatus,
                 responsibleUserId: input.responsibleUserIds[0]!,
                 tagIds: JSON.stringify(tagRows.map(({ id }) => id)),
                 tasks: JSON.stringify(
@@ -1392,7 +1424,9 @@ export async function updateWorkspaceDelivery(
                     status: "pendente",
                   })),
                 ),
-                recurrenceType: requestedRecurrence,
+                recurrenceType: nextRecurrenceType,
+                recurrenceUnit: anchor.recurrenceUnit,
+                recurrenceDays: anchor.recurrenceDays,
                 updatedAt: now,
               })
               .where(
@@ -1401,6 +1435,28 @@ export async function updateWorkspaceDelivery(
                   eq(projectDeliveryRoutines.id, existing.projectRoutineId),
                 ),
               );
+            const candidateOccurrence = initialRoutineOccurrenceDate(
+              nextRecurrenceType,
+              input.dueDate,
+              today,
+            );
+            if (candidateOccurrence !== existing.routineOccurrenceDate) {
+              const [collision] = await transaction
+                .select({ id: deliveries.id })
+                .from(deliveries)
+                .where(
+                  and(
+                    eq(deliveries.workspaceId, workspaceId),
+                    eq(deliveries.projectRoutineId, existing.projectRoutineId),
+                    eq(deliveries.routineOccurrenceDate, candidateOccurrence),
+                    ne(deliveries.id, deliveryId),
+                  ),
+                )
+                .limit(1);
+              if (!collision) {
+                nextRoutineOccurrenceDate = candidateOccurrence;
+              }
+            }
           }
         } else {
           if (
@@ -1410,9 +1466,14 @@ export async function updateWorkspaceDelivery(
           ) {
             throw new DeliveryRelationsInvalidError();
           }
-          nextRoutineOccurrenceDate = institutionalOccurrenceDate(
+          const anchor = routineAnchorFromDueDate(
             requestedRecurrence,
-            now.toISOString().slice(0, 10),
+            input.dueDate,
+          );
+          nextRoutineOccurrenceDate = initialRoutineOccurrenceDate(
+            requestedRecurrence,
+            input.dueDate,
+            today,
           );
           nextProjectRoutineId = randomUUID();
           await transaction.insert(projectDeliveryRoutines).values({
@@ -1423,7 +1484,7 @@ export async function updateWorkspaceDelivery(
             description: input.briefing,
             categoryKey: input.category || null,
             priorityKey: input.priority,
-            statusKey: effectiveStatus,
+            statusKey: INITIAL_DELIVERY_STATUS,
             responsibleUserId: input.responsibleUserIds[0]!,
             tagIds: JSON.stringify(tagRows.map(({ id }) => id)),
             tasks: JSON.stringify(
@@ -1434,8 +1495,8 @@ export async function updateWorkspaceDelivery(
               })),
             ),
             recurrenceType: requestedRecurrence,
-            recurrenceUnit: null,
-            recurrenceDays: "[]",
+            recurrenceUnit: anchor.recurrenceUnit,
+            recurrenceDays: anchor.recurrenceDays,
             createdAt: now,
             updatedAt: now,
           });
@@ -1456,7 +1517,7 @@ export async function updateWorkspaceDelivery(
           categoryKey: input.category || null,
           priorityKey: input.priority,
           statusKey: effectiveStatus,
-          dueDate: project.isRecurring ? null : input.dueDate,
+          dueDate: input.dueDate,
           engagementType: input.engagementType ?? "personal",
           sortOrder: input.sortOrder ?? existing.sortOrder,
           boardOrder,
@@ -1472,16 +1533,6 @@ export async function updateWorkspaceDelivery(
           ),
         );
       if (affectedRows(deliveryRows) !== 1) throw new DeliveryVersionConflictError();
-      if (project.isRecurring) {
-        await transaction
-          .delete(agendaEntries)
-          .where(
-            and(
-              eq(agendaEntries.workspaceId, workspaceId),
-              eq(agendaEntries.deliveryId, deliveryId),
-            ),
-          );
-      }
       await appendDataChangeAuditLog(
         transaction,
         {
@@ -1517,7 +1568,7 @@ export async function updateWorkspaceDelivery(
             {
               field: "dueDate",
               before: existing.dueDate,
-              after: project.isRecurring ? null : input.dueDate,
+              after: input.dueDate,
             },
           ].filter((change) => change.before !== change.after),
         },

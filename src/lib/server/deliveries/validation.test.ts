@@ -186,6 +186,14 @@ describe("validação de tarefas", () => {
     expect(
       deliveryUpdateSchema.safeParse({ ...update, status: "arquivado" }).success,
     ).toBe(false);
+    expect(
+      deliveryUpdateSchema.parse({ ...update, routinePropagation: "future" })
+        .routinePropagation,
+    ).toBe("future");
+    expect(
+      deliveryUpdateSchema.safeParse({ ...update, routinePropagation: "all" })
+        .success,
+    ).toBe(false);
     const { status: _status, ...withoutStatus } = update;
     expect(deliveryUpdateSchema.safeParse(withoutStatus).success).toBe(false);
 

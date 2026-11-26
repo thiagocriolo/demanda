@@ -103,6 +103,7 @@ function deliveryItem(
   index: number,
   schedule: AgendaPlacement,
   workspaceUsers: WorkspaceUser[],
+  isRecurring: boolean,
 ): AgendaItem {
   const status = deliveryStatuses[record.status] ?? deliveryStatuses.planejamento;
   const fallbackPriorities: AgendaItem["priority"][] = [
@@ -151,6 +152,7 @@ function deliveryItem(
       : 0,
     completed,
     total: tasks.length,
+    isRecurring,
   };
 }
 
@@ -192,9 +194,7 @@ export function loadAgendaItems(
   const participatingProjects = activeProjects.filter(
     (record) => !isInstitutionalProjectRecord(record),
   );
-  const deliveryProjects = activeProjects.filter(
-    (record) => !isRecurringContractRecord(record),
-  );
+  const deliveryProjects = activeProjects;
   const projects = participatingProjects.map((record, index) =>
     projectItem(
       record,
@@ -214,13 +214,22 @@ export function loadAgendaItems(
         record.projectWorkspaceId || record.project_workspace_id || "";
       return !projectWorkspaceId || projectWorkspaceId === project.workspaceId;
     })
-    .map((record, index) =>
-      deliveryItem(
+    .map((record, index) => {
+      const projectId = record.projetoId || record.project_id || "";
+      const project = projectId
+        ? deliveryProjects.find((candidate) => candidate.id === projectId)
+        : undefined;
+      const isRecurring =
+        Boolean(record.recurrence?.trim()) ||
+        record.projectContractType === "recurring" ||
+        Boolean(project && isRecurringContractRecord(project));
+      return deliveryItem(
         record,
         index,
         placementFor(deliveryPlacements, "deliveries", record, index),
         workspaceUsers,
-      ),
-    );
+        isRecurring,
+      );
+    });
   return { projects, deliveries };
 }

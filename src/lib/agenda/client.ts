@@ -63,7 +63,9 @@ export function saveAgendaOrder(
   mode: AgendaMode,
   items: AgendaItem[],
   fetcher: FetchLike = fetch,
+  options: { propagateRoutineDeliveryIds?: string[] } = {},
 ): Promise<AgendaSnapshot> {
+  const propagateIds = new Set(options.propagateRoutineDeliveryIds ?? []);
   const byWorkspace = new Map<string, AgendaItem[]>();
   for (const item of items) {
     const key = item.workspaceId ?? "";
@@ -87,6 +89,9 @@ export function saveAgendaOrder(
       }
       positionById.set(item.id, position++);
     }
+    const workspacePropagateIds = entries
+      .map(({ id }) => id)
+      .filter((id) => propagateIds.has(id));
     const input: AgendaMoveInput = {
       mode,
       items: entries.map(({ id, date, durationMinutes, version }) => ({
@@ -96,6 +101,9 @@ export function saveAgendaOrder(
         durationMinutes,
         version,
       })),
+      ...(workspacePropagateIds.length
+        ? { propagateRoutineDeliveryIds: workspacePropagateIds }
+        : {}),
     };
     const path = workspaceId
       ? `/api/agenda?workspaceId=${encodeURIComponent(workspaceId)}`

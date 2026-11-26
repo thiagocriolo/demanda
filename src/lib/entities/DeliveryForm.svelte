@@ -4,11 +4,6 @@
 
 <script lang="ts">
   import {
-    BusinessApiError,
-    businessToEntityRecord,
-    listAllActiveBusinesses,
-  } from "$lib/businesses/client";
-  import {
     ContractApiError,
     listAllActiveContracts,
     type Contract,
@@ -55,6 +50,7 @@
     ListTodo,
     Pencil,
     Plus,
+    Repeat,
     Save,
     SignalHigh,
     Tags,
@@ -102,10 +98,6 @@
     status: string;
   };
 
-  const LEGACY_BUSINESS_FIELD = "__legacyBusiness";
-  const LEGACY_BUSINESS_ID_FIELD = "__legacyBusinessId";
-  const LEGACY_BUSINESS_NAME_FIELD = "__legacyBusinessName";
-  const BUSINESS_WORKSPACE_ID_FIELD = "__businessWorkspaceId";
   const MIN_TASK_DURATION_HOURS = 0.5;
   const MAX_TASK_DURATION_HOURS = 168;
 
@@ -135,10 +127,6 @@
   let categories = $state<StyledChoice[]>([]);
   let priorities = $state<Choice[]>([]);
   let statuses = $state<StyledChoice[]>([]);
-  let businesses = $state<EntityRecord[]>([]);
-  let businessLoading = $state(false);
-  let businessCatalogLoaded = $state(false);
-  let businessError = $state("");
   let contracts = $state<Contract[]>([]);
   let contractsLoading = $state(false);
   let contractsError = $state("");
@@ -154,9 +142,9 @@
   let optionsWorkspaceId = $state("");
   let defaultTaskDuration = $state("1");
   let currentWorkspaceId = $state("personal");
-  let businessRequest: AbortController | undefined;
   let projectRequest: AbortController | undefined;
   let taskSequence = 0;
+  let pendingPropagationPayload = $state<Record<string, string> | null>(null);
 
   const initialRecord = untrack(() => record);
   const initialRelations = deliveryRelationsFromRecord(initialRecord);
@@ -164,23 +152,10 @@
     () => mode ?? (initialRecord ? "edit" : "create"),
   );
   let form = $state<DeliveryFormState>(formFromRecord(initialRecord));
-  const initialServerBusiness =
-    initialMode === "create"
-      ? undefined
-      : serverBusinessFromRecord(initialRecord);
   const initialServerProject =
     initialMode === "create"
       ? undefined
       : serverProjectFromRecord(initialRecord);
-  const initialLegacyBusiness = initialServerBusiness
-    ? undefined
-    : legacyBusinessFromRecord(initialRecord);
-  const initialBusiness = initialServerBusiness ?? initialLegacyBusiness;
-  if (initialBusiness) {
-    businesses = [initialBusiness];
-    form.negocioId = initialBusiness.id;
-    form.negocioNome = businessReferenceName(initialBusiness);
-  }
   if (initialServerProject) projects = [initialServerProject];
   let tasks = $state<DeliveryTask[]>(
     initialTasks(initialRecord, initialMode),
@@ -276,16 +251,6 @@
       };
     });
   });
-  let businessItems = $derived(
-    businesses.map((business) => ({
-      id: business.id,
-      label: business.nome,
-      description: business.archivedAt
-        ? "Neg\u00f3cio arquivado"
-        : business.responsaveis || business.observacoes || undefined,
-      updatedAt: business.updatedAt,
-    })),
-  );
   let projectItems = $derived(
     [
       ...availableProjects.map((project) => ({
@@ -338,11 +303,58 @@
       ...currentTagRelations.map(tagItem),
     ]),
   );
+  const initialPropagableSignature = buildPropagableSignature({
+    nome: form.nome,
+    projetoId: form.projetoId,
+    descricao: form.descricao,
+    categoria: form.categoria,
+    dataEntrega: form.dataEntrega,
+    responsavelId: initialRelations.responsibles[0]?.userId ?? form.responsavelId,
+    tagLabels: initialRelations.tags.map(({ name }) => name),
+    recurrence: form.recurrence,
+    tasks: tasksFromRecord(initialRecord).map(({ nome, duracao }) => ({
+      nome,
+      duracao,
+    })),
+  });
+
   $effect(() => {
-    if ((isRecurringProject || !hasSelectedProject) && form.dataEntrega) {
+    if (!hasSelectedProject && form.dataEntrega) {
       form.dataEntrega = "";
     }
   });
+
+  function buildPropagableSignature(values: {
+    nome: string;
+    projetoId: string;
+    descricao: string;
+    categoria: string;
+    dataEntrega: string;
+    responsavelId: string;
+    tagLabels: string[];
+    recurrence: string;
+    tasks: Array<{ nome: string; duracao: string }>;
+  }): string {
+    return JSON.stringify({
+      nome: values.nome.trim(),
+      projetoId: values.projetoId.trim(),
+      descricao: values.descricao.trim(),
+      categoria: values.categoria.trim(),
+      dataEntrega: values.dataEntrega.trim(),
+      responsavelId: values.responsavelId.trim(),
+      tagLabels: values.tagLabels
+        .map((label) => label.trim().toLocaleLowerCase("pt-BR"))
+        .filter(Boolean)
+        .sort(),
+      recurrence: values.recurrence.trim(),
+      tasks: values.tasks
+        .filter(({ nome }) => nome.trim())
+        .map(({ nome, duracao }) => ({
+          nome: nome.trim(),
+          duracao: normalizedDuration(duracao),
+        })),
+    });
+  }
 
   function text(...values: Array<string | undefined>): string {
     return values.find((value) => value?.trim())?.trim() ?? "";
@@ -604,62 +616,6 @@
     }
   }
 
-  function legacyBusinessFromRecord(
-    source?: EntityRecord,
-  ): EntityRecord | undefined {
-    const originalId = text(
-      source?.negocioId,
-      source?.negocio_id,
-      source?.business_id,
-    );
-    const originalName = text(source?.negocio, source?.business_name);
-    if (!originalId && !originalName) return undefined;
-
-    return {
-      id:
-        originalId ||
-        `legacy-business-name:${encodeURIComponent(normalizeSearch(originalName))}`,
-      createdAt: source?.createdAt ?? "1970-01-01T00:00:00.000Z",
-      updatedAt: source?.updatedAt ?? "1970-01-01T00:00:00.000Z",
-      nome: originalName || "Negócio legado",
-      [LEGACY_BUSINESS_FIELD]: "true",
-      [LEGACY_BUSINESS_ID_FIELD]: originalId,
-      [LEGACY_BUSINESS_NAME_FIELD]: originalName,
-      [BUSINESS_WORKSPACE_ID_FIELD]: text(
-        source?.businessWorkspaceId,
-        source?.business_workspace_id,
-      ),
-    };
-  }
-
-  function serverBusinessFromRecord(
-    source?: EntityRecord,
-  ): EntityRecord | undefined {
-    if (!source) return undefined;
-    const id = text(source.negocioId, source.negocio_id, source.business_id);
-    const name = text(source.negocio, source.business_name);
-    const workspaceId = text(source.workspaceId, source.workspace_id);
-    const version = Number(source.version);
-    if (
-      !id ||
-      !name ||
-      !workspaceId ||
-      !Number.isInteger(version) ||
-      version < 1
-    ) {
-      return undefined;
-    }
-    return {
-      id,
-      workspaceId,
-      createdAt: source.createdAt,
-      updatedAt: source.updatedAt,
-      archivedAt: source.businessArchivedAt ?? "",
-      nome: name,
-      etapa: source.businessArchivedAt ? "arquivado" : "",
-    };
-  }
-
   function serverProjectFromRecord(
     source?: EntityRecord,
   ): EntityRecord | undefined {
@@ -702,49 +658,6 @@
     };
   }
 
-  function isLegacyBusiness(business?: EntityRecord): boolean {
-    return business?.[LEGACY_BUSINESS_FIELD] === "true";
-  }
-
-  function businessReferenceId(business?: EntityRecord): string {
-    if (!business) return "";
-    return isLegacyBusiness(business)
-      ? business[LEGACY_BUSINESS_ID_FIELD]
-      : business.id;
-  }
-
-  function businessReferenceName(business?: EntityRecord): string {
-    if (!business) return "";
-    return isLegacyBusiness(business)
-      ? business[LEGACY_BUSINESS_NAME_FIELD]
-      : business.nome;
-  }
-
-  function businessWorkspaceId(business?: EntityRecord): string {
-    if (!business) return "";
-    return isLegacyBusiness(business)
-      ? business[BUSINESS_WORKSPACE_ID_FIELD]
-      : business.workspaceId;
-  }
-
-  function relationId(candidate: EntityRecord): string {
-    return text(
-      candidate.negocioId,
-      candidate.negocio_id,
-      candidate.business_id,
-    );
-  }
-
-  function projectBelongsToBusiness(
-    project: EntityRecord,
-    businessId: string,
-  ): boolean {
-    if (!businessId) return false;
-    const selectedBusiness = businesses.find(({ id }) => id === businessId);
-    if (!selectedBusiness || isLegacyBusiness(selectedBusiness)) return false;
-    return relationId(project) === businessReferenceId(selectedBusiness);
-  }
-
   function isUuid(value: string | undefined): boolean {
     return Boolean(
       value &&
@@ -761,9 +674,9 @@
   }
 
   function hydrateRelations(): void {
-    const selectedBusiness = businesses.find(({ id }) => id === form.negocioId);
-    if (selectedBusiness) {
-      form.negocioNome = businessReferenceName(selectedBusiness);
+    if (selectedContract) {
+      form.negocioId = selectedContract.business.id;
+      form.negocioNome = selectedContract.business.name;
     }
     if (!projectCatalogLoaded) return;
 
@@ -772,41 +685,14 @@
       return;
     }
 
-    const selectedProject = projects.find(({ id }) => id === form.projetoId);
-    const project = selectedProject;
+    const project = projects.find(({ id }) => id === form.projetoId);
     if (project) {
       const projectContractId = text(project.contractId);
       if (projectContractId) form.contractId = projectContractId;
-      if (!form.negocioId) {
-        let relatedBusiness = businesses.find(
-          (business) =>
-            !isLegacyBusiness(business) && business.id === relationId(project),
-        );
-        if (!relatedBusiness && relationId(project)) {
-          relatedBusiness = {
-            id: relationId(project),
-            workspaceId: project.workspaceId,
-            createdAt: project.createdAt,
-            updatedAt: project.updatedAt,
-            nome:
-              text(project.negocio, project.business_name) ||
-              "Negócio vinculado",
-            __projectContextBusiness: "true",
-          };
-          businesses = [relatedBusiness, ...businesses];
-        }
-        if (relatedBusiness) {
-          form.negocioId = relatedBusiness.id;
-          form.negocioNome = businessReferenceName(relatedBusiness);
-        }
-      }
-      if (
-        (projectContractId && form.contractId === projectContractId) ||
-        (businessCatalogLoaded && projectBelongsToBusiness(project, form.negocioId))
-      ) {
+      if (projectContractId && form.contractId === projectContractId) {
         form.projetoId = project.id;
         form.projetoNome = project.nome;
-      } else if (businessCatalogLoaded) {
+      } else {
         form.projetoId = "";
         form.projetoNome = "";
       }
@@ -904,8 +790,12 @@
       });
       if (request.signal.aborted) return;
       const selected = contracts.find(({ id }) => id === form.contractId);
-      if (selected && selected.workspaceId !== optionsWorkspaceId) {
-        void loadProjectCatalog(selected.workspaceId);
+      if (selected) {
+        form.negocioId = selected.business.id;
+        form.negocioNome = selected.business.name;
+        if (selected.workspaceId !== optionsWorkspaceId) {
+          void loadProjectCatalog(selected.workspaceId);
+        }
       }
     } catch (error) {
       if (request.signal.aborted) return;
@@ -916,42 +806,6 @@
       if (contractRequest === request) {
         contractsLoading = false;
         contractRequest = undefined;
-      }
-    }
-  }
-
-  async function loadBusinessCatalog(): Promise<void> {
-    businessRequest?.abort();
-    const request = new AbortController();
-    businessRequest = request;
-    businessLoading = true;
-    businessCatalogLoaded = false;
-    businessError = "";
-
-    try {
-      const apiBusinesses = await listAllActiveBusinesses({
-        signal: request.signal,
-      });
-      if (request.signal.aborted) return;
-
-      const mapped = apiBusinesses.map(businessToEntityRecord);
-      businesses =
-        initialBusiness && !mapped.some(({ id }) => id === initialBusiness.id)
-          ? [initialBusiness, ...mapped]
-          : mapped;
-      businessCatalogLoaded = true;
-      hydrateRelations();
-      syncProjectMembers();
-    } catch (error) {
-      if (request.signal.aborted) return;
-      businessError =
-        error instanceof BusinessApiError
-          ? error.message
-          : "Não foi possível carregar os negócios. Tente novamente.";
-    } finally {
-      if (businessRequest === request) {
-        businessLoading = false;
-        businessRequest = undefined;
       }
     }
   }
@@ -1017,7 +871,6 @@
         })
         .catch(() => undefined);
     }
-    void loadBusinessCatalog();
     void loadContractCatalog();
     const initialWorkspaceId = isUuid(initialRecord?.workspaceId)
       ? initialRecord!.workspaceId
@@ -1047,7 +900,6 @@
         ?.focus();
     });
     return () => {
-      businessRequest?.abort();
       contractRequest?.abort();
       projectRequest?.abort();
       document.body.style.overflow = previousOverflow;
@@ -1230,7 +1082,7 @@
       ? String(Math.round(totalDuration * 100) / 100)
       : record?.duracao || record?.duration || "";
 
-    onsave({
+    const payload: Record<string, string> = {
       nome: form.nome.trim(),
       workspaceId,
       workspace_id: workspaceId,
@@ -1261,15 +1113,44 @@
       responsibleUserIds: JSON.stringify(responsibleUserIds),
       tags: tagLabels.join(", "),
       tagLabels: JSON.stringify(tagLabels),
-      dataEntrega: isRecurringProject ? "" : form.dataEntrega,
-      data_entrega: isRecurringProject ? "" : form.dataEntrega,
-      dueDate: isRecurringProject ? "" : form.dataEntrega,
-      due_date: isRecurringProject ? "" : form.dataEntrega,
+      dataEntrega: form.dataEntrega,
+      data_entrega: form.dataEntrega,
+      dueDate: form.dataEntrega,
+      due_date: form.dataEntrega,
       recurrence: isRecurringProject ? form.recurrence : "",
       duracao,
       duration: duracao,
       tarefas: JSON.stringify(savedTasks),
-    });
+    };
+
+    if (resolvedMode === "edit" && isRecurringProject && initialRecord?.id) {
+      const nextPropagableSignature = buildPropagableSignature({
+        nome: form.nome,
+        projetoId: form.projetoId,
+        descricao: form.descricao,
+        categoria: form.categoria,
+        dataEntrega: form.dataEntrega,
+        responsavelId: responsible?.id ?? "",
+        tagLabels,
+        recurrence: form.recurrence,
+        tasks: savedTasks.map(({ nome, duracao }) => ({ nome, duracao })),
+      });
+      if (nextPropagableSignature !== initialPropagableSignature) {
+        pendingPropagationPayload = payload;
+        return;
+      }
+      onsave({ ...payload, routinePropagation: "single" });
+      return;
+    }
+
+    onsave(payload);
+  }
+
+  function confirmPropagation(modeChoice: "single" | "future"): void {
+    if (!pendingPropagationPayload) return;
+    const payload = pendingPropagationPayload;
+    pendingPropagationPayload = null;
+    onsave({ ...payload, routinePropagation: modeChoice });
   }
 </script>
 
@@ -1296,14 +1177,35 @@
           {modalTitle}
         {/if}
       </h2>
-      <button
-        class="close"
-        type="button"
-        aria-label="Fechar"
-        onclick={oncancel}
-      >
-        <X size={18} strokeWidth={2} />
-      </button>
+      <div class="header-actions">
+        {#if isRecurringProject}
+          <label
+            class="frequency-pill"
+            class:frequency-pill--readonly={viewOnly}
+            title="Frequência de renovação da entrega"
+          >
+            <Repeat size={14} strokeWidth={2} aria-hidden="true" />
+            <select
+              bind:value={form.recurrence}
+              required
+              disabled={viewOnly}
+              aria-label="Recorrência da entrega"
+            >
+              <option value="daily">Diário</option>
+              <option value="weekly">Semanal</option>
+              <option value="monthly">Mensal</option>
+            </select>
+          </label>
+        {/if}
+        <button
+          class="close"
+          type="button"
+          aria-label="Fechar"
+          onclick={oncancel}
+        >
+          <X size={18} strokeWidth={2} />
+        </button>
+      </div>
     </header>
 
     <div class="body">
@@ -1425,49 +1327,31 @@
                 disabled={!canSelectResponsible}
               />
 
-              {#if isRecurringProject}
-                <div class="control">
-                  <span class="control-icon" aria-hidden="true">
-                    <CalendarDays size={16} strokeWidth={1.8} />
-                  </span>
-                  <select
-                    bind:value={form.recurrence}
-                    required
-                    disabled={viewOnly}
-                    aria-label="Recorrência da entrega"
-                  >
-                    <option value="daily">Diário</option>
-                    <option value="weekly">Semanal</option>
-                    <option value="monthly">Mensal</option>
-                  </select>
-                </div>
-              {:else}
-                <div
-                  class:date-control--empty={!form.dataEntrega}
-                  class:control--disabled={!viewOnly && !hasSelectedProject}
-                  class="control date-control"
-                >
-                  <span class="control-icon" aria-hidden="true">
-                    <CalendarDays size={16} strokeWidth={1.8} />
-                  </span>
-                  <input
-                    bind:value={form.dataEntrega}
-                    type="date"
-                    placeholder={hasSelectedProject
+              <div
+                class:date-control--empty={!form.dataEntrega}
+                class:control--disabled={!viewOnly && !hasSelectedProject}
+                class="control date-control"
+              >
+                <span class="control-icon" aria-hidden="true">
+                  <CalendarDays size={16} strokeWidth={1.8} />
+                </span>
+                <input
+                  bind:value={form.dataEntrega}
+                  type="date"
+                  placeholder={hasSelectedProject
+                    ? "Data de entrega"
+                    : "Selecione um projeto primeiro"}
+                  disabled={viewOnly || !hasSelectedProject}
+                  aria-label="Data de entrega da entrega"
+                />
+                {#if !form.dataEntrega}
+                  <span class="date-placeholder" aria-hidden="true"
+                    >{hasSelectedProject
                       ? "Data de entrega"
-                      : "Selecione um projeto primeiro"}
-                    disabled={viewOnly || !hasSelectedProject}
-                    aria-label="Data de entrega da entrega"
-                  />
-                  {#if !form.dataEntrega}
-                    <span class="date-placeholder" aria-hidden="true"
-                      >{hasSelectedProject
-                        ? "Data de entrega"
-                        : "Selecione um projeto primeiro"}</span
-                    >
-                  {/if}
-                </div>
-              {/if}
+                      : "Selecione um projeto primeiro"}</span
+                  >
+                {/if}
+              </div>
             </div>
 
             <div class="three-column-grid full">
@@ -1763,10 +1647,8 @@
               <button
                 class="success"
                 type="submit"
-                disabled={businessLoading ||
-                  contractsLoading ||
+                disabled={contractsLoading ||
                   projectLoading ||
-                  Boolean(businessError) ||
                   Boolean(contractsError) ||
                   Boolean(projectError)}
               >
@@ -1783,10 +1665,8 @@
               <button
                 class="success"
                 type="submit"
-                disabled={businessLoading ||
-                  contractsLoading ||
+                disabled={contractsLoading ||
                   projectLoading ||
-                  Boolean(businessError) ||
                   Boolean(contractsError) ||
                   Boolean(projectError)}
               >
@@ -1801,7 +1681,65 @@
   </div>
 </div>
 
-<svelte:window onkeydown={(event) => event.key === "Escape" && oncancel()} />
+{#if pendingPropagationPayload}
+  <div
+    class="confirm-backdrop"
+    role="presentation"
+    onclick={(event) =>
+      event.target === event.currentTarget &&
+      (pendingPropagationPayload = null)}
+  >
+    <div
+      class="confirm-dialog"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="delivery-propagation-title"
+      aria-describedby="delivery-propagation-desc"
+    >
+      <h3 id="delivery-propagation-title">
+        Aplicar alterações às próximas renovações?
+      </h3>
+      <p id="delivery-propagation-desc">
+        Você alterou informações desta entrega recorrente. Deseja aplicar as
+        mudanças (nome, data, categoria, briefing, responsável, tags, tarefas e
+        frequência) apenas neste cartão ou também nas próximas renovações?
+        Status e prioridade valem apenas para este cartão, e entregas arquivadas
+        não são alteradas.
+      </p>
+      <div class="confirm-actions">
+        <button
+          class="confirm-cancel"
+          type="button"
+          onclick={() => (pendingPropagationPayload = null)}
+        >
+          Cancelar
+        </button>
+        <button
+          class="confirm-secondary"
+          type="button"
+          onclick={() => confirmPropagation("single")}
+        >
+          Apenas esta entrega
+        </button>
+        <button
+          class="confirm-primary"
+          type="button"
+          onclick={() => confirmPropagation("future")}
+        >
+          Esta e as próximas
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<svelte:window
+  onkeydown={(event) => {
+    if (event.key !== "Escape") return;
+    if (pendingPropagationPayload) pendingPropagationPayload = null;
+    else oncancel();
+  }}
+/>
 
 <style>
   .backdrop {
@@ -1840,6 +1778,54 @@
     gap: 10px;
     padding: 22px 24px 18px;
     border-bottom: 1px solid var(--border);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .frequency-pill {
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 11px;
+    border: 1px solid color-mix(in srgb, var(--primary) 34%, var(--border));
+    border-radius: var(--radius-pill);
+    color: var(--brand-700);
+    background: var(--brand-50);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      border-color var(--motion-fast) ease,
+      background var(--motion-fast) ease;
+  }
+
+  .frequency-pill:focus-within {
+    border-color: var(--primary);
+  }
+
+  .frequency-pill select {
+    width: auto;
+    color: var(--brand-700);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+
+  .frequency-pill--readonly {
+    cursor: default;
+  }
+
+  .frequency-pill--readonly select:disabled {
+    color: var(--brand-700);
+    opacity: 1;
+    cursor: default;
+    -webkit-text-fill-color: var(--brand-700);
   }
 
   h2,
@@ -2471,6 +2457,74 @@
     background: var(--surface-soft);
     box-shadow: none;
     cursor: not-allowed;
+  }
+
+  .confirm-backdrop {
+    position: fixed;
+    z-index: 3400;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(15, 23, 42, 0.56);
+    inset: 0;
+  }
+
+  .confirm-dialog {
+    display: grid;
+    gap: 14px;
+    width: min(500px, 100%);
+    padding: 22px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--canvas);
+    box-shadow: 0 24px 52px rgba(15, 23, 42, 0.24);
+  }
+
+  .confirm-dialog p {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
+  .confirm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .confirm-actions button {
+    display: inline-flex;
+    min-height: 38px;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 14px;
+    border-radius: var(--radius-md);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .confirm-cancel {
+    border: 1px solid var(--border);
+    color: var(--muted);
+    background: var(--panel);
+  }
+
+  .confirm-secondary {
+    border: 1px solid var(--border);
+    color: var(--ink-900);
+    background: var(--surface-soft);
+  }
+
+  .confirm-primary {
+    border: 1px solid var(--primary);
+    color: white;
+    background: var(--primary);
   }
 
   @keyframes fade-in {

@@ -276,7 +276,7 @@ describe("deliveries client", () => {
     const recurringRecord = deliveryToEntityRecord({
       ...delivery,
       project: { ...delivery.project, contractType: "recurring" },
-      dueDate: null,
+      dueDate: "2026-11-28",
       recurrence: "weekly",
     });
     expect(recurringRecord.projectContractType).toBe("recurring");
@@ -284,8 +284,18 @@ describe("deliveries client", () => {
     expect(
       entityValuesToDeliveryCreateInput(recurringRecord, recurringRecord),
     ).toMatchObject({
-      dueDate: null,
+      dueDate: "2026-11-28",
       recurrence: "weekly",
+    });
+    expect(
+      entityValuesToDeliveryUpdateInput(
+        { ...recurringRecord, routinePropagation: "future" },
+        recurringRecord,
+      ),
+    ).toMatchObject({
+      dueDate: "2026-11-28",
+      recurrence: "weekly",
+      routinePropagation: "future",
     });
 
     const oneOffInput = entityValuesToDeliveryCreateInput({

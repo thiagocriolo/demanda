@@ -8,6 +8,7 @@ import {
 } from "./defaults";
 import {
   createChangeChannel,
+  jsonRequest,
   requestJson as fetchJson,
   type FetchLike,
 } from "../http/client";
@@ -249,4 +250,25 @@ export async function resetPersonalSettings(
       body: JSON.stringify({ confirmation: "RESETAR" }),
     }),
   );
+}
+
+export function createAccountSeed(fetcher: FetchLike = fetch): Promise<
+  | { created: false }
+  | {
+      created: true;
+      totals: {
+        workspaces: number;
+        people: number;
+        businesses: number;
+        contracts: number;
+        projects: number;
+        deliveries: number;
+        tasks: number;
+      };
+    }
+> {
+  return fetchJson(fetcher, "/api/account/seed", jsonRequest("POST", {}), {
+    fallbackMessage: "Não foi possível criar os dados de teste.",
+    createError: (status, message) => new SettingsApiError(status, message),
+  });
 }

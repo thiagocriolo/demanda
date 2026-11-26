@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import type { RequestAuthorizationContext } from "../authorization/workspace-context";
 import {
   requireActiveWorkspacePermission,
@@ -28,6 +28,8 @@ type SnapshotTask = {
 };
 
 const HORIZON_DAYS = 90;
+export const RECURRENCE_ANCHOR_UNIT = "due_date" as const;
+export const INITIAL_DELIVERY_STATUS = "planejamento" as const;
 
 function addDays(value: string, days: number): string {
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -43,15 +45,12 @@ function daysBetween(start: string, end: string): number {
   );
 }
 
-function contractWeekStart(startDate: string, week: number): string {
-  return addDays(startDate, (week - 1) * 7);
-}
-
 function contractWeekNumber(startDate: string, date: string): number {
   return Math.max(1, Math.floor(daysBetween(startDate, date) / 7) + 1);
 }
 
 type InstitutionalRecurrence = "one_off" | "daily" | "weekly" | "monthly";
+export type RecurringDeliveryFrequency = "daily" | "weekly" | "monthly";
 
 function lastBusinessDayOfMonth(year: number, month: number): string {
   const date = new Date(Date.UTC(year, month + 1, 0));
@@ -61,8 +60,13 @@ function lastBusinessDayOfMonth(year: number, month: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** Returns the active cycle date without using `deliveries.due_date`.
- * Institutional deliveries deliberately remain outside the Agenda. */
+function clampedDayOfMonth(year: number, month: number, day: number): string {
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const clamped = Math.max(1, Math.min(day, lastDay));
+  return new Date(Date.UTC(year, month, clamped)).toISOString().slice(0, 10);
+}
+
+/** Returns the default calendar cycle date when a recurring delivery has no due date. */
 export function institutionalOccurrenceDate(
   recurrenceType: InstitutionalRecurrence,
   today: string,
@@ -87,7 +91,87 @@ export function institutionalOccurrenceDate(
   return today;
 }
 
-function institutionalArchiveName(
+/** Extracts the routine date-anchor metadata from an optional delivery due date. */
+export function routineAnchorFromDueDate(
+  recurrenceType: RecurringDeliveryFrequency,
+  dueDate: string | null,
+): { recurrenceUnit: string | null; recurrenceDays: string } {
+  if (!dueDate) {
+    return { recurrenceUnit: null, recurrenceDays: "[]" };
+  }
+  if (recurrenceType === "weekly") {
+    const weekday = new Date(`${dueDate}T00:00:00.000Z`).getUTCDay();
+    return {
+      recurrenceUnit: RECURRENCE_ANCHOR_UNIT,
+      recurrenceDays: JSON.stringify([weekday]),
+    };
+  }
+  if (recurrenceType === "monthly") {
+    const dayOfMonth = Number(dueDate.slice(8, 10));
+    return {
+      recurrenceUnit: RECURRENCE_ANCHOR_UNIT,
+      recurrenceDays: JSON.stringify([dayOfMonth]),
+    };
+  }
+  return {
+    recurrenceUnit: RECURRENCE_ANCHOR_UNIT,
+    recurrenceDays: "[]",
+  };
+}
+
+/** Computes the next cycle occurrence date (>= today) respecting an optional due-date anchor. */
+export function nextCycleOccurrenceDate(
+  recurrenceType: RecurringDeliveryFrequency,
+  today: string,
+  recurrenceUnit: string | null,
+  recurrenceDays: string,
+): string {
+  if (recurrenceUnit !== RECURRENCE_ANCHOR_UNIT) {
+    return institutionalOccurrenceDate(recurrenceType, today);
+  }
+  if (recurrenceType === "daily") return today;
+  const days = parseJson<number[]>(recurrenceDays, []);
+  const current = new Date(`${today}T00:00:00.000Z`);
+  if (recurrenceType === "weekly") {
+    const anchorWeekday =
+      typeof days[0] === "number" && days[0] >= 0 && days[0] <= 6 ? days[0] : 5;
+    return addDays(today, (anchorWeekday - current.getUTCDay() + 7) % 7);
+  }
+  const anchorDay =
+    typeof days[0] === "number" && days[0] >= 1 && days[0] <= 31 ? days[0] : 1;
+  const thisMonth = clampedDayOfMonth(
+    current.getUTCFullYear(),
+    current.getUTCMonth(),
+    anchorDay,
+  );
+  if (today <= thisMonth) return thisMonth;
+  return clampedDayOfMonth(
+    current.getUTCFullYear(),
+    current.getUTCMonth() + 1,
+    anchorDay,
+  );
+}
+
+/** Computes the initial routine occurrence date when creating or re-anchoring a recurring delivery. */
+export function initialRoutineOccurrenceDate(
+  recurrenceType: RecurringDeliveryFrequency,
+  dueDate: string | null,
+  today: string,
+): string {
+  if (!dueDate) {
+    return institutionalOccurrenceDate(recurrenceType, today);
+  }
+  if (dueDate >= today) return dueDate;
+  const anchor = routineAnchorFromDueDate(recurrenceType, dueDate);
+  return nextCycleOccurrenceDate(
+    recurrenceType,
+    today,
+    anchor.recurrenceUnit,
+    anchor.recurrenceDays,
+  );
+}
+
+function recurringArchiveName(
   name: string,
   recurrenceType: InstitutionalRecurrence,
   occurrenceDate: string,
@@ -237,10 +321,9 @@ export async function materializeProjectRoutinesInTransaction(
   }
 }
 
-/** Copia os modelos do serviço como uma fotografia do contrato/projeto. */
-/** Rolls institutional deliveries forward. A delivery is archived as history
- * before a clean occurrence is made from its immutable routine snapshot. */
-async function rollInstitutionalProjectWeekInTransaction(
+/** Rolls recurring project deliveries forward. Each expired occurrence is
+ * archived as history before a clean occurrence is created from its routine. */
+async function rollRecurringProjectCyclesInTransaction(
   database: RoutineDatabase,
   workspaceId: string,
   project: {
@@ -272,90 +355,41 @@ async function rollInstitutionalProjectWeekInTransaction(
         ? routine.recurrenceType
         : "weekly";
     if (recurrenceType === "one_off") continue;
-    const occurrenceDate = institutionalOccurrenceDate(recurrenceType, today);
+    const occurrenceDate = nextCycleOccurrenceDate(
+      recurrenceType,
+      today,
+      routine.recurrenceUnit,
+      routine.recurrenceDays,
+    );
     if (project.endDate && occurrenceDate > project.endDate) continue;
-    const [existing] = await database
-      .select({ id: deliveries.id })
-      .from(deliveries)
-      .where(
-        and(
-          eq(deliveries.workspaceId, workspaceId),
-          eq(deliveries.projectRoutineId, routine.id),
-          eq(deliveries.routineOccurrenceDate, occurrenceDate),
-        ),
-      )
-      .limit(1);
-    if (!existing) {
-      const deliveryId = randomUUID();
-      await database.insert(deliveries).values({
-        id: deliveryId,
-        workspaceId,
-        projectId: project.id,
-        businessId: project.businessId,
-        projectRoutineId: routine.id,
-        routineOccurrenceDate: occurrenceDate,
-        name: routine.name,
-        description: routine.description,
-        categoryKey: routine.categoryKey,
-        priorityKey: routine.priorityKey,
-        statusKey: routine.statusKey,
-        dueDate: null,
-        sortOrder: 0,
-        boardOrder: {},
-        createdAt: now,
-        updatedAt: now,
-      });
-      const snapshots = parseJson<SnapshotTask[]>(routine.tasks, []);
-      const deliveryTasksSnapshot = snapshots.length
-        ? snapshots
-        : [{ name: "Concluir entrega", durationMinutes: 60, status: "pendente" }];
-      await database.insert(deliveryTasks).values(
-        deliveryTasksSnapshot.map((item, sortOrder) => ({
-          workspaceId,
-          deliveryId,
-          name: item.name,
-          durationMinutes: item.durationMinutes,
-          statusKey: item.status,
-          sortOrder,
-          createdAt: now,
-          updatedAt: now,
-        })),
-      );
-      const tagIds = parseJson<string[]>(routine.tagIds, []);
-      if (tagIds.length)
-        await database.insert(deliveryTags).values(
-          tagIds.map((tagId, sortOrder) => ({
-            workspaceId,
-            deliveryId,
-            tagId,
-            sortOrder,
-          })),
-        );
-      await database.insert(deliveryResponsibles).values({
-        workspaceId,
-        deliveryId,
-        userId: routine.responsibleUserId,
-        sortOrder: 0,
-      });
-    }
 
-    const expired = await database
-      .select({ id: deliveries.id, occurrenceDate: deliveries.routineOccurrenceDate })
+    const activeDeliveries = await database
+      .select({
+        id: deliveries.id,
+        occurrenceDate: deliveries.routineOccurrenceDate,
+        dueDate: deliveries.dueDate,
+      })
       .from(deliveries)
       .where(
         and(
           eq(deliveries.workspaceId, workspaceId),
           eq(deliveries.projectRoutineId, routine.id),
-          lt(deliveries.routineOccurrenceDate, occurrenceDate),
           isNull(deliveries.archivedAt),
         ),
       );
+
+    const expired = activeDeliveries.filter(
+      (delivery) =>
+        delivery.occurrenceDate !== null &&
+        delivery.occurrenceDate < occurrenceDate &&
+        (delivery.dueDate === null || delivery.dueDate < today),
+    );
     for (const delivery of expired) {
       if (!delivery.occurrenceDate) continue;
       await database
         .update(deliveries)
         .set({
-          name: institutionalArchiveName(
+          name: recurringArchiveName(
             routine.name,
             recurrenceType,
             delivery.occurrenceDate,
@@ -381,6 +415,78 @@ async function rollInstitutionalProjectWeekInTransaction(
             isNull(deliveryTasks.archivedAt),
           ),
         );
+    }
+
+    const hasRemainingActive = activeDeliveries.length > expired.length;
+    if (hasRemainingActive) continue;
+
+    const [existing] = await database
+      .select({ id: deliveries.id })
+      .from(deliveries)
+      .where(
+        and(
+          eq(deliveries.workspaceId, workspaceId),
+          eq(deliveries.projectRoutineId, routine.id),
+          eq(deliveries.routineOccurrenceDate, occurrenceDate),
+        ),
+      )
+      .limit(1);
+    if (!existing) {
+      const deliveryId = randomUUID();
+      await database.insert(deliveries).values({
+        id: deliveryId,
+        workspaceId,
+        projectId: project.id,
+        businessId: project.businessId,
+        projectRoutineId: routine.id,
+        routineOccurrenceDate: occurrenceDate,
+        name: routine.name,
+        description: routine.description,
+        categoryKey: routine.categoryKey,
+        priorityKey: routine.priorityKey,
+        statusKey: INITIAL_DELIVERY_STATUS,
+        dueDate:
+          routine.recurrenceUnit === RECURRENCE_ANCHOR_UNIT
+            ? occurrenceDate
+            : null,
+        sortOrder: 0,
+        boardOrder: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+      const snapshots = parseJson<SnapshotTask[]>(routine.tasks, []);
+      const deliveryTasksSnapshot = snapshots.length
+        ? snapshots
+        : [{ name: "Concluir entrega", durationMinutes: 60, status: "pendente" }];
+      await database.insert(deliveryTasks).values(
+        deliveryTasksSnapshot.map((item, sortOrder) => ({
+          workspaceId,
+          deliveryId,
+          name: item.name,
+          durationMinutes: item.durationMinutes,
+          executionAt: null,
+          statusKey: "pendente",
+          sortOrder,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      );
+      const tagIds = parseJson<string[]>(routine.tagIds, []);
+      if (tagIds.length)
+        await database.insert(deliveryTags).values(
+          tagIds.map((tagId, sortOrder) => ({
+            workspaceId,
+            deliveryId,
+            tagId,
+            sortOrder,
+          })),
+        );
+      await database.insert(deliveryResponsibles).values({
+        workspaceId,
+        deliveryId,
+        userId: routine.responsibleUserId,
+        sortOrder: 0,
+      });
     }
   }
 }
@@ -531,7 +637,7 @@ export async function materializeWorkspaceProjectRoutines(
       );
     for (const project of activeProjects) {
       if (project.contractType === "recurring") {
-        await rollInstitutionalProjectWeekInTransaction(
+        await rollRecurringProjectCyclesInTransaction(
           transaction,
           workspaceId,
           { ...project, startDate: project.startDate ?? today },

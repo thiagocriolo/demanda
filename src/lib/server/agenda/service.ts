@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type {
   AgendaMode,
   AgendaMoveInput,
@@ -17,12 +17,18 @@ import { appendDataChangeAuditLog } from "../authorization/audit";
 import { affectedRows, type Database } from "../db/database";
 import {
   agendaEntries,
+  projectDeliveryRoutines,
   projects,
   deliveries,
   deliveryTasks,
   workspaces,
   type AgendaEntityKind,
 } from "../db/schema";
+import {
+  initialRoutineOccurrenceDate,
+  routineAnchorFromDueDate,
+  type RecurringDeliveryFrequency,
+} from "../projects/project-routines";
 
 type AgendaDatabase = Pick<Database, "select" | "insert" | "update" | "delete">;
 
@@ -110,7 +116,6 @@ async function ensureAgendaEntries(
       and(
         eq(deliveries.workspaceId, workspaceId),
         eq(projects.isActive, true),
-        eq(projects.contractType, "one_off"),
         isNull(deliveries.archivedAt),
       ),
     )
@@ -334,6 +339,8 @@ export async function moveWorkspaceAgenda(
     assertCompleteOrder(rows, input);
 
     const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const propagateRoutineIds = new Set(input.propagateRoutineDeliveryIds ?? []);
     if (rows.length) {
       await transaction
         .update(agendaEntries)
@@ -353,10 +360,105 @@ export async function moveWorkspaceAgenda(
       const row = rowByEntityId.get(item.id)!;
       if (row.scheduledDate !== item.date) {
         if (kind === "delivery") {
+          let nextOccurrenceDate: string | null | undefined;
+          if (propagateRoutineIds.has(item.id)) {
+            const [deliveryRow] = await transaction
+              .select({
+                projectRoutineId: deliveries.projectRoutineId,
+                routineOccurrenceDate: deliveries.routineOccurrenceDate,
+              })
+              .from(deliveries)
+              .where(
+                and(
+                  eq(deliveries.workspaceId, workspaceId),
+                  eq(deliveries.id, item.id),
+                ),
+              )
+              .limit(1)
+              .for("update");
+            if (deliveryRow?.projectRoutineId) {
+              const [routineRow] = await transaction
+                .select({
+                  recurrenceType: projectDeliveryRoutines.recurrenceType,
+                })
+                .from(projectDeliveryRoutines)
+                .where(
+                  and(
+                    eq(projectDeliveryRoutines.workspaceId, workspaceId),
+                    eq(
+                      projectDeliveryRoutines.id,
+                      deliveryRow.projectRoutineId,
+                    ),
+                  ),
+                )
+                .limit(1)
+                .for("update");
+              if (
+                routineRow &&
+                (routineRow.recurrenceType === "daily" ||
+                  routineRow.recurrenceType === "weekly" ||
+                  routineRow.recurrenceType === "monthly")
+              ) {
+                const recurrenceType: RecurringDeliveryFrequency =
+                  routineRow.recurrenceType;
+                const anchor = routineAnchorFromDueDate(
+                  recurrenceType,
+                  item.date,
+                );
+                await transaction
+                  .update(projectDeliveryRoutines)
+                  .set({
+                    recurrenceUnit: anchor.recurrenceUnit,
+                    recurrenceDays: anchor.recurrenceDays,
+                    updatedAt: now,
+                  })
+                  .where(
+                    and(
+                      eq(projectDeliveryRoutines.workspaceId, workspaceId),
+                      eq(
+                        projectDeliveryRoutines.id,
+                        deliveryRow.projectRoutineId,
+                      ),
+                    ),
+                  );
+                const candidateOccurrence = initialRoutineOccurrenceDate(
+                  recurrenceType,
+                  item.date,
+                  today,
+                );
+                if (candidateOccurrence !== deliveryRow.routineOccurrenceDate) {
+                  const [collision] = await transaction
+                    .select({ id: deliveries.id })
+                    .from(deliveries)
+                    .where(
+                      and(
+                        eq(deliveries.workspaceId, workspaceId),
+                        eq(
+                          deliveries.projectRoutineId,
+                          deliveryRow.projectRoutineId,
+                        ),
+                        eq(
+                          deliveries.routineOccurrenceDate,
+                          candidateOccurrence,
+                        ),
+                        ne(deliveries.id, item.id),
+                      ),
+                    )
+                    .limit(1);
+                  if (!collision) {
+                    nextOccurrenceDate = candidateOccurrence;
+                  }
+                }
+              }
+            }
+          }
           await transaction
             .update(deliveries)
             .set({
               dueDate: item.date,
+              ...(nextOccurrenceDate !== undefined
+                ? { routineOccurrenceDate: nextOccurrenceDate }
+                : {}),
               version: sql`${deliveries.version} + 1`,
               updatedAt: now,
             })

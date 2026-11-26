@@ -183,6 +183,13 @@
       "when": 1794400000019,
       "tag": "0025_restore_one_off_institutional_dates",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1794400000020,
+      "tag": "0026_service_packages",
+      "breakpoints": true
     }
   ]
 }

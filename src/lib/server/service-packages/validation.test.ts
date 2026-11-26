@@ -1,0 +1,147 @@
+import { describe, expect, it } from "vitest";
+import { INSTITUTIONAL_PROJECT_NAME } from "../../projects/institutional";
+import {
+  contractServicePackageSelectionSchema,
+  normalizeServicePackageInput,
+  servicePackageMutationSchema,
+} from "./validation";
+
+describe("service package validation & normalization", () => {
+  it("aceita um serviço comercial mínimo sem projetos extras e injeta o Institucional automaticamente", () => {
+    const parsed = servicePackageMutationSchema.parse({
+      name: "Consultoria Express",
+      amountCents: 250_000,
+    });
+
+    const normalized = normalizeServicePackageInput(parsed);
+    expect(normalized.name).toBe("Consultoria Express");
+    expect(normalized.durationMonths).toBeNull();
+    expect(normalized.projects).toHaveLength(1);
+    expect(normalized.projects[0]?.isInstitutional).toBe(true);
+    expect(normalized.projects[0]?.name).toBe(INSTITUTIONAL_PROJECT_NAME);
+    expect(normalized.projects[0]?.deliveries).toEqual([]);
+  });
+
+  it("permite misturar projetos pontuais e recorrentes no mesmo serviço e normaliza recorrência", () => {
+    const parsed = servicePackageMutationSchema.parse({
+      name: "Assessoria Full",
+      durationMonths: 6,
+      projects: [
+        {
+          isInstitutional: true,
+          name: "Qualquer nome ignorado",
+          projectType: "recurring",
+          deliveries: [
+            {
+              name: "Reunião semanal",
+              recurrenceType: "weekly",
+              tasks: [{ name: "Alinhamento", durationMinutes: 60 }],
+            },
+          ],
+        },
+        {
+          isInstitutional: false,
+          name: "Onboarding",
+          projectType: "one_off",
+          durationDays: 15,
+          deliveries: [
+            {
+              name: "Kickoff",
+              // Mesmo que chegue weekly em um projeto pontual, é normalizado para one_off
+              recurrenceType: "weekly",
+              recurrenceDays: [1, 3],
+              tasks: [{ name: "Apresentação", durationMinutes: 90 }],
+            },
+          ],
+        },
+        {
+          isInstitutional: false,
+          name: "Social Media",
+          projectType: "recurring",
+          deliveries: [
+            {
+              name: "Calendário editorial",
+              recurrenceType: "custom",
+              recurrenceUnit: "week",
+              recurrenceDays: [5, 1, 1],
+              tasks: [{ name: "Roteiro", durationMinutes: 120 }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const normalized = normalizeServicePackageInput(parsed);
+    expect(normalized.projects).toHaveLength(3);
+    expect(normalized.projects[0]?.name).toBe(INSTITUTIONAL_PROJECT_NAME);
+    expect(normalized.projects[0]?.deliveries[0]?.recurrenceType).toBe("weekly");
+    expect(normalized.projects[1]?.projectType).toBe("one_off");
+    expect(normalized.projects[1]?.deliveries[0]?.recurrenceType).toBe("one_off");
+    expect(normalized.projects[1]?.deliveries[0]?.recurrenceDays).toEqual([]);
+    expect(normalized.projects[2]?.projectType).toBe("recurring");
+    expect(normalized.projects[2]?.deliveries[0]?.recurrenceDays).toEqual([1, 5]);
+  });
+
+  it("rejeita mais de 100 projetos no total (1 institucional + 99 explícitos)", () => {
+    const explicit = Array.from({ length: 100 }, (_, index) => ({
+      isInstitutional: false,
+      name: `Projeto ${index + 1}`,
+      projectType: "one_off" as const,
+      deliveries: [],
+    }));
+
+    const result = servicePackageMutationSchema.safeParse({
+      name: "Pacote gigante",
+      projects: explicit,
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejeita tarefa com duração fora de múltiplos de 30 minutos", () => {
+    const result = servicePackageMutationSchema.safeParse({
+      name: "Pacote",
+      projects: [
+        {
+          isInstitutional: false,
+          name: "Projeto 1",
+          projectType: "one_off",
+          deliveries: [
+            {
+              name: "Entrega 1",
+              tasks: [{ name: "Tarefa inválida", durationMinutes: 45 }],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("valida seleção de serviço no contrato com projetos e entregas customizados", () => {
+    const parsed = contractServicePackageSelectionSchema.parse({
+      packageId: "11111111-1111-4111-8111-111111111111",
+      responsibleUserId: "22222222-2222-4222-8222-222222222222",
+      customProjects: [
+        {
+          isInstitutional: false,
+          name: "Site institucional (ajustado)",
+          projectType: "one_off",
+          durationDays: 20,
+          responsibleUserId: "33333333-3333-4333-8333-333333333333",
+          deliveries: [
+            {
+              name: "Layout Home",
+              priority: "alta",
+              tasks: [{ name: "Protótipo Figma", durationMinutes: 120 }],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(parsed.customProjects).toHaveLength(1);
+    expect(parsed.customProjects?.[0]?.deliveries[0]?.name).toBe("Layout Home");
+  });
+});

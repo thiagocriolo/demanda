@@ -37,7 +37,7 @@ function deliveryRecord(overrides: Partial<EntityRecord>): EntityRecord {
 }
 
 describe("loadAgendaItems", () => {
-  it("exclui entregas de projetos recorrentes e projetos institucionais da agenda, mantendo entregas de projetos pontuais", () => {
+  it("exclui projetos institucionais da aba de projetos e inclui todas as entregas ativas marcando as recorrentes", () => {
     const regularProject = projectRecord({
       id: "project-regular",
       nome: "Campanha",
@@ -76,12 +76,16 @@ describe("loadAgendaItems", () => {
       id: "delivery-regular-recurring",
       projetoId: regularRecurringProject.id,
       projectWorkspaceId: "ws-1",
-      dataEntrega: "",
+      projectContractType: "recurring",
+      recurrence: "weekly",
+      dataEntrega: "2026-12-04",
     });
     const recurringInstitutionalDelivery = deliveryRecord({
       id: "delivery-inst-recurring",
       projetoId: recurringInstitutional.id,
       projectWorkspaceId: "ws-1",
+      projectContractType: "recurring",
+      recurrence: "weekly",
       dataEntrega: "",
     });
     const oneOffInstitutionalDelivery = deliveryRecord({
@@ -110,9 +114,11 @@ describe("loadAgendaItems", () => {
       regularProject.id,
       regularRecurringProject.id,
     ]);
-    expect(items.deliveries.map(({ id }) => id)).toEqual([
-      regularDelivery.id,
-      oneOffInstitutionalDelivery.id,
+    expect(items.deliveries.map(({ id, isRecurring }) => ({ id, isRecurring }))).toEqual([
+      { id: regularDelivery.id, isRecurring: false },
+      { id: regularRecurringDelivery.id, isRecurring: true },
+      { id: recurringInstitutionalDelivery.id, isRecurring: true },
+      { id: oneOffInstitutionalDelivery.id, isRecurring: false },
     ]);
   });
 });
