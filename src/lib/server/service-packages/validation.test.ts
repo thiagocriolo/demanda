@@ -22,7 +22,7 @@ describe("service package validation & normalization", () => {
     expect(normalized.projects[0]?.deliveries).toEqual([]);
   });
 
-  it("permite misturar projetos pontuais e recorrentes no mesmo serviço e normaliza recorrência", () => {
+  it("permite misturar projetos pontuais e recorrentes no mesmo serviço mantendo o Institucional sempre pontual", () => {
     const parsed = servicePackageMutationSchema.parse({
       name: "Assessoria Full",
       durationMonths: 6,
@@ -30,10 +30,10 @@ describe("service package validation & normalization", () => {
         {
           isInstitutional: true,
           name: "Qualquer nome ignorado",
-          projectType: "recurring",
+          projectType: "one_off",
           deliveries: [
             {
-              name: "Reunião semanal",
+              name: "Reunião de alinhamento",
               recurrenceType: "weekly",
               tasks: [{ name: "Alinhamento", durationMinutes: 60 }],
             },
@@ -74,12 +74,42 @@ describe("service package validation & normalization", () => {
     const normalized = normalizeServicePackageInput(parsed);
     expect(normalized.projects).toHaveLength(3);
     expect(normalized.projects[0]?.name).toBe(INSTITUTIONAL_PROJECT_NAME);
-    expect(normalized.projects[0]?.deliveries[0]?.recurrenceType).toBe("weekly");
+    expect(normalized.projects[0]?.projectType).toBe("one_off");
+    expect(normalized.projects[0]?.deliveries[0]?.recurrenceType).toBe("one_off");
     expect(normalized.projects[1]?.projectType).toBe("one_off");
     expect(normalized.projects[1]?.deliveries[0]?.recurrenceType).toBe("one_off");
     expect(normalized.projects[1]?.deliveries[0]?.recurrenceDays).toEqual([]);
     expect(normalized.projects[2]?.projectType).toBe("recurring");
     expect(normalized.projects[2]?.deliveries[0]?.recurrenceDays).toEqual([1, 5]);
+  });
+
+  it("rejeita projeto institucional marcado como recorrente em serviços e contratos", () => {
+    const serviceResult = servicePackageMutationSchema.safeParse({
+      name: "Serviço inválido",
+      projects: [
+        {
+          isInstitutional: true,
+          name: "Institucional",
+          projectType: "recurring",
+          deliveries: [],
+        },
+      ],
+    });
+    expect(serviceResult.success).toBe(false);
+
+    const contractResult = contractServicePackageSelectionSchema.safeParse({
+      packageId: "11111111-1111-4111-8111-111111111111",
+      responsibleUserId: "22222222-2222-4222-8222-222222222222",
+      customProjects: [
+        {
+          isInstitutional: true,
+          name: "Institucional",
+          projectType: "recurring",
+          deliveries: [],
+        },
+      ],
+    });
+    expect(contractResult.success).toBe(false);
   });
 
   it("rejeita mais de 100 projetos no total (1 institucional + 99 explícitos)", () => {

@@ -154,6 +154,10 @@ export const projects = applicationSchema.table(
       "projects_institutional_not_archived",
       sql`not ${table.isInstitutional} or ${table.archivedAt} is null`,
     ),
+    check(
+      "projects_institutional_always_one_off",
+      sql`not ${table.isInstitutional} or ${table.contractType} = 'one_off'`,
+    ),
   ],
 );
 

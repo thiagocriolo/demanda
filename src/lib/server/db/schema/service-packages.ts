@@ -116,6 +116,10 @@ export const servicePackageProjects = applicationSchema.table(
       sql`${table.projectType} in ('one_off', 'recurring')`,
     ),
     check(
+      "service_package_projects_institutional_always_one_off",
+      sql`not ${table.isInstitutional} or ${table.projectType} = 'one_off'`,
+    ),
+    check(
       "service_package_projects_duration_range",
       sql`${table.durationDays} is null or ${table.durationDays} between 1 and 3650`,
     ),

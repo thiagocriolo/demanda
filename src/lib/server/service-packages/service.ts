@@ -135,10 +135,23 @@ async function hydratePackages(
       isInstitutional: row.isInstitutional,
       name: row.isInstitutional ? INSTITUTIONAL_PROJECT_NAME : row.name,
       briefing: row.briefing,
-      projectType: row.projectType === "recurring" ? "recurring" : "one_off",
-      durationDays: row.durationDays ?? null,
+      projectType: row.isInstitutional
+        ? "one_off"
+        : row.projectType === "recurring"
+          ? "recurring"
+          : "one_off",
+      durationDays: row.isInstitutional ? null : (row.durationDays ?? null),
       sortOrder: row.sortOrder,
-      deliveries: deliveriesByProject.get(row.id) ?? [],
+      deliveries: (deliveriesByProject.get(row.id) ?? []).map((delivery) =>
+        row.isInstitutional
+          ? {
+              ...delivery,
+              recurrenceType: "one_off",
+              recurrenceUnit: null,
+              recurrenceDays: [],
+            }
+          : delivery,
+      ),
     });
     projectsByPackage.set(row.servicePackageId, list);
   }
@@ -183,14 +196,17 @@ async function writePackageChildren(
 
   for (const [projectIndex, project] of projectsInput.entries()) {
     const projectId = project.id || randomUUID();
+    const effectiveProjectType = project.isInstitutional
+      ? "one_off"
+      : project.projectType;
     projectRows.push({
       id: projectId,
       servicePackageId: packageId,
       isInstitutional: project.isInstitutional,
       name: project.isInstitutional ? INSTITUTIONAL_PROJECT_NAME : project.name,
       briefing: project.briefing,
-      projectType: project.projectType,
-      durationDays: project.durationDays,
+      projectType: effectiveProjectType,
+      durationDays: project.isInstitutional ? null : project.durationDays,
       sortOrder: projectIndex,
       createdAt: now,
       updatedAt: now,
@@ -198,6 +214,12 @@ async function writePackageChildren(
 
     for (const [deliveryIndex, delivery] of project.deliveries.entries()) {
       const deliveryId = delivery.id || randomUUID();
+      const rec = normalizeRecurrenceRule(
+        effectiveProjectType,
+        delivery.recurrenceType,
+        delivery.recurrenceUnit,
+        delivery.recurrenceDays,
+      );
       deliveryRows.push({
         id: deliveryId,
         servicePackageId: packageId,
@@ -205,9 +227,9 @@ async function writePackageChildren(
         name: delivery.name,
         description: delivery.description,
         priorityKey: delivery.priority,
-        recurrenceType: delivery.recurrenceType,
-        recurrenceUnit: delivery.recurrenceUnit,
-        recurrenceDays: JSON.stringify(delivery.recurrenceDays),
+        recurrenceType: rec.recurrenceType,
+        recurrenceUnit: rec.recurrenceUnit,
+        recurrenceDays: JSON.stringify(rec.recurrenceDays),
         sortOrder: deliveryIndex,
         createdAt: now,
         updatedAt: now,
@@ -569,38 +591,45 @@ export async function instantiateServicePackageForContractInTransaction(
   if (selection.customProjects) {
     selectedProjects = selection.customProjects
       .filter((project) => !(project.isInstitutional && project.deliveries.length === 0))
-      .map((project) => ({
-        id: project.id || randomUUID(),
-        isInstitutional: project.isInstitutional,
-        name: project.isInstitutional
-          ? INSTITUTIONAL_PROJECT_NAME
-          : project.name.trim(),
-        briefing: project.briefing.trim(),
-        projectType: project.projectType,
-        durationDays: project.durationDays ?? null,
-        responsibleUserId:
-          project.responsibleUserId ?? selection.responsibleUserId,
-        deliveries: project.deliveries.map((delivery) => {
-          const rec = normalizeRecurrenceRule(
-            project.projectType,
-            delivery.recurrenceType,
-            delivery.recurrenceUnit,
-            delivery.recurrenceDays,
-          );
-          return {
-            name: delivery.name.trim(),
-            description: delivery.description.trim(),
-            priority: delivery.priority || "normal",
-            recurrenceType: rec.recurrenceType,
-            recurrenceUnit: rec.recurrenceUnit,
-            recurrenceDays: rec.recurrenceDays,
-            tasks: delivery.tasks.map((task) => ({
-              name: task.name.trim(),
-              durationMinutes: task.durationMinutes,
-            })),
-          };
-        }),
-      }));
+      .map((project) => {
+        const effectiveType = project.isInstitutional
+          ? "one_off"
+          : project.projectType;
+        return {
+          id: project.id || randomUUID(),
+          isInstitutional: project.isInstitutional,
+          name: project.isInstitutional
+            ? INSTITUTIONAL_PROJECT_NAME
+            : project.name.trim(),
+          briefing: project.briefing.trim(),
+          projectType: effectiveType,
+          durationDays: project.isInstitutional
+            ? null
+            : (project.durationDays ?? null),
+          responsibleUserId:
+            project.responsibleUserId ?? selection.responsibleUserId,
+          deliveries: project.deliveries.map((delivery) => {
+            const rec = normalizeRecurrenceRule(
+              effectiveType,
+              delivery.recurrenceType,
+              delivery.recurrenceUnit,
+              delivery.recurrenceDays,
+            );
+            return {
+              name: delivery.name.trim(),
+              description: delivery.description.trim(),
+              priority: delivery.priority || "normal",
+              recurrenceType: rec.recurrenceType,
+              recurrenceUnit: rec.recurrenceUnit,
+              recurrenceDays: rec.recurrenceDays,
+              tasks: delivery.tasks.map((task) => ({
+                name: task.name.trim(),
+                durationMinutes: task.durationMinutes,
+              })),
+            };
+          }),
+        };
+      });
   } else {
     const includedSet = selection.includedProjectIds
       ? new Set(selection.includedProjectIds)
@@ -649,12 +678,13 @@ export async function instantiateServicePackageForContractInTransaction(
   for (const templateProject of selectedProjects) {
     const projectId = randomUUID();
     const projectResponsibleId = templateProject.responsibleUserId;
-    const isRecurringProject = templateProject.projectType === "recurring";
+    const effectiveProjectType = templateProject.isInstitutional
+      ? "one_off"
+      : templateProject.projectType;
+    const isRecurringProject = effectiveProjectType === "recurring";
     const projectStartDate = contract.startDate ?? baseStartDate;
     const projectEndDate = templateProject.isInstitutional
-      ? isRecurringProject
-        ? null
-        : contract.endDate
+      ? contract.endDate
       : templateProject.durationDays
         ? addDays(projectStartDate, templateProject.durationDays)
         : contract.endDate;
@@ -676,7 +706,7 @@ export async function instantiateServicePackageForContractInTransaction(
       startDate: projectStartDate,
       endDate: projectEndDate,
       engagementType: "personal",
-      contractType: templateProject.projectType,
+      contractType: effectiveProjectType,
       createdAt: now,
       updatedAt: now,
       archivedAt: null,

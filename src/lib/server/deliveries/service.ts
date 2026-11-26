@@ -491,6 +491,7 @@ async function validateAndLockProject(
       businessId: projects.businessId,
       engagementType: projects.engagementType,
       contractType: projects.contractType,
+      isInstitutional: projects.isInstitutional,
       projectArchivedAt: projects.archivedAt,
       businessArchivedAt: businesses.archivedAt,
     })
@@ -512,7 +513,7 @@ async function validateAndLockProject(
     projectId: row.projectId,
     businessId: row.businessId,
     engagementType: row.engagementType,
-    isRecurring: row.contractType === "recurring",
+    isRecurring: !row.isInstitutional && row.contractType === "recurring",
   };
 }
 
@@ -569,7 +570,7 @@ async function materializeInstitutionalProject(
       projectId: existing.projectId,
       businessId: existing.businessId,
       engagementType: existing.engagementType,
-      isRecurring: existing.contractType === "recurring",
+      isRecurring: false,
     };
   }
 

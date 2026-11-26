@@ -389,8 +389,11 @@
       included: true,
       name: project.name,
       briefing: project.briefing,
-      projectType: project.projectType,
-      durationDays: project.durationDays ? String(project.durationDays) : "",
+      projectType: project.isInstitutional ? "one_off" : project.projectType,
+      durationDays:
+        !project.isInstitutional && project.durationDays
+          ? String(project.durationDays)
+          : "",
       responsibleUserId: "",
       deliveries: project.deliveries.map((delivery) => ({
         localId: nextScopeId("del"),
@@ -398,9 +401,15 @@
         name: delivery.name,
         description: delivery.description,
         priority: delivery.priority || "normal",
-        recurrenceType: delivery.recurrenceType,
-        recurrenceUnit: delivery.recurrenceUnit,
-        recurrenceDays: [...delivery.recurrenceDays],
+        recurrenceType: project.isInstitutional
+          ? "one_off"
+          : delivery.recurrenceType,
+        recurrenceUnit: project.isInstitutional
+          ? null
+          : delivery.recurrenceUnit,
+        recurrenceDays: project.isInstitutional
+          ? []
+          : [...delivery.recurrenceDays],
         tasks: delivery.tasks.map((task) => ({
           localId: nextScopeId("task"),
           id: task.id,
@@ -702,6 +711,9 @@
       }
 
       const customProjects = includedProjects.map((project) => {
+        const effectiveType = project.isInstitutional
+          ? ("one_off" as const)
+          : project.projectType;
         const parsedDays =
           !project.isInstitutional && project.durationDays.trim()
             ? Number.parseInt(project.durationDays.trim(), 10)
@@ -711,7 +723,7 @@
           isInstitutional: project.isInstitutional,
           name: project.isInstitutional ? "Institucional" : project.name.trim(),
           briefing: project.briefing.trim(),
-          projectType: project.projectType,
+          projectType: effectiveType,
           durationDays:
             parsedDays && Number.isInteger(parsedDays) && parsedDays >= 1
               ? Math.min(3650, parsedDays)
@@ -726,16 +738,16 @@
             description: delivery.description.trim(),
             priority: delivery.priority || "normal",
             recurrenceType:
-              project.projectType === "recurring"
+              effectiveType === "recurring"
                 ? delivery.recurrenceType
                 : ("one_off" as const),
             recurrenceUnit:
-              project.projectType === "recurring" &&
+              effectiveType === "recurring" &&
               delivery.recurrenceType === "custom"
                 ? (delivery.recurrenceUnit ?? "week")
                 : null,
             recurrenceDays:
-              project.projectType === "recurring"
+              effectiveType === "recurring"
                 ? [...delivery.recurrenceDays]
                 : [],
             tasks: delivery.tasks
@@ -1407,7 +1419,9 @@
   <ContractDeliveryDraftModal
     delivery={editingDeliveryModal.delivery}
     projectName={editingDeliveryProject.name.trim() || "Projeto"}
-    projectType={editingDeliveryProject.projectType}
+    projectType={editingDeliveryProject.isInstitutional
+      ? "one_off"
+      : editingDeliveryProject.projectType}
     isNew={editingDeliveryModal.isNew}
     oncancel={() => (editingDeliveryModal = null)}
     onsave={saveDeliveryDraft}

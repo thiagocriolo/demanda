@@ -186,17 +186,26 @@
       isInstitutional: project.isInstitutional,
       name: project.isInstitutional ? INSTITUTIONAL_PROJECT_NAME : project.name,
       briefing: project.briefing,
-      projectType: project.projectType,
-      durationDays: project.durationDays ? String(project.durationDays) : "",
+      projectType: project.isInstitutional ? "one_off" : project.projectType,
+      durationDays:
+        !project.isInstitutional && project.durationDays
+          ? String(project.durationDays)
+          : "",
       deliveries: project.deliveries.map((delivery) => ({
         localId: nextLocalId("del"),
         id: delivery.id,
         name: delivery.name,
         description: delivery.description,
         priority: delivery.priority || "normal",
-        recurrenceType: delivery.recurrenceType,
-        recurrenceUnit: delivery.recurrenceUnit,
-        recurrenceDays: [...delivery.recurrenceDays],
+        recurrenceType: project.isInstitutional
+          ? "one_off"
+          : delivery.recurrenceType,
+        recurrenceUnit: project.isInstitutional
+          ? null
+          : delivery.recurrenceUnit,
+        recurrenceDays: project.isInstitutional
+          ? []
+          : [...delivery.recurrenceDays],
         tasks: delivery.tasks.map((task) => ({
           localId: nextLocalId("task"),
           id: task.id,
@@ -391,8 +400,11 @@
     project: DraftProject,
     nextType: ServiceProjectNature,
   ): void {
-    project.projectType = nextType;
-    if (nextType === "one_off") {
+    const resolvedType: ServiceProjectNature = project.isInstitutional
+      ? "one_off"
+      : nextType;
+    project.projectType = resolvedType;
+    if (resolvedType === "one_off") {
       for (const delivery of project.deliveries) {
         delivery.recurrenceType = "one_off";
         delivery.recurrenceUnit = null;
@@ -623,6 +635,10 @@
         return null;
       }
 
+      const effectiveProjectType: ServiceProjectNature = project.isInstitutional
+        ? "one_off"
+        : project.projectType;
+
       const deliveriesPayload = [];
       for (const delivery of project.deliveries) {
         const deliveryName = delivery.name.trim();
@@ -649,16 +665,18 @@
           description: delivery.description.trim(),
           priority: delivery.priority || "normal",
           recurrenceType:
-            project.projectType === "recurring"
+            effectiveProjectType === "recurring"
               ? delivery.recurrenceType
               : ("one_off" as const),
           recurrenceUnit:
-            project.projectType === "recurring" &&
+            effectiveProjectType === "recurring" &&
             delivery.recurrenceType === "custom"
               ? (delivery.recurrenceUnit ?? "week")
               : null,
           recurrenceDays:
-            project.projectType === "recurring" ? delivery.recurrenceDays : [],
+            effectiveProjectType === "recurring"
+              ? delivery.recurrenceDays
+              : [],
           tasks: tasksPayload,
         });
       }
@@ -670,7 +688,7 @@
           ? INSTITUTIONAL_PROJECT_NAME
           : project.name.trim(),
         briefing: project.briefing.trim(),
-        projectType: project.projectType,
+        projectType: effectiveProjectType,
         durationDays: durationDaysNum,
         deliveries: deliveriesPayload,
       });
@@ -919,15 +937,7 @@
                   <em class="rail-tag">Automático</em>
                 </span>
                 <small>
-                  <span
-                    class="mini-nature"
-                    class:recurring={institutionalProject.projectType ===
-                      "recurring"}
-                  >
-                    {institutionalProject.projectType === "recurring"
-                      ? "Recorrente"
-                      : "Pontual"}
-                  </span>
+                  <span class="mini-nature">Pontual</span>
                   · {institutionalProject.deliveries.length}
                   {institutionalProject.deliveries.length === 1
                     ? "ent."
@@ -1249,28 +1259,42 @@
             {:else}
               <p class="institutional-note">
                 O projeto Institucional acompanha automaticamente todo contrato
-                gerado a partir deste serviço. Use-o para entregas diretas sem
-                projeto específico ou deixe vazio.
+                gerado a partir deste serviço e é sempre pontual. Use-o para
+                entregas diretas sem projeto específico ou deixe vazio.
               </p>
             {/if}
 
             <div class="two-column-grid full">
-              <div class="control">
+              <div
+                class="control"
+                class:control--locked={activeProject.isInstitutional}
+              >
                 <span class="control-icon" aria-hidden="true">
                   <Repeat size={16} strokeWidth={1.8} />
                 </span>
-                <select
-                  aria-label="Frequência do projeto"
-                  value={activeProject.projectType}
-                  onchange={(event) =>
-                    setProjectType(
-                      activeProject,
-                      event.currentTarget.value as ServiceProjectNature,
-                    )}
-                >
-                  <option value="one_off">Pontual</option>
-                  <option value="recurring">Recorrente</option>
-                </select>
+                {#if activeProject.isInstitutional}
+                  <select
+                    aria-label="Frequência do projeto"
+                    value="one_off"
+                    disabled
+                    title="Projetos institucionais são sempre pontuais."
+                  >
+                    <option value="one_off">Pontual (fixo)</option>
+                  </select>
+                {:else}
+                  <select
+                    aria-label="Frequência do projeto"
+                    value={activeProject.projectType}
+                    onchange={(event) =>
+                      setProjectType(
+                        activeProject,
+                        event.currentTarget.value as ServiceProjectNature,
+                      )}
+                  >
+                    <option value="one_off">Pontual</option>
+                    <option value="recurring">Recorrente</option>
+                  </select>
+                {/if}
               </div>
 
               {#if !activeProject.isInstitutional}
@@ -2142,6 +2166,15 @@
 
   .control:focus-within {
     border-color: var(--primary);
+  }
+
+  .control--locked {
+    background: var(--canvas);
+    opacity: 0.78;
+  }
+
+  .control--locked select {
+    cursor: not-allowed;
   }
 
   .textarea-control {

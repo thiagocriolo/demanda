@@ -624,6 +624,7 @@ export async function materializeWorkspaceProjectRoutines(
       .select({
         id: projects.id,
         businessId: projects.businessId,
+        isInstitutional: projects.isInstitutional,
         contractType: projects.contractType,
         startDate: projects.startDate,
         endDate: projects.endDate,
@@ -636,7 +637,7 @@ export async function materializeWorkspaceProjectRoutines(
         ),
       );
     for (const project of activeProjects) {
-      if (project.contractType === "recurring") {
+      if (!project.isInstitutional && project.contractType === "recurring") {
         await rollRecurringProjectCyclesInTransaction(
           transaction,
           workspaceId,

@@ -718,22 +718,34 @@
               <div class="field">
                 <div
                   class="control"
-                  class:control--disabled={!viewOnly && frequencyLocked}
+                  class:control--disabled={!viewOnly &&
+                    (frequencyLocked || institutionalProject)}
                 >
                   <span class="control-icon" aria-hidden="true">
                     <Repeat size={15} strokeWidth={1.8} />
                   </span>
                   <select
                     name="contractType"
-                    disabled={viewOnly || frequencyLocked}
+                    disabled={viewOnly || frequencyLocked || institutionalProject}
                     aria-label="Frequência do projeto"
-                    title={hasOpenDeliveries
-                      ? "Não é possível alterar a frequência enquanto houver entregas em aberto."
-                      : undefined}
-                    bind:value={form.contractType}
+                    title={institutionalProject
+                      ? "Projetos institucionais são sempre pontuais."
+                      : hasOpenDeliveries
+                        ? "Não é possível alterar a frequência enquanto houver entregas em aberto."
+                        : undefined}
+                    value={institutionalProject ? "one_off" : form.contractType}
+                    onchange={(event) => {
+                      if (!institutionalProject) {
+                        form.contractType = event.currentTarget.value as
+                          | "one_off"
+                          | "recurring";
+                      }
+                    }}
                   >
                     <option value="one_off">Pontual</option>
-                    <option value="recurring">Recorrente</option>
+                    {#if !institutionalProject}
+                      <option value="recurring">Recorrente</option>
+                    {/if}
                   </select>
                 </div>
                 {#if resolvedMode === "edit" && hasOpenDeliveries}

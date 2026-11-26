@@ -94,6 +94,13 @@ export const servicePackageMutationSchema = z
       });
     }
     value.projects.forEach((project, index) => {
+      if (project.isInstitutional && project.projectType === "recurring") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Projetos institucionais são sempre pontuais.",
+          path: ["projects", index, "projectType"],
+        });
+      }
       if (!project.isInstitutional && !project.name.trim()) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -123,6 +130,13 @@ const customContractProjectInputSchema = projectInputSchema
   })
   .strict()
   .superRefine((project, ctx) => {
+    if (project.isInstitutional && project.projectType === "recurring") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Projetos institucionais são sempre pontuais.",
+        path: ["projectType"],
+      });
+    }
     if (!project.isInstitutional && !project.name.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -239,14 +253,22 @@ export function normalizeServicePackageInput(
         ...existingInstitutional,
         isInstitutional: true,
         name: INSTITUTIONAL_PROJECT_NAME,
+        projectType: "one_off",
+        durationDays: null,
         deliveries: existingInstitutional.deliveries.map((delivery) => ({
           ...delivery,
+          name: delivery.name.trim(),
+          description: delivery.description.trim(),
           ...normalizeRecurrenceRule(
-            existingInstitutional.projectType,
+            "one_off",
             delivery.recurrenceType,
             delivery.recurrenceUnit,
             delivery.recurrenceDays,
           ),
+          tasks: delivery.tasks.map((task) => ({
+            ...task,
+            name: task.name.trim(),
+          })),
         })),
       }
     : {

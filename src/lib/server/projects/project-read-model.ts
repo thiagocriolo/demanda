@@ -272,7 +272,9 @@ export async function hydrateProjects(
       briefing: row.briefing,
       tags: tagsByProject.get(row.id) ?? [],
       responsibles: responsiblesByProject.get(row.id) ?? [],
-      contractType: row.contractType as Project["contractType"],
+      contractType: row.isInstitutional
+        ? "one_off"
+        : (row.contractType as Project["contractType"]),
       amountCents: row.amountCents ?? 0,
       firstDueDate: row.firstDueDate,
       paymentMethod: row.paymentMethod ?? "",

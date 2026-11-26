@@ -51,8 +51,11 @@
   }
 
   function setNature(nextType: ServiceProjectNature): void {
-    project.projectType = nextType;
-    if (nextType === "one_off") {
+    const resolvedType: ServiceProjectNature = project.isInstitutional
+      ? "one_off"
+      : nextType;
+    project.projectType = resolvedType;
+    if (resolvedType === "one_off") {
       project.deliveries = project.deliveries.map((delivery) => ({
         ...delivery,
         recurrenceType: "one_off",
@@ -124,23 +127,35 @@
         {:else}
           <p class="inst-hint">
             Entregas diretas vinculadas ao projeto Institucional deste contrato.
+            Projetos institucionais são sempre pontuais.
           </p>
         {/if}
 
         <div class="two-col">
-          <div class="control">
+          <div class="control" class:control--locked={project.isInstitutional}>
             <span class="control-icon" aria-hidden="true">
               <Repeat size={15} strokeWidth={1.8} />
             </span>
-            <select
-              aria-label="Frequência do projeto"
-              value={project.projectType}
-              onchange={(event) =>
-                setNature(event.currentTarget.value as ServiceProjectNature)}
-            >
-              <option value="one_off">Pontual</option>
-              <option value="recurring">Recorrente</option>
-            </select>
+            {#if project.isInstitutional}
+              <select
+                aria-label="Frequência do projeto"
+                value="one_off"
+                disabled
+                title="Projetos institucionais são sempre pontuais."
+              >
+                <option value="one_off">Pontual (fixo)</option>
+              </select>
+            {:else}
+              <select
+                aria-label="Frequência do projeto"
+                value={project.projectType}
+                onchange={(event) =>
+                  setNature(event.currentTarget.value as ServiceProjectNature)}
+              >
+                <option value="one_off">Pontual</option>
+                <option value="recurring">Recorrente</option>
+              </select>
+            {/if}
           </div>
 
           {#if !project.isInstitutional}
@@ -442,6 +457,15 @@
 
   .control:focus-within {
     border-color: var(--primary);
+  }
+
+  .control--locked {
+    background: var(--canvas);
+    opacity: 0.78;
+  }
+
+  .control--locked select {
+    cursor: not-allowed;
   }
 
   .duration-control {

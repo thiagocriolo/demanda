@@ -210,8 +210,11 @@
   );
   let hasSelectedProject = $derived(Boolean(form.projetoId));
   let isRecurringProject = $derived.by(() => {
-    if (!form.projetoId) return false;
+    if (!form.projetoId || form.projetoId.startsWith("institutional:")) {
+      return false;
+    }
     if (selectedProject) {
+      if (selectedProject.isInstitutional === "true") return false;
       const frequency = text(
         selectedProject.contract_type,
         selectedProject.contractType,
@@ -222,6 +225,7 @@
       initialRecord?.projetoId &&
       form.projetoId === initialRecord.projetoId
     ) {
+      if (initialRecord.projectIsInstitutional === "true") return false;
       const initialFrequency = text(
         initialRecord.projectContractType,
         initialRecord.contract_type,

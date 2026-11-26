@@ -170,8 +170,7 @@ export function summarizeServicePackage(
     if (project.isInstitutional) {
       institutionalDeliveries += deliveryCount;
       if (deliveryCount > 0) {
-        if (project.projectType === "recurring") recurringProjects += 1;
-        else oneOffProjects += 1;
+        oneOffProjects += 1;
       }
     } else {
       explicitProjects += 1;
