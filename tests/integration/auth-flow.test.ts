@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
   authenticateAccount,
+  AccountAlreadyExistsError,
   InvalidCredentialsError,
   InvalidPasswordResetTokenError,
   issuePasswordReset,
@@ -53,6 +54,25 @@ async function cleanupCreatedUsers(): Promise<void> {
 describe("BE-03: fluxo real de autenticação", () => {
   afterEach(cleanupCreatedUsers);
   afterAll(() => pool.end());
+
+  it("rejeita e-mail ou username repetido sem alterar a conta existente", async () => {
+    const account = uniqueAccount();
+    const registration = await registerAccount(database, account);
+    createdUserIds.add(registration.user.id);
+    const other = uniqueAccount();
+    await expect(
+      registerAccount(database, { ...other, email: account.email }),
+    ).rejects.toBeInstanceOf(AccountAlreadyExistsError);
+    await expect(
+      registerAccount(database, { ...other, username: account.username }),
+    ).rejects.toBeInstanceOf(AccountAlreadyExistsError);
+    const login = await authenticateAccount(database, {
+      identifier: account.email,
+      password: account.password,
+      remembered: false,
+    });
+    expect(login.user.id).toBe(registration.user.id);
+  });
 
   it("cadastra, autentica, persiste apenas o hash e revoga sessões", async () => {
     const account = uniqueAccount();

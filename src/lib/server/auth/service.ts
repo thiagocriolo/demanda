@@ -62,7 +62,9 @@ export class InvalidCredentialsError extends Error {
 
 export class AccountAlreadyExistsError extends Error {
   constructor() {
-    super("Não foi possível criar a conta com os dados informados.");
+    super(
+      "Este usuário ou e-mail já está em uso. Entre na sua conta ou utilize outros dados.",
+    );
     this.name = "AccountAlreadyExistsError";
   }
 }
@@ -75,12 +77,20 @@ export class InvalidPasswordResetTokenError extends Error {
 }
 
 function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "23505"
-  );
+  const visited = new Set<unknown>();
+  let current = error;
+  while (current && typeof current === "object" && !visited.has(current)) {
+    visited.add(current);
+    const record = current as Record<string, unknown>;
+    if (
+      record.code === "ER_DUP_ENTRY" ||
+      record.errno === 1062 ||
+      record.code === "23505"
+    )
+      return true;
+    current = record.cause;
+  }
+  return false;
 }
 
 function asUser(row: typeof users.$inferSelect): AuthenticatedUser {
