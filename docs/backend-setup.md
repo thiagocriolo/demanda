@@ -58,6 +58,25 @@ npm run format:check # confere a formatação do repositório
 O build não abre conexão com o MySQL. A configuração é validada quando um
 serviço de banco é usado; `npm start` carrega `.env` antes de iniciar o SSR.
 
+## Banco novo na hospedagem Node.js
+
+Ao iniciar diretamente por `node build/index.js`, a primeira requisição cria
+automaticamente a estrutura completa se o banco estiver vazio. Configure
+`MYSQL_URL` com o banco novo e implante a versão atual da aplicação. O usuário
+MySQL precisa de permissão para criar tabelas, índices e chaves estrangeiras.
+O log informa `[runtime-schema] Empty database initialized.` ao concluir.
+
+O schema inicial é gerado das declarações atuais durante `npm run build` e
+incluído no servidor. Ele registra a versão correspondente das migrations,
+sem executar seeds ou criar contas de teste. Cadastre sua conta pela aplicação.
+Bancos existentes seguem o fluxo de atualização habitual; nenhuma tabela ou
+dado é apagado. Se a instalação for interrompida, a próxima requisição retoma
+as etapas pendentes, identificadas por `__demanda_schema_bootstrap`.
+
+`/health/live` verifica o processo e `/health/ready` verifica a conexão com o
+banco. A resposta desses endpoints não garante que o schema já foi instalado;
+confira também `/login` após o deploy.
+
 ## Arquivos privados
 
 Em desenvolvimento, mantenha no `.env`:

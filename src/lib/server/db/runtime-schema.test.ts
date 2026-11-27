@@ -55,6 +55,10 @@ function createFakeDatabase(catalog: FakeCatalog) {
       const normalized = text.replace(/\s+/g, " ").trim();
       executed.push({ text: normalized, params });
 
+      if (normalized.includes("from information_schema.tables")) {
+        return [[{ name: "users" }]];
+      }
+
       if (normalized.includes("select extra from information_schema.columns")) {
         const key = `${String(params[0])}.${String(params[1])}`;
         return [[{ extra: catalog.columnExtras?.get(key) ?? "" }]];

@@ -1,12 +1,13 @@
 import { sql } from "drizzle-orm";
 import { rawRows, type Database } from "./database";
+import { initializeEmptyDatabase } from "./bootstrap";
 
 type RuntimeSchemaGlobals = typeof globalThis & {
   __demandaRuntimeSchemaPromise?: Promise<void>;
   __demandaRuntimeSchemaVersion?: string;
 };
 
-const RUNTIME_SCHEMA_VERSION = "2026-11-27-institutional-index-v2";
+const RUNTIME_SCHEMA_VERSION = "2026-11-27-empty-database-v1";
 const runtimeSchemaGlobals = globalThis as RuntimeSchemaGlobals;
 
 /**
@@ -38,6 +39,7 @@ export function ensureRuntimeSchema(database: Database): Promise<void> {
 }
 
 export async function applyRuntimeSchema(database: Database): Promise<void> {
+  await initializeEmptyDatabase(database);
   await ensureServicePackagesSchema(database);
   await ensureContractsSchema(database);
 

@@ -312,10 +312,7 @@ export const socialPostComments = applicationSchema.table(
     postId: uuid("post_id")
       .notNull()
       .references(() => socialPosts.id, { onDelete: "cascade" }),
-    parentCommentId: uuid("parent_comment_id").references(
-      (): AnyMySqlColumn => socialPostComments.id,
-      { onDelete: "cascade" },
-    ),
+    parentCommentId: uuid("parent_comment_id"),
     authorUserId: uuid("author_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -329,6 +326,11 @@ export const socialPostComments = applicationSchema.table(
     }),
   },
   (table) => [
+    foreignKey({
+      name: "social_post_comments_parent_comment_fk",
+      columns: [table.parentCommentId],
+      foreignColumns: [table.id],
+    }).onDelete("cascade"),
     index("social_post_comments_post_created_index").on(
       table.postId,
       table.createdAt,
