@@ -241,7 +241,12 @@ function upToDateCatalog(): FakeCatalog {
 describe("applyRuntimeSchema", () => {
   it("garante tabelas, colunas, índices e chaves ausentes sem executar backfills de dados", async () => {
     const { database, executed } = createFakeDatabase({
-      tables: new Set(["deliveries", "delivery_tasks", "projects", "financial_entries"]),
+      tables: new Set([
+        "deliveries",
+        "delivery_tasks",
+        "projects",
+        "financial_entries",
+      ]),
       columns: new Set([
         "projects.is_active",
         "service_delivery_templates.recurrence_type",
@@ -357,7 +362,7 @@ describe("applyRuntimeSchema", () => {
     ).toHaveLength(2);
   });
 
-  it("ignora com segurança a criação da coluna gerada institutional_contract_id quando o MariaDB rejeita com errno 1901", async () => {
+  it("tenta VIRTUAL e cria o índice quando o MariaDB rejeita STORED com errno 1901", async () => {
     const catalog = upToDateCatalog();
     catalog.columns.delete("projects.institutional_contract_id");
     catalog.indexes.delete(
@@ -383,6 +388,30 @@ describe("applyRuntimeSchema", () => {
           q ===
           "ALTER TABLE `projects` ADD CONSTRAINT `projects_workspace_contract_institutional_unique` UNIQUE (`workspace_id`, `institutional_contract_id`)",
       ),
-    ).toBe(false);
+    ).toBe(true);
+    expect(texts.some((q) => q.endsWith("VIRTUAL"))).toBe(true);
+  });
+
+  it("mantém a aplicação disponível quando o banco rejeita STORED e o índice VIRTUAL", async () => {
+    const catalog = upToDateCatalog();
+    catalog.columns.delete("projects.institutional_contract_id");
+    catalog.indexes.delete(
+      "projects.projects_workspace_contract_institutional_unique",
+    );
+    catalog.columnExtras = new Map();
+    catalog.rejectStoredInstitutionalColumn = true;
+    catalog.rejectVirtualInstitutionalIndex = true;
+    const { database, executed } = createFakeDatabase(catalog);
+
+    await expect(applyRuntimeSchema(database)).resolves.toBeUndefined();
+
+    expect(
+      executed.some(({ text }) =>
+        text.startsWith("CREATE TABLE IF NOT EXISTS delivery_comments"),
+      ),
+    ).toBe(true);
+    expect(catalog.columnExtras.get("projects.institutional_contract_id")).toBe(
+      "VIRTUAL GENERATED",
+    );
   });
 });

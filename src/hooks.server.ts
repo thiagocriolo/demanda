@@ -1,9 +1,23 @@
 import { building } from "$app/environment";
-import type { Handle } from "@sveltejs/kit";
+import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { clearSessionCookie, getSessionCookie } from "$lib/server/auth/cookies";
 import { resolveAuthorizationContext } from "$lib/server/authorization/workspace-context";
 import { getDatabase } from "$lib/server/db";
 import { ensureRuntimeSchema } from "$lib/server/db/runtime-schema";
+import { describeServerError } from "$lib/server/observability/server-errors";
+
+export const handleError: HandleServerError = ({ error, event, status }) => {
+  console.error(
+    "[server-error]",
+    JSON.stringify({
+      method: event.request.method,
+      path: event.url.pathname,
+      route: event.route.id,
+      status,
+      errors: describeServerError(error),
+    }),
+  );
+};
 
 function withSecurityHeaders(response: Response): Response {
   response.headers.set("x-content-type-options", "nosniff");

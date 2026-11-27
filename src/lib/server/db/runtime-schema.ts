@@ -6,7 +6,7 @@ type RuntimeSchemaGlobals = typeof globalThis & {
   __demandaRuntimeSchemaVersion?: string;
 };
 
-const RUNTIME_SCHEMA_VERSION = "2026-11-25-service-packages-v1";
+const RUNTIME_SCHEMA_VERSION = "2026-11-27-institutional-index-v2";
 const runtimeSchemaGlobals = globalThis as RuntimeSchemaGlobals;
 
 /**
@@ -18,7 +18,8 @@ const runtimeSchemaGlobals = globalThis as RuntimeSchemaGlobals;
 export function ensureRuntimeSchema(database: Database): Promise<void> {
   if (
     !runtimeSchemaGlobals.__demandaRuntimeSchemaPromise ||
-    runtimeSchemaGlobals.__demandaRuntimeSchemaVersion !== RUNTIME_SCHEMA_VERSION
+    runtimeSchemaGlobals.__demandaRuntimeSchemaVersion !==
+      RUNTIME_SCHEMA_VERSION
   ) {
     runtimeSchemaGlobals.__demandaRuntimeSchemaVersion = RUNTIME_SCHEMA_VERSION;
     runtimeSchemaGlobals.__demandaRuntimeSchemaPromise = applyRuntimeSchema(
@@ -293,7 +294,12 @@ async function ensureContractsSchema(database: Database): Promise<void> {
     "is_active",
     "boolean NOT NULL DEFAULT true",
   );
-  await addColumnIfMissing(database, "projects", "contract_id", "char(36) NULL");
+  await addColumnIfMissing(
+    database,
+    "projects",
+    "contract_id",
+    "char(36) NULL",
+  );
   await addColumnIfMissing(
     database,
     "projects",
@@ -470,9 +476,9 @@ async function ensureInstitutionalContractUniqueIndex(
     // MariaDB/InnoDB can reject adding a STORED generated column referencing a
     // foreign-key column (errno 1901) or reject indexing a VIRTUAL generated
     // column whose base column participates in a foreign key (errno 3175).
-    // If an earlier deploy created the column as VIRTUAL, try recreating it as
-    // STORED once; otherwise skip the optional unique index instead of failing
-    // startup (application transactions enforce per-contract uniqueness).
+    // Try VIRTUAL when MariaDB rejects STORED, or STORED when MySQL rejects an
+    // index on an existing VIRTUAL column. If neither works, keep the optional
+    // index from blocking startup; application transactions also enforce this.
     const extra = await columnExtra(
       database,
       "projects",
@@ -506,11 +512,50 @@ async function ensureInstitutionalContractUniqueIndex(
       }
     }
 
+    if (
+      hasDatabaseErrno(firstError, 1901) &&
+      !(await columnExists(database, "projects", "institutional_contract_id"))
+    ) {
+      try {
+        await addColumnIfMissing(
+          database,
+          "projects",
+          "institutional_contract_id",
+          "char(36) GENERATED ALWAYS AS (case when `is_institutional` then `contract_id` else null end) VIRTUAL",
+        );
+        await addUniqueIndexIfMissing(
+          database,
+          "projects",
+          indexName,
+          "(`workspace_id`, `institutional_contract_id`)",
+        );
+        return;
+      } catch (retryError) {
+        console.warn(
+          "[runtime-schema] Skipping projects_workspace_contract_institutional_unique after VIRTUAL retry:",
+          describeDatabaseError(retryError),
+        );
+        return;
+      }
+    }
+
     console.warn(
       "[runtime-schema] Skipping projects_workspace_contract_institutional_unique:",
       describeDatabaseError(firstError),
     );
   }
+}
+
+function hasDatabaseErrno(error: unknown, errno: number): boolean {
+  const visited = new Set<unknown>();
+  let current = error;
+  while (current && typeof current === "object" && !visited.has(current)) {
+    visited.add(current);
+    const record = current as Record<string, unknown>;
+    if (record.errno === errno) return true;
+    current = record.cause;
+  }
+  return false;
 }
 
 async function columnExists(
