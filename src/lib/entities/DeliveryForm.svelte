@@ -63,6 +63,12 @@
   import { onMount, tick, untrack } from "svelte";
   import { recordPageHref } from "$lib/records/record-page";
   import type { EntityConfig, EntityRecord } from "./types";
+  import {
+    dateInputCaretPosition,
+    formatDateForDisplay,
+    formatDateInput,
+    normalizeDateInput,
+  } from "./date-format";
 
   type DeliveryFormState = {
     nome: string;
@@ -124,6 +130,7 @@
   }>();
 
   let formNode: HTMLFormElement;
+  let deliveryDateInput: HTMLInputElement | undefined;
   let categories = $state<StyledChoice[]>([]);
   let priorities = $state<Choice[]>([]);
   let statuses = $state<StyledChoice[]>([]);
@@ -457,8 +464,32 @@
       source?.prazo,
       source?.data,
     );
-    if (directDate) return directDate;
-    return "";
+    return formatDateForDisplay(directDate);
+  }
+
+  function handleDeliveryDateInput(event: Event): void {
+    const input = event.currentTarget as HTMLInputElement;
+    const rawValue = input.value;
+    const rawCaret = input.selectionStart;
+    const formatted = formatDateInput(rawValue);
+    if (input.value !== formatted) {
+      input.value = formatted;
+      const nextCaret = dateInputCaretPosition(rawValue, rawCaret, formatted);
+      input.setSelectionRange(nextCaret, nextCaret);
+    }
+    form.dataEntrega = formatted;
+    input.setCustomValidity("");
+  }
+
+  function handleDeliveryDatePickerChange(event: Event): void {
+    form.dataEntrega = formatDateForDisplay(
+      (event.currentTarget as HTMLInputElement).value,
+    );
+    deliveryDateInput?.setCustomValidity("");
+  }
+
+  function openDatePicker(event: MouseEvent): void {
+    (event.currentTarget as HTMLInputElement).showPicker?.();
   }
 
   function localExecutionAt(value: string): string {
@@ -918,6 +949,7 @@
     form.projetoId = "";
     form.projetoNome = "";
     form.dataEntrega = "";
+    deliveryDateInput?.setCustomValidity("");
     if (!contract) {
       selectedResponsibles = [];
       form.responsavelId = "";
@@ -1045,7 +1077,17 @@
     ) {
       return;
     }
+    const deliveryDate = normalizeDateInput(form.dataEntrega);
+    deliveryDateInput?.setCustomValidity(
+      deliveryDate === null
+        ? "Informe uma data de entrega válida no formato dd/mm/aaaa."
+        : "",
+    );
     if (!formNode.reportValidity()) return;
+    if (deliveryDate === null) {
+      deliveryDateInput?.focus();
+      return;
+    }
     if (!hasSelectedBusiness || !hasSelectedProject) return;
 
     const savedTasks = serializedTasks();
@@ -1117,10 +1159,10 @@
       responsibleUserIds: JSON.stringify(responsibleUserIds),
       tags: tagLabels.join(", "),
       tagLabels: JSON.stringify(tagLabels),
-      dataEntrega: form.dataEntrega,
-      data_entrega: form.dataEntrega,
-      dueDate: form.dataEntrega,
-      due_date: form.dataEntrega,
+      dataEntrega: deliveryDate,
+      data_entrega: deliveryDate,
+      dueDate: deliveryDate,
+      due_date: deliveryDate,
       recurrence: isRecurringProject ? form.recurrence : "",
       duracao,
       duration: duracao,
@@ -1332,7 +1374,6 @@
               />
 
               <div
-                class:date-control--empty={!form.dataEntrega}
                 class:control--disabled={!viewOnly && !hasSelectedProject}
                 class="control date-control"
               >
@@ -1340,21 +1381,30 @@
                   <CalendarDays size={16} strokeWidth={1.8} />
                 </span>
                 <input
-                  bind:value={form.dataEntrega}
+                  class="date-picker"
                   type="date"
+                  tabindex="-1"
+                  disabled={viewOnly || !hasSelectedProject}
+                  value={normalizeDateInput(form.dataEntrega) || ""}
+                  aria-label="Abrir calendário para a data de entrega"
+                  onclick={openDatePicker}
+                  onchange={handleDeliveryDatePickerChange}
+                />
+                <input
+                  bind:this={deliveryDateInput}
+                  type="text"
+                  name="dataEntrega"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  maxlength="10"
                   placeholder={hasSelectedProject
                     ? "Data de entrega"
                     : "Selecione um projeto primeiro"}
                   disabled={viewOnly || !hasSelectedProject}
                   aria-label="Data de entrega da entrega"
+                  value={form.dataEntrega}
+                  oninput={handleDeliveryDateInput}
                 />
-                {#if !form.dataEntrega}
-                  <span class="date-placeholder" aria-hidden="true"
-                    >{hasSelectedProject
-                      ? "Data de entrega"
-                      : "Selecione um projeto primeiro"}</span
-                  >
-                {/if}
               </div>
             </div>
 
@@ -1568,6 +1618,7 @@
                           bind:value={task.executionAt}
                           type="datetime-local"
                           aria-label="Data e hora de execução da tarefa"
+                          onclick={openDatePicker}
                         />
                       </label>
                     {/if}
@@ -2009,40 +2060,28 @@
     color: var(--muted);
   }
 
-  .date-control input,
-  .date-placeholder {
-    grid-column: 2;
-    grid-row: 1;
+  .date-control {
+    position: relative;
   }
 
-  .date-placeholder {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--muted);
-    font-size: var(--text-md);
-    font-weight: 400;
-    line-height: 1.45;
+  .date-control .control-icon {
     pointer-events: none;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
-  .date-control:focus-within .date-placeholder {
-    visibility: hidden;
+  .date-picker {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 42px;
+    min-width: 0;
+    opacity: 0;
+    cursor: pointer;
   }
 
-  .date-control--empty:not(:focus-within) input,
-  .view-mode .date-control--empty:not(:focus-within) input:disabled {
-    color: transparent;
-    -webkit-text-fill-color: transparent;
-  }
-
-  .date-control--empty:not(:focus-within) input::-webkit-datetime-edit,
-  .view-mode
-    .date-control--empty:not(:focus-within)
-    input:disabled::-webkit-datetime-edit {
-    color: transparent;
-    -webkit-text-fill-color: transparent;
+  .date-picker:disabled {
+    cursor: default;
   }
 
   .textarea-control .control-icon {
