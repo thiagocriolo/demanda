@@ -77,6 +77,14 @@ as etapas pendentes, identificadas por `__demanda_schema_bootstrap`.
 banco. A resposta desses endpoints não garante que o schema já foi instalado;
 confira também `/login` após o deploy.
 
+Se o HTML de uma página retorna 500 na hospedagem, mas seu `__data.json`
+responde normalmente, confira os limites de cabeçalhos do proxy. O SvelteKit 2
+gera um cabeçalho `Link` que pode ultrapassar 8 KiB nas páginas da aplicação.
+O hook remove esse cabeçalho de respostas HTML. Os links de CSS e os scripts de
+entrada continuam no documento, mas os módulos JavaScript passam a ser buscados
+pelos imports normais, sem os hints desse cabeçalho. APIs e redirecionamentos
+mantêm seus headers.
+
 ## Arquivos privados
 
 Em desenvolvimento, mantenha no `.env`:

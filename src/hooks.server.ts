@@ -4,6 +4,7 @@ import { clearSessionCookie, getSessionCookie } from "$lib/server/auth/cookies";
 import { resolveAuthorizationContext } from "$lib/server/authorization/workspace-context";
 import { getDatabase } from "$lib/server/db";
 import { ensureRuntimeSchema } from "$lib/server/db/runtime-schema";
+import { stripHtmlLinkHeader } from "$lib/server/http/response-headers";
 import { describeServerError } from "$lib/server/observability/server-errors";
 
 export const handleError: HandleServerError = ({ error, event, status }) => {
@@ -20,6 +21,7 @@ export const handleError: HandleServerError = ({ error, event, status }) => {
 };
 
 function withSecurityHeaders(response: Response): Response {
+  stripHtmlLinkHeader(response);
   response.headers.set("x-content-type-options", "nosniff");
   response.headers.set("x-frame-options", "SAMEORIGIN");
   response.headers.set("referrer-policy", "strict-origin-when-cross-origin");
