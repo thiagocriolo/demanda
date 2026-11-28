@@ -7,6 +7,48 @@ import {
 } from "./validation";
 
 describe("service package validation & normalization", () => {
+  it("mantém a cobrança financeira independente da recorrência dos projetos", () => {
+    const input = servicePackageMutationSchema.parse({
+      name: "Mensalidade com implantação",
+      contractType: "recurring",
+      projects: [
+        { name: "Implantação", projectType: "one_off", deliveries: [] },
+      ],
+    });
+    const result = normalizeServicePackageInput(input);
+    expect(result.contractType).toBe("recurring");
+    expect(result.projects[1].projectType).toBe("one_off");
+    expect(
+      servicePackageMutationSchema.parse({ name: "Existente" }).contractType,
+    ).toBe("one_off");
+    expect(
+      servicePackageMutationSchema.safeParse({
+        name: "Inválido",
+        contractType: "weekly",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("aceita escopo avulso sem pacote e exige uma origem ou escopo", () => {
+    const input = { responsibleUserId: "22222222-2222-4222-8222-222222222222" };
+    expect(contractServicePackageSelectionSchema.safeParse(input).success).toBe(
+      false,
+    );
+    expect(
+      contractServicePackageSelectionSchema.safeParse({
+        ...input,
+        customProjects: [],
+      }).success,
+    ).toBe(false);
+    const result = contractServicePackageSelectionSchema.parse({
+      ...input,
+      customProjects: [
+        { name: "Site", projectType: "one_off", deliveries: [] },
+      ],
+    });
+    expect(result.packageId).toBeUndefined();
+    expect(result.customProjects?.[0].name).toBe("Site");
+  });
   it("aceita um serviço comercial mínimo sem projetos extras e injeta o Institucional automaticamente", () => {
     const parsed = servicePackageMutationSchema.parse({
       name: "Consultoria Express",
@@ -75,12 +117,18 @@ describe("service package validation & normalization", () => {
     expect(normalized.projects).toHaveLength(3);
     expect(normalized.projects[0]?.name).toBe(INSTITUTIONAL_PROJECT_NAME);
     expect(normalized.projects[0]?.projectType).toBe("one_off");
-    expect(normalized.projects[0]?.deliveries[0]?.recurrenceType).toBe("one_off");
+    expect(normalized.projects[0]?.deliveries[0]?.recurrenceType).toBe(
+      "one_off",
+    );
     expect(normalized.projects[1]?.projectType).toBe("one_off");
-    expect(normalized.projects[1]?.deliveries[0]?.recurrenceType).toBe("one_off");
+    expect(normalized.projects[1]?.deliveries[0]?.recurrenceType).toBe(
+      "one_off",
+    );
     expect(normalized.projects[1]?.deliveries[0]?.recurrenceDays).toEqual([]);
     expect(normalized.projects[2]?.projectType).toBe("recurring");
-    expect(normalized.projects[2]?.deliveries[0]?.recurrenceDays).toEqual([1, 5]);
+    expect(normalized.projects[2]?.deliveries[0]?.recurrenceDays).toEqual([
+      1, 5,
+    ]);
   });
 
   it("rejeita projeto institucional marcado como recorrente em serviços e contratos", () => {

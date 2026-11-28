@@ -27,11 +27,13 @@
     categories,
     defaultDuration = "1",
     saving = false,
+    errorMessage = "",
     oncancel,
     onsave,
     ondelete,
   } = $props<{
     record?: DeliveryTemplate;
+    errorMessage?: string;
     categories: StyledChoice[];
     defaultDuration?: string;
     oncancel: () => void;
@@ -54,13 +56,11 @@
       return normalizedDuration(
         defaultDuration === value ? "1" : defaultDuration,
       );
-    const bounded = Math.min(8, Math.max(1, Math.round(parsed * 2) / 2));
+    const bounded = Math.min(168, Math.max(0.5, Math.round(parsed * 2) / 2));
     return Number.isInteger(bounded) ? String(bounded) : bounded.toFixed(1);
   }
 
-  function newTask(
-    values: Partial<DeliveryTemplateTask> = {},
-  ): DraftTask {
+  function newTask(values: Partial<DeliveryTemplateTask> = {}): DraftTask {
     sequence += 1;
     return {
       localId: `delivery-template-task-${sequence}`,
@@ -74,9 +74,7 @@
   function initialTasks(): DraftTask[] {
     const saved = initialRecord?.tasks ?? [];
     return saved.length
-      ? saved
-          .slice(0, 10)
-          .map((task: DeliveryTemplateTask) => newTask(task))
+      ? saved.map((task: DeliveryTemplateTask) => newTask(task))
       : [newTask()];
   }
 
@@ -96,7 +94,7 @@
   }
 
   async function addTask(): Promise<void> {
-    if (tasks.length >= 10) return;
+    if (tasks.length >= 30) return;
     const task = newTask();
     tasks = [...tasks, task];
     await tick();
@@ -115,7 +113,7 @@
       event.key !== "Enter" ||
       event.isComposing ||
       !task.nome.trim() ||
-      tasks.length >= 10
+      tasks.length >= 30
     )
       return;
 
@@ -141,7 +139,7 @@
 
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    if (!formNode.reportValidity()) return;
+    if (saving || !formNode.reportValidity()) return;
     const savedTasks: DeliveryTemplateTask[] = tasks
       .filter(({ nome }) => nome.trim())
       .map((task) => ({
@@ -156,10 +154,8 @@
       briefing: briefing.trim(),
       tasks: JSON.stringify(savedTasks),
       duration: String(
-        savedTasks.reduce(
-          (total, task) => total + Number(task.duracao),
-          0,
-        ) || "",
+        savedTasks.reduce((total, task) => total + Number(task.duracao), 0) ||
+          "",
       ),
     });
   }
@@ -189,6 +185,7 @@
       >
     </header>
 
+    {#if errorMessage}<p role="alert">{errorMessage}</p>{/if}
     <div class="template-modal-body">
       <form class="template-modal-form" bind:this={formNode} onsubmit={submit}>
         <section class="template-modal-section">
@@ -238,21 +235,18 @@
             <button
               class="template-modal-add"
               type="button"
-              disabled={tasks.length >= 10}
+              disabled={tasks.length >= 30}
               onclick={addTask}
             >
-              <Plus size={16} />{tasks.length >= 10
-                ? "Limite de 10 tarefas"
+              <Plus size={16} />{tasks.length >= 30
+                ? "Limite de 30 tarefas"
                 : "Adicionar tarefa"}
             </button>
           </div>
 
           <div class="template-modal-tasks">
             {#each tasks as task (task.localId)}
-              <div
-                class="template-modal-task"
-                data-task-id={task.localId}
-              >
+              <div class="template-modal-task" data-task-id={task.localId}>
                 <label
                   class:checked={completed(task)}
                   class="template-modal-check"
@@ -292,8 +286,8 @@
                   <input
                     bind:value={task.duracao}
                     type="number"
-                    min="1"
-                    max="8"
+                    min="0.5"
+                    max="168"
                     step="0.5"
                     required={Boolean(task.nome.trim())}
                     placeholder="Duração"

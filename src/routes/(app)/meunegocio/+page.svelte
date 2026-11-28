@@ -1,5 +1,9 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
+  import { page } from "$app/state";
+  import TabSystem from "$lib/ui/TabSystem.svelte";
+  import FilterBar from "$lib/ui/FilterBar.svelte";
+  import TemplateLibrary from "$lib/service-packages/TemplateLibrary.svelte";
   import { getContext, onMount } from "svelte";
   import {
     ENTITY_CREATE_CONTEXT,
@@ -17,17 +21,7 @@
   import ServiceCatalogCard from "$lib/service-packages/ServiceCatalogCard.svelte";
   import type { ServicePackage } from "$lib/service-packages/types";
   import PageHeader from "$lib/ui/PageHeader.svelte";
-  import {
-    Archive,
-    BriefcaseBusiness,
-    Layers,
-    Package,
-    Plus,
-    RefreshCw,
-    Search,
-  } from "@lucide/svelte";
-
-  type CatalogFilter = "active" | "archived";
+  import { BriefcaseBusiness, Package, Plus, RefreshCw } from "@lucide/svelte";
 
   const entityCreate = getContext<EntityCreateContext | undefined>(
     ENTITY_CREATE_CONTEXT,
@@ -36,8 +30,47 @@
   let packages = $state<ServicePackage[]>([]);
   let activeCount = $state(0);
   let archivedCount = $state(0);
-  let filter = $state<CatalogFilter>("active");
-  let query = $state("");
+  let activeTab = $state("contracts");
+  let library = $state<TemplateLibrary>();
+  const tabs = [
+    { id: "contracts", label: "Contratos" },
+    { id: "projects", label: "Projetos" },
+    { id: "deliveries", label: "Entregas" },
+  ];
+  let filters = $state<Record<string, string>>({
+    contracts: "active",
+    projects: "todos",
+    deliveries: "todos",
+  });
+  let queries = $state<Record<string, string>>({
+    contracts: "",
+    projects: "",
+    deliveries: "",
+  });
+  let filter = $derived(filters.contracts);
+  let query = $derived(queries.contracts);
+  let filterOptions = $derived(
+    activeTab === "contracts"
+      ? [
+          { value: "active", label: "Ativos", count: activeCount },
+          { value: "archived", label: "Arquivados", count: archivedCount },
+        ]
+      : activeTab === "projects"
+        ? [
+            { value: "todos", label: "Todos" },
+            { value: "one_off", label: "Pontuais" },
+            { value: "recurring", label: "Recorrentes" },
+          ]
+        : [
+            { value: "todos", label: "Todas" },
+            { value: "tasks", label: "Com tarefas" },
+            { value: "empty", label: "Sem tarefas" },
+          ],
+  );
+  $effect(() => {
+    const tab = page.url.searchParams.get("aba");
+    activeTab = tab === "projects" || tab === "deliveries" ? tab : "contracts";
+  });
   let loading = $state(true);
   let errorMessage = $state("");
   let actionMessage = $state("");
@@ -162,119 +195,131 @@
 <section class="services-catalog" aria-label="Catálogo de serviços">
   <PageHeader eyebrow="Meu negócio" title="Serviços" icon={BriefcaseBusiness}>
     {#snippet actions()}
-      <a class="create-service-btn" href="/meunegocio/novo">
-        <Plus size={17} strokeWidth={2.2} />
-        <span>Novo serviço</span>
-      </a>
+      {#if activeTab === "contracts"}
+        <a class="create-service-btn" href="/meunegocio/novo"
+          ><Plus size={17} /><span>Novo serviço</span></a
+        >
+      {:else}
+        <button
+          class="create-service-btn"
+          type="button"
+          disabled={!library?.canCreate()}
+          onclick={() => library?.create()}
+          ><Plus size={17} /><span
+            >Novo modelo de {activeTab === "projects"
+              ? "projeto"
+              : "entrega"}</span
+          ></button
+        >
+      {/if}
     {/snippet}
   </PageHeader>
 
-  <div class="catalog-toolbar">
-    <div class="filter-pills" role="tablist" aria-label="Filtrar serviços">
-      <button
-        type="button"
-        role="tab"
-        aria-selected={filter === "active"}
-        class:active={filter === "active"}
-        onclick={() => (filter = "active")}
-      >
-        <Layers size={14} strokeWidth={2} />
-        <span>Ativos</span>
-        <strong>{activeCount}</strong>
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={filter === "archived"}
-        class:active={filter === "archived"}
-        onclick={() => (filter = "archived")}
-      >
-        <Archive size={14} strokeWidth={2} />
-        <span>Arquivados</span>
-        <strong>{archivedCount}</strong>
-      </button>
-    </div>
-
-    <label class="search-box">
-      <Search size={15} strokeWidth={2} />
-      <input
-        type="search"
-        bind:value={query}
-        placeholder="Buscar serviço ou projeto do pacote..."
-        aria-label="Buscar serviços"
+  <TabSystem
+    items={tabs}
+    bind:value={activeTab}
+    onchange={(tab) =>
+      void goto(`/meunegocio?aba=${tab}`, { keepFocus: true, noScroll: true })}
+    ariaLabel="Tipos de modelos de serviço"
+    idPrefix="services"
+    class="records-page records-tab-system"
+    tabListClass="records-tabs"
+    tabClass="records-tab"
+    panelClass="records-panel"
+  >
+    <div class="records-filters">
+      <FilterBar
+        options={filterOptions}
+        bind:selected={filters[activeTab]}
+        bind:query={queries[activeTab]}
+        placeholder={activeTab === "contracts"
+          ? "Buscar serviço ou projeto do pacote..."
+          : "Buscar modelos..."}
+        showTitle={false}
       />
-    </label>
-  </div>
-
-  {#if actionMessage}
-    <p class="catalog-notice" role="status">{actionMessage}</p>
-  {/if}
-
-  {#if errorMessage}
-    <div class="catalog-state catalog-state--error" role="alert">
-      <strong>Não foi possível carregar os serviços</strong>
-      <p>{errorMessage}</p>
-      <button
-        type="button"
-        class="retry-btn"
-        onclick={() => void loadPackages()}
-      >
-        <RefreshCw size={15} />
-        <span>Tentar novamente</span>
-      </button>
     </div>
-  {:else if loading && packages.length === 0}
-    <div class="catalog-state" role="status">
-      <strong>Carregando catálogo de serviços…</strong>
-      <p>Buscando seus modelos de pacotes e estruturas.</p>
-    </div>
-  {:else if visiblePackages.length === 0}
-    <div class="catalog-state">
-      <span class="empty-emblem" aria-hidden="true">
-        <Package size={24} strokeWidth={1.7} />
-      </span>
-      <strong>
-        {#if packages.length === 0}
-          Crie seu primeiro pacote de serviço
-        {:else if filter === "archived"}
-          Nenhum serviço arquivado
-        {:else}
-          Nenhum serviço encontrado para esta busca
-        {/if}
-      </strong>
-      <p>
-        {#if packages.length === 0}
-          Estruture a base comercial e, quando quiser, adicione até 100 projetos
-          com suas entregas e tarefas. Depois é só aplicar em qualquer novo
-          contrato.
-        {:else}
-          Ajuste o termo de busca ou alterne entre ativos e arquivados.
-        {/if}
-      </p>
-      {#if packages.length === 0}
-        <a class="create-service-btn" href="/meunegocio/novo">
-          <Plus size={16} strokeWidth={2.2} />
-          <span>Montar primeiro serviço</span>
-        </a>
+    {#if activeTab === "contracts"}
+      {#if actionMessage}
+        <p class="catalog-notice" role="status">{actionMessage}</p>
       {/if}
-    </div>
-  {:else}
-    <div class="catalog-grid">
-      {#each visiblePackages as pkg (pkg.id)}
-        <ServiceCatalogCard
-          {pkg}
-          onopen={() => openStudio(pkg)}
-          onuse={() => useService(pkg)}
-          onduplicate={() => void handleDuplicate(pkg)}
-          onarchive={() => void handleToggleArchive(pkg)}
-          ondelete={() => void handleDelete(pkg)}
-        />
-      {/each}
-    </div>
-  {/if}
+
+      {#if errorMessage}
+        <div class="catalog-state catalog-state--error" role="alert">
+          <strong>Não foi possível carregar os serviços</strong>
+          <p>{errorMessage}</p>
+          <button
+            type="button"
+            class="retry-btn"
+            onclick={() => void loadPackages()}
+          >
+            <RefreshCw size={15} />
+            <span>Tentar novamente</span>
+          </button>
+        </div>
+      {:else if loading && packages.length === 0}
+        <div class="catalog-state" role="status">
+          <strong>Carregando catálogo de serviços…</strong>
+          <p>Buscando seus modelos de pacotes e estruturas.</p>
+        </div>
+      {:else if visiblePackages.length === 0}
+        <div class="catalog-state">
+          <span class="empty-emblem" aria-hidden="true">
+            <Package size={24} strokeWidth={1.7} />
+          </span>
+          <strong>
+            {#if packages.length === 0}
+              Crie seu primeiro pacote de serviço
+            {:else if filter === "archived"}
+              Nenhum serviço arquivado
+            {:else}
+              Nenhum serviço encontrado para esta busca
+            {/if}
+          </strong>
+          <p>
+            {#if packages.length === 0}
+              Estruture a base comercial e, quando quiser, adicione até 100
+              projetos com suas entregas e tarefas. Depois é só aplicar em
+              qualquer novo contrato.
+            {:else}
+              Ajuste o termo de busca ou alterne entre ativos e arquivados.
+            {/if}
+          </p>
+          {#if packages.length === 0}
+            <a class="create-service-btn" href="/meunegocio/novo">
+              <Plus size={16} strokeWidth={2.2} />
+              <span>Montar primeiro serviço</span>
+            </a>
+          {/if}
+        </div>
+      {:else}
+        <div class="catalog-grid">
+          {#each visiblePackages as pkg (pkg.id)}
+            <ServiceCatalogCard
+              {pkg}
+              onopen={() => openStudio(pkg)}
+              onuse={() => useService(pkg)}
+              onduplicate={() => void handleDuplicate(pkg)}
+              onarchive={() => void handleToggleArchive(pkg)}
+              ondelete={() => void handleDelete(pkg)}
+            />
+          {/each}
+        </div>
+      {/if}
+    {:else}
+      {#key activeTab}<TemplateLibrary
+          bind:this={library}
+          kind={activeTab === "projects" ? "projects" : "deliveries"}
+          query={queries[activeTab]}
+          filter={filters[activeTab]}
+        />{/key}
+    {/if}
+  </TabSystem>
 </section>
 
 <style>
+  .records-filters {
+    margin-bottom: 16px;
+  }
   .services-catalog {
     display: grid;
     gap: 16px;
@@ -308,90 +353,14 @@
       border-color var(--motion-fast) ease;
   }
 
+  .create-service-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
   .create-service-btn:hover {
     border-color: var(--brand-700);
     background: var(--brand-700);
-  }
-
-  .catalog-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
-  .filter-pills {
-    display: inline-flex;
-    gap: 6px;
-    padding: 4px;
-    border: 1px solid var(--border);
-    border-radius: 13px;
-    background: var(--panel);
-  }
-
-  .filter-pills button {
-    display: inline-flex;
-    min-height: 34px;
-    align-items: center;
-    gap: 7px;
-    padding: 0 12px;
-    border: 1px solid transparent;
-    border-radius: 9px;
-    color: var(--ink-500);
-    background: transparent;
-    font: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .filter-pills button strong {
-    padding: 1px 6px;
-    border-radius: var(--radius-pill);
-    background: var(--canvas);
-    color: var(--ink-700);
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .filter-pills button.active {
-    border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
-    color: var(--brand-600);
-    background: var(--brand-50);
-  }
-
-  .filter-pills button.active strong {
-    color: var(--brand-700);
-    background: var(--panel);
-  }
-
-  .search-box {
-    display: flex;
-    min-height: 42px;
-    width: min(360px, 100%);
-    align-items: center;
-    gap: 9px;
-    padding: 0 14px;
-    border: 1px solid var(--border);
-    border-radius: 13px;
-    color: var(--ink-400);
-    background: var(--panel);
-  }
-
-  .search-box:focus-within {
-    border-color: var(--brand-500);
-    box-shadow: var(--focus-ring);
-  }
-
-  .search-box input {
-    width: 100%;
-    border: 0;
-    color: var(--ink-950);
-    background: transparent;
-    font: inherit;
-    font-size: 13.5px;
-    outline: 0;
   }
 
   .catalog-notice {

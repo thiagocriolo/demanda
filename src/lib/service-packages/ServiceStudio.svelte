@@ -43,11 +43,10 @@
   import {
     createServicePackage,
     deleteServicePackage,
-    listServicePackages,
     ServicePackageApiError,
     updateServicePackage,
   } from "./client";
-  import DeliveryImportModal from "./DeliveryImportModal.svelte";
+  import ScopeImportModal from "./ScopeImportModal.svelte";
   import {
     formatRecurrenceLabel,
     formatServiceHours,
@@ -58,7 +57,8 @@
     type ServiceDeliveryRecurrenceType,
     type ServiceDeliveryRecurrenceUnit,
     type ServicePackage,
-    type ServicePackageDelivery,
+    type ServicePackageDeliveryInput,
+    type ServicePackageProjectInput,
     type ServicePackageMutationInput,
     type ServiceProjectNature,
   } from "./types";
@@ -99,6 +99,7 @@
     icon: string;
     color: string;
     amount: string;
+    contractType: "one_off" | "recurring";
     durationMonths: string;
     installmentCount: string;
     paymentMethod: string;
@@ -130,8 +131,7 @@
     return (
       colorOptions.find(
         (option) =>
-          option.value === value ||
-          option.color.toLocaleLowerCase() === lower,
+          option.value === value || option.color.toLocaleLowerCase() === lower,
       )?.value ?? "blue"
     );
   }
@@ -172,6 +172,7 @@
         icon: "package",
         color: "blue",
         amount: "",
+        contractType: "one_off",
         durationMonths: "",
         installmentCount: "1",
         paymentMethod: "",
@@ -225,6 +226,7 @@
       icon: pkg.icon || "package",
       color: normalizeColorKey(pkg.color),
       amount: pkg.amountCents > 0 ? centsToMoney(pkg.amountCents) : "",
+      contractType: pkg.contractType,
       durationMonths: pkg.durationMonths ? String(pkg.durationMonths) : "",
       installmentCount: String(Math.max(1, pkg.installmentCount || 1)),
       paymentMethod: pkg.paymentMethod,
@@ -249,7 +251,7 @@
   let saveSuccess = $state("");
   let savedSnapshot = $state(JSON.stringify(initialDraft));
   let importModalOpen = $state(false);
-  let allUserPackages = $state<ServicePackage[]>([]);
+  let importKind = $state<"projects" | "deliveries">("deliveries");
 
   const accent = $derived(resolveColor(draft.color));
   const amountCents = $derived(moneyToCents(draft.amount));
@@ -383,11 +385,7 @@
       (item) => item.localId === project.localId,
     );
     const targetIndex = currentIndex + delta;
-    if (
-      currentIndex < 0 ||
-      targetIndex < 0 ||
-      targetIndex >= explicit.length
-    ) {
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= explicit.length) {
       return;
     }
     const reordered = [...explicit];
@@ -502,7 +500,8 @@
     } else if (type === "custom") {
       delivery.recurrenceUnit ??= "week";
       if (!delivery.recurrenceDays.length) {
-        delivery.recurrenceDays = delivery.recurrenceUnit === "month" ? [1] : [1];
+        delivery.recurrenceDays =
+          delivery.recurrenceUnit === "month" ? [1] : [1];
       }
     } else {
       delivery.recurrenceUnit = null;
@@ -552,7 +551,7 @@
     delivery.tasks = delivery.tasks.filter((task) => task.localId !== localId);
   }
 
-  function handleImportedDelivery(source: ServicePackageDelivery): void {
+  function handleImportedDelivery(source: ServicePackageDeliveryInput): void {
     if (!activeProject || activeProject.deliveries.length >= 100) return;
     const isRecurring = activeProject.projectType === "recurring";
     const copy: DraftDelivery = {
@@ -574,14 +573,40 @@
     importModalOpen = false;
   }
 
-  async function openImportModal(): Promise<void> {
+  function handleImportedProject(source: ServicePackageProjectInput): void {
+    if (explicitProjects.length >= MAX_EXPLICIT_SERVICE_PROJECTS) return;
+    const project: DraftProject = {
+      localId: nextLocalId("proj"),
+      isInstitutional: false,
+      name: source.name,
+      briefing: source.briefing,
+      projectType: source.projectType,
+      durationDays: source.durationDays ? String(source.durationDays) : "",
+      deliveries: source.deliveries.map((delivery) => ({
+        localId: nextLocalId("del"),
+        name: delivery.name,
+        description: delivery.description,
+        priority: delivery.priority,
+        recurrenceType: delivery.recurrenceType,
+        recurrenceUnit: delivery.recurrenceUnit,
+        recurrenceDays: [...delivery.recurrenceDays],
+        tasks: delivery.tasks.map((task) => ({
+          localId: nextLocalId("task"),
+          name: task.name,
+          durationHours: minutesToHoursString(task.durationMinutes),
+        })),
+      })),
+    };
+    draft.projects = [...draft.projects, project];
+    selectedSection = project.localId;
+    saveSuccess = "";
+  }
+
+  function openImportModal(
+    kind: "projects" | "deliveries" = "deliveries",
+  ): void {
+    importKind = kind;
     importModalOpen = true;
-    try {
-      const response = await listServicePackages({ archived: "include" });
-      allUserPackages = response.items;
-    } catch {
-      allUserPackages = [];
-    }
   }
 
   function buildPayload(): ServicePackageMutationInput | null {
@@ -674,9 +699,7 @@
               ? (delivery.recurrenceUnit ?? "week")
               : null,
           recurrenceDays:
-            effectiveProjectType === "recurring"
-              ? delivery.recurrenceDays
-              : [],
+            effectiveProjectType === "recurring" ? delivery.recurrenceDays : [],
           tasks: tasksPayload,
         });
       }
@@ -700,6 +723,7 @@
       icon: draft.icon || "package",
       color: draft.color || "blue",
       amountCents,
+      contractType: draft.contractType,
       durationMonths: durationMonthsNum,
       installmentCount,
       paymentMethod: draft.paymentMethod.trim(),
@@ -884,9 +908,13 @@
           <span class="rail-copy">
             <strong>Contrato</strong>
             <small>
-              {amountCents > 0 ? formatServiceMoney(amountCents) : "Valor livre"}
+              {amountCents > 0
+                ? formatServiceMoney(amountCents)
+                : "Valor livre"}
               ·
-              {draft.durationMonths ? `${draft.durationMonths} meses` : "Sem prazo"}
+              {draft.durationMonths
+                ? `${draft.durationMonths} meses`
+                : "Sem prazo"}
             </small>
           </span>
         </button>
@@ -908,6 +936,15 @@
           </button>
         </div>
 
+        <button
+          type="button"
+          class="btn-secondary"
+          disabled={explicitProjects.length >= MAX_EXPLICIT_SERVICE_PROJECTS}
+          onclick={() => openImportModal("projects")}
+          ><Download size={14} /><span>Selecionar projeto existente</span
+          ></button
+        >
+
         {#if explicitProjects.length >= 5}
           <div class="rail-search">
             <Search size={14} />
@@ -921,7 +958,9 @@
         {/if}
 
         <div class="rail-project-list">
-          {#if !projectSearch.trim() || "institucional".includes(projectSearch.trim().toLocaleLowerCase("pt-BR"))}
+          {#if !projectSearch.trim() || "institucional".includes(projectSearch
+                .trim()
+                .toLocaleLowerCase("pt-BR"))}
             <button
               type="button"
               class="rail-item rail-item--inst"
@@ -942,13 +981,17 @@
                   {institutionalProject.deliveries.length === 1
                     ? "ent."
                     : "ents."} ·
-                  {formatServiceHours(projectTotalMinutes(institutionalProject))}
+                  {formatServiceHours(
+                    projectTotalMinutes(institutionalProject),
+                  )}
                 </small>
               </span>
             </button>
           {/if}
 
-          {#if filteredExplicitProjects.length === 0 && projectSearch.trim() && !"institucional".includes(projectSearch.trim().toLocaleLowerCase("pt-BR"))}
+          {#if filteredExplicitProjects.length === 0 && projectSearch.trim() && !"institucional".includes(projectSearch
+                .trim()
+                .toLocaleLowerCase("pt-BR"))}
             <div class="rail-empty">
               <p>Nenhum projeto corresponde à busca.</p>
             </div>
@@ -972,7 +1015,9 @@
                   </span>
                   <span class="rail-copy">
                     <span class="rail-title-line">
-                      <strong>{project.name.trim() || "Projeto sem nome"}</strong>
+                      <strong
+                        >{project.name.trim() || "Projeto sem nome"}</strong
+                      >
                     </span>
                     <small>
                       <span
@@ -1069,8 +1114,7 @@
                 rows="3"
                 maxlength="2000"
                 placeholder="Descrição comercial do pacote"
-                aria-label="Descrição comercial do pacote"
-              ></textarea>
+                aria-label="Descrição comercial do pacote"></textarea>
             </div>
 
             <div class="two-column-grid full">
@@ -1081,8 +1125,12 @@
                 <input
                   bind:value={draft.amount}
                   inputmode="decimal"
-                  placeholder="Valor de referência"
-                  aria-label="Valor de referência"
+                  placeholder={draft.contractType === "recurring"
+                    ? "Valor mensal"
+                    : "Valor de referência"}
+                  aria-label={draft.contractType === "recurring"
+                    ? "Valor mensal"
+                    : "Valor de referência"}
                 />
               </div>
 
@@ -1100,7 +1148,7 @@
                   placeholder="Vigência (opcional)"
                   aria-label="Vigência sugerida em meses"
                 />
-                <span class="duration-suffix">/mês</span>
+                <span class="duration-suffix">meses</span>
               </div>
             </div>
           </div>
@@ -1109,6 +1157,18 @@
         <section class="form-section">
           <h3>Pagamento</h3>
           <div class="fields">
+            <label class="control full"
+              ><Repeat size={16} /><select
+                bind:value={draft.contractType}
+                aria-label="Recorrência da cobrança do contrato"
+                ><option value="one_off">Cobrança pontual</option><option
+                  value="recurring">Cobrança recorrente mensal</option
+                ></select
+              ></label
+            >
+            <p class="full">
+              A cobrança do contrato é independente da recorrência dos projetos.
+            </p>
             <div class="two-column-grid full">
               <div class="control">
                 <span class="control-icon" aria-hidden="true">
@@ -1125,6 +1185,7 @@
               <div class="control installment-count">
                 <span class="control-label">Parcelas</span>
                 <input
+                  disabled={draft.contractType === "recurring"}
                   bind:value={draft.installmentCount}
                   type="number"
                   min="1"
@@ -1150,8 +1211,7 @@
                 rows="4"
                 maxlength="2000"
                 placeholder="Observações e condições comerciais"
-                aria-label="Observações e condições comerciais"
-              ></textarea>
+                aria-label="Observações e condições comerciais"></textarea>
             </div>
           </div>
         </section>
@@ -1162,7 +1222,8 @@
             <button
               type="button"
               class="btn-secondary"
-              disabled={explicitProjects.length >= MAX_EXPLICIT_SERVICE_PROJECTS}
+              disabled={explicitProjects.length >=
+                MAX_EXPLICIT_SERVICE_PROJECTS}
               onclick={addExplicitProject}
             >
               <Plus size={15} strokeWidth={2.2} />
@@ -1327,8 +1388,7 @@
                   rows="4"
                   maxlength="2000"
                   placeholder="Briefing do projeto"
-                  aria-label="Briefing do projeto"
-                ></textarea>
+                  aria-label="Briefing do projeto"></textarea>
               </div>
             {/if}
           </div>
@@ -1347,7 +1407,7 @@
                 type="button"
                 class="btn-secondary"
                 disabled={activeProject.deliveries.length >= 100}
-                onclick={() => void openImportModal()}
+                onclick={() => openImportModal("deliveries")}
               >
                 <Download size={14} strokeWidth={2.1} />
                 <span>Importar entrega</span>
@@ -1475,7 +1535,9 @@
                               <option value="baixa">Prioridade: Baixa</option>
                               <option value="normal">Prioridade: Normal</option>
                               <option value="alta">Prioridade: Alta</option>
-                              <option value="urgente">Prioridade: Urgente</option>
+                              <option value="urgente"
+                                >Prioridade: Urgente</option
+                              >
                             </select>
                           </div>
                         </div>
@@ -1489,8 +1551,7 @@
                             rows="3"
                             maxlength="2000"
                             placeholder="Descrição / briefing da entrega"
-                            aria-label="Descrição da entrega"
-                          ></textarea>
+                            aria-label="Descrição da entrega"></textarea>
                         </div>
 
                         {#if activeProject.projectType === "recurring"}
@@ -1602,7 +1663,9 @@
                                 />
                               </div>
 
-                              <div class="control task-control duration-control">
+                              <div
+                                class="control task-control duration-control"
+                              >
                                 <span class="control-icon" aria-hidden="true">
                                   <Timer size={15} strokeWidth={1.8} />
                                 </span>
@@ -1653,9 +1716,10 @@
 </div>
 
 {#if importModalOpen}
-  <DeliveryImportModal
-    packages={allUserPackages}
-    onselect={handleImportedDelivery}
+  <ScopeImportModal
+    kind={importKind}
+    onproject={handleImportedProject}
+    ondelivery={handleImportedDelivery}
     onclose={() => (importModalOpen = false)}
   />
 {/if}

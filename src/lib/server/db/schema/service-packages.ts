@@ -36,6 +36,10 @@ export const servicePackages = applicationSchema.table(
     amountCents: bigint("amount_cents", { mode: "number" })
       .default(0)
       .notNull(),
+    contractType: varchar("contract_type", { length: 16 })
+      .$type<"one_off" | "recurring">()
+      .default("one_off")
+      .notNull(),
     durationMonths: integer("duration_months"),
     installmentCount: integer("installment_count").default(1).notNull(),
     paymentMethod: varchar("payment_method", { length: 120 }),
@@ -57,7 +61,10 @@ export const servicePackages = applicationSchema.table(
       table.sortOrder,
       table.id,
     ),
-    check("service_packages_name_not_blank", sql`length(btrim(${table.name})) > 0`),
+    check(
+      "service_packages_name_not_blank",
+      sql`length(btrim(${table.name})) > 0`,
+    ),
     check(
       "service_packages_amount_safe",
       sql`${table.amountCents} between 0 and 9007199254740991`,
@@ -70,7 +77,10 @@ export const servicePackages = applicationSchema.table(
       "service_packages_installment_count_range",
       sql`${table.installmentCount} between 1 and 99`,
     ),
-    check("service_packages_sort_order_non_negative", sql`${table.sortOrder} >= 0`),
+    check(
+      "service_packages_sort_order_non_negative",
+      sql`${table.sortOrder} >= 0`,
+    ),
   ],
 );
 
@@ -169,7 +179,9 @@ export const servicePackageDeliveries = applicationSchema.table(
       table.sortOrder,
       table.id,
     ),
-    index("service_package_deliveries_package_index").on(table.servicePackageId),
+    index("service_package_deliveries_package_index").on(
+      table.servicePackageId,
+    ),
     check(
       "service_package_deliveries_name_not_blank",
       sql`length(btrim(${table.name})) > 0`,

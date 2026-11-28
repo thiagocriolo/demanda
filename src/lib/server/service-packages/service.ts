@@ -1,5 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+} from "drizzle-orm";
 import {
   INSTITUTIONAL_PROJECT_NAME,
   INSTITUTIONAL_PROJECT_STATUS,
@@ -49,7 +58,10 @@ export class ServicePackageValidationError extends Error {
 }
 
 type ReadableDatabase = Pick<Database, "select">;
-type WritableDatabase = Pick<Database, "select" | "insert" | "update" | "delete">;
+type WritableDatabase = Pick<
+  Database,
+  "select" | "insert" | "update" | "delete"
+>;
 
 function parseRecurrenceDays(raw: string): number[] {
   try {
@@ -119,7 +131,8 @@ async function hydratePackages(
       description: row.description,
       priority: row.priorityKey,
       recurrenceType: row.recurrenceType as ServiceDeliveryRecurrenceType,
-      recurrenceUnit: (row.recurrenceUnit ?? null) as ServiceDeliveryRecurrenceUnit | null,
+      recurrenceUnit: (row.recurrenceUnit ??
+        null) as ServiceDeliveryRecurrenceUnit | null,
       recurrenceDays: parseRecurrenceDays(row.recurrenceDays),
       sortOrder: row.sortOrder,
       tasks: tasksByDelivery.get(row.id) ?? [],
@@ -166,6 +179,7 @@ async function hydratePackages(
       icon: row.icon,
       color: row.color,
       amountCents: row.amountCents,
+      contractType: row.contractType,
       durationMonths: row.durationMonths ?? null,
       installmentCount: row.installmentCount,
       paymentMethod: row.paymentMethod ?? "",
@@ -302,7 +316,7 @@ export async function listUserServicePackages(
 }
 
 export async function getUserServicePackage(
-  database: Database,
+  database: ReadableDatabase,
   ownerUserId: string,
   packageId: string,
 ): Promise<ServicePackage> {
@@ -339,6 +353,7 @@ export async function createUserServicePackage(
       icon: input.icon,
       color: input.color,
       amountCents: input.amountCents,
+      contractType: input.contractType,
       durationMonths: input.durationMonths,
       installmentCount: input.installmentCount,
       paymentMethod: input.paymentMethod || null,
@@ -384,6 +399,7 @@ export async function updateUserServicePackage(
         icon: input.icon,
         color: input.color,
         amountCents: input.amountCents,
+        contractType: input.contractType,
         durationMonths: input.durationMonths,
         installmentCount: input.installmentCount,
         paymentMethod: input.paymentMethod || null,
@@ -412,6 +428,7 @@ export async function duplicateUserServicePackage(
     icon: source.icon,
     color: source.color,
     amountCents: source.amountCents,
+    contractType: source.contractType,
     durationMonths: source.durationMonths,
     installmentCount: source.installmentCount,
     paymentMethod: source.paymentMethod,
@@ -516,26 +533,18 @@ export async function instantiateServicePackageForContractInTransaction(
 ): Promise<{ createdProjectCount: number }> {
   const { ownerUserId, workspaceId, contract, selection } = params;
 
-  const [pkgRow] = await transaction
-    .select()
-    .from(servicePackages)
-    .where(
-      and(
-        eq(servicePackages.id, selection.packageId),
-        eq(servicePackages.ownerUserId, ownerUserId),
-        isNull(servicePackages.archivedAt),
-      ),
-    )
-    .limit(1);
-  if (!pkgRow) {
-    throw new ServicePackageNotFoundError(
-      "Selecione um serviço ativo da sua biblioteca.",
+  let pkg: ServicePackage | undefined;
+  if (selection.packageId) {
+    pkg = await getUserServicePackage(
+      transaction,
+      ownerUserId,
+      selection.packageId,
     );
-  }
-
-  const [pkg] = await hydratePackages(transaction, [pkgRow]);
-  if (!pkg) {
-    throw new ServicePackageNotFoundError();
+    if (pkg.archivedAt) {
+      throw new ServicePackageNotFoundError(
+        "Selecione um serviço ativo da sua biblioteca.",
+      );
+    }
   }
 
   const responsibleIdsToVerify = new Set<string>([selection.responsibleUserId]);
@@ -590,7 +599,10 @@ export async function instantiateServicePackageForContractInTransaction(
 
   if (selection.customProjects) {
     selectedProjects = selection.customProjects
-      .filter((project) => !(project.isInstitutional && project.deliveries.length === 0))
+      .filter(
+        (project) =>
+          !(project.isInstitutional && project.deliveries.length === 0),
+      )
       .map((project) => {
         const effectiveType = project.isInstitutional
           ? "one_off"
@@ -635,7 +647,7 @@ export async function instantiateServicePackageForContractInTransaction(
       ? new Set(selection.includedProjectIds)
       : null;
 
-    selectedProjects = pkg.projects
+    selectedProjects = (pkg?.projects ?? [])
       .filter((project) => {
         if (includedSet && !includedSet.has(project.id)) return false;
         // Empty institutional project does not need to be materialized eagerly;
@@ -722,7 +734,10 @@ export async function instantiateServicePackageForContractInTransaction(
 
     let hasRoutinesToMaterialize = false;
 
-    for (const [deliveryIndex, templateDelivery] of templateProject.deliveries.entries()) {
+    for (const [
+      deliveryIndex,
+      templateDelivery,
+    ] of templateProject.deliveries.entries()) {
       const shouldCreateRoutine =
         isRecurringProject && templateDelivery.recurrenceType !== "one_off";
 

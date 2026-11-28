@@ -28,11 +28,21 @@
   } from "./types";
   import "./template-modal.css";
 
-  let { record, deliveries, oncancel, onsave, ondelete } = $props<{
+  let {
+    record,
+    deliveries,
+    oncancel,
+    onsave,
+    ondelete,
+    saving = false,
+    errorMessage = "",
+  } = $props<{
     record?: ServiceTemplate;
+    saving?: boolean;
+    errorMessage?: string;
     deliveries: DeliveryTemplate[];
     oncancel: () => void;
-    onsave: (values: Record<string, string>) => void;
+    onsave: (values: Record<string, string>) => void | Promise<void>;
     ondelete?: () => void;
   }>();
 
@@ -45,7 +55,7 @@
   let tags = $state(initialRecord?.tags ?? "");
   let duration = $state(initialRecord?.duration ?? "");
   let contractType = $state(normalizeContractType(initialRecord?.contractType));
-  let amount = $state(initialRecord?.amount ?? "");
+
   let selectedDeliveries = $state<TemplateDelivery[]>(initialDeliveries());
   let openFrequencyDeliveryId = $state<string | null>(null);
   let deliveryItems = $derived(
@@ -83,11 +93,13 @@
   function initialDeliveries(): TemplateDelivery[] {
     if (!initialRecord) return [];
     if (initialRecord.deliveries.length) {
-      return structuredClone(initialRecord.deliveries).map((delivery: TemplateDelivery) => ({
-        ...delivery,
-        frequency: delivery.frequency ?? "one_off",
-        recurrenceDays: delivery.recurrenceDays ?? [],
-      }));
+      return structuredClone(initialRecord.deliveries).map(
+        (delivery: TemplateDelivery) => ({
+          ...delivery,
+          frequency: delivery.frequency ?? "one_off",
+          recurrenceDays: delivery.recurrenceDays ?? [],
+        }),
+      );
     }
     return deliveries
       .filter(
@@ -118,13 +130,17 @@
     selectedDeliveries = [...selectedDeliveries, delivery];
     void tick().then(() =>
       formNode
-        ?.querySelector<HTMLInputElement>(`[data-delivery-id="${delivery.id}"] input`)
+        ?.querySelector<HTMLInputElement>(
+          `[data-delivery-id="${delivery.id}"] input`,
+        )
         ?.focus(),
     );
   }
 
   function removeDelivery(id: string): void {
-    selectedDeliveries = selectedDeliveries.filter((delivery) => delivery.id !== id);
+    selectedDeliveries = selectedDeliveries.filter(
+      (delivery) => delivery.id !== id,
+    );
   }
 
   function deliveryTemplateName(templateId: string): string {
@@ -193,7 +209,7 @@
 
   function submit(event: SubmitEvent): void {
     event.preventDefault();
-    if (!formNode.reportValidity()) return;
+    if (saving || !formNode.reportValidity()) return;
     onsave({
       name: name.trim(),
       icon,
@@ -202,7 +218,7 @@
       tags: tags.trim(),
       duration,
       contractType,
-      amount: amount.trim(),
+      amount: initialRecord?.amount ?? "",
       deliveries: JSON.stringify(
         selectedDeliveries.map((delivery) => ({
           ...delivery,
@@ -210,7 +226,8 @@
             contractType === "Rotina"
               ? (delivery.frequency ?? "one_off")
               : "one_off",
-          customUnit: delivery.frequency === "custom" ? delivery.customUnit : undefined,
+          customUnit:
+            delivery.frequency === "custom" ? delivery.customUnit : undefined,
           recurrenceDays:
             delivery.frequency === "weekly"
               ? [0]
@@ -238,7 +255,7 @@
   >
     <header>
       <h2 id="service-template-title">
-        {record ? "Editar serviço" : "Novo serviço"}
+        {record ? "Editar modelo de projeto" : "Novo modelo de projeto"}
       </h2>
       <button
         class="template-modal-close"
@@ -257,7 +274,7 @@
           <h3 id="service-about-title">Sobre</h3>
           <div class="template-modal-grid">
             <fieldset class="service-mode template-modal-full">
-              <legend>Tipo de serviço</legend>
+              <legend>Recorrência do projeto</legend>
               <p>
                 Defina se as entregas acontecem uma vez ou se formam uma rotina
                 contínua.
@@ -299,15 +316,15 @@
                   bind:value={name}
                   maxlength="140"
                   required
-                  placeholder="Título do serviço *"
-                  aria-label="Título do serviço"
+                  placeholder="Título do projeto *"
+                  aria-label="Título do projeto"
                 />
               </div>
               <IconColorPicker
                 bind:selectedIcon={icon}
                 bind:selectedColor={color}
                 size="field"
-                iconAriaLabel="Escolher ícone do serviço"
+                iconAriaLabel="Escolher ícone do projeto"
               />
             </div>
 
@@ -377,8 +394,14 @@
             {#if selectedDeliveries.length}
               <div class="template-modal-deliveries">
                 {#each selectedDeliveries as delivery (delivery.id)}
-                  <div class="template-modal-delivery" data-delivery-id={delivery.id}>
-                    <span class="template-modal-delivery-icon" aria-hidden="true">
+                  <div
+                    class="template-modal-delivery"
+                    data-delivery-id={delivery.id}
+                  >
+                    <span
+                      class="template-modal-delivery-icon"
+                      aria-hidden="true"
+                    >
                       <ListChecks size={17} />
                     </span>
                     <label>
@@ -396,10 +419,13 @@
                           class="routine-frequency-trigger"
                           type="button"
                           aria-haspopup="menu"
-                          aria-expanded={openFrequencyDeliveryId === delivery.id}
+                          aria-expanded={openFrequencyDeliveryId ===
+                            delivery.id}
                           onclick={() =>
                             (openFrequencyDeliveryId =
-                              openFrequencyDeliveryId === delivery.id ? null : delivery.id)}
+                              openFrequencyDeliveryId === delivery.id
+                                ? null
+                                : delivery.id)}
                         >
                           <Repeat2 size={15} aria-hidden="true" />
                           <span>{frequencyLabel(delivery.frequency)}</span>
@@ -482,12 +508,12 @@
                         {#each delivery.customUnit === "month" ? Array.from({ length: 31 }, (_, index) => index + 1) : [0, 1, 2, 3, 4, 5, 6] as day}
                           <button
                             type="button"
-                            class:active={(delivery.recurrenceDays ?? []).includes(
-                              day,
-                            )}
-                            aria-pressed={(delivery.recurrenceDays ?? []).includes(
-                              day,
-                            )}
+                            class:active={(
+                              delivery.recurrenceDays ?? []
+                            ).includes(day)}
+                            aria-pressed={(
+                              delivery.recurrenceDays ?? []
+                            ).includes(day)}
                             onclick={() => toggleDay(delivery, day)}
                             >{delivery.customUnit === "month"
                               ? day
@@ -519,29 +545,6 @@
           {/if}
         </section>
 
-        <section
-          class="template-modal-section"
-          aria-labelledby="service-commercial-title"
-        >
-          <h3 id="service-commercial-title">Informações comerciais</h3>
-          <div class="template-modal-grid">
-            <div class="template-modal-control template-modal-control--prefix">
-              <span class="template-modal-icon">R$</span>
-              <input
-                bind:value={amount}
-                inputmode="decimal"
-                maxlength="40"
-                placeholder="Valor"
-                aria-label="Valor"
-              />
-            </div>
-            <p class="commercial-helper">
-              O tipo foi definido acima. Você poderá ajustar as demais condições
-              ao criar o projeto.
-            </p>
-          </div>
-        </section>
-
         <div class="template-modal-actions">
           {#if record && ondelete}
             <div class="template-modal-action-group">
@@ -558,8 +561,13 @@
               type="button"
               onclick={oncancel}><X size={16} />Cancelar</button
             >
-            <button class="template-modal-save" type="submit"
-              ><Save size={16} />{record ? "Salvar" : "Criar serviço"}</button
+            {#if errorMessage}<p role="alert">{errorMessage}</p>{/if}
+            <button class="template-modal-save" type="submit" disabled={saving}
+              ><Save size={16} />{saving
+                ? "Salvando…"
+                : record
+                  ? "Salvar"
+                  : "Criar modelo"}</button
             >
           </div>
         </div>
@@ -583,8 +591,7 @@
     font-size: var(--text-md);
     font-weight: 600;
   }
-  .service-mode > p,
-  .commercial-helper {
+  .service-mode > p {
     margin: 3px 0 0;
     color: var(--muted);
     font-size: var(--text-sm);

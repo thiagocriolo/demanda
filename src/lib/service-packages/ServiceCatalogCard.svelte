@@ -119,7 +119,8 @@
           {/if}
         </div>
         <p class="card-description">
-          {pkg.description || "Pacote configurável para geração rápida de contratos."}
+          {pkg.description ||
+            "Pacote configurável para geração rápida de contratos."}
         </p>
       </div>
     </button>
@@ -184,7 +185,11 @@
 
   <div class="offer-band">
     <div class="offer-price">
-      <span class="offer-label">Valor de referência</span>
+      <span class="offer-label"
+        >{pkg.contractType === "recurring"
+          ? "Valor mensal"
+          : "Valor de referência"}</span
+      >
       <div class="price-line">
         <strong>{amountLabel}</strong>
         {#if hourlyLabel}
@@ -256,7 +261,9 @@
         <Layers size={15} strokeWidth={1.9} />
         <div>
           <strong>Base comercial pronta</strong>
-          <span>Apenas condições comerciais — adicione projetos quando quiser</span>
+          <span
+            >Apenas condições comerciais — adicione projetos quando quiser</span
+          >
         </div>
       </div>
     {/if}

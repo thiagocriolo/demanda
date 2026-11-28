@@ -31,8 +31,19 @@
     Trash2,
   } from "@lucide/svelte";
 
-  let { kind, items, onadd, onedit, onduplicate, ondelete } = $props<{
+  let {
+    kind,
+    items,
+    onadd,
+    onedit,
+    onduplicate,
+    ondelete,
+    canManage = true,
+    showAdd = true,
+  } = $props<{
     kind: "service" | "delivery";
+    canManage?: boolean;
+    showAdd?: boolean;
     items: TemplateCardItem[];
     onadd: () => void;
     onedit: (id: string) => void;
@@ -43,11 +54,11 @@
   let openMenuId = $state<string | undefined>();
   let activeMenuTrigger: HTMLButtonElement | undefined;
 
-  let entityLabel = $derived(kind === "service" ? "serviço" : "entrega");
+  let entityLabel = $derived(kind === "service" ? "projeto" : "entrega");
   let addLabel = $derived(`Adicionar modelo de ${entityLabel}`);
   let galleryLabel = $derived(`Modelos de ${entityLabel}`);
   let templateLabel = $derived(
-    kind === "service" ? "Modelo de serviço" : "Modelo de entrega",
+    kind === "service" ? "Modelo de projeto" : "Modelo de entrega",
   );
   let limitReached = $derived(items.length >= 100);
 
@@ -83,85 +94,87 @@
 <svelte:window onclick={() => closeMenu()} onkeydown={handleWindowKeydown} />
 
 <section class="template-gallery" aria-label={galleryLabel}>
-  <button
-    class="add-card"
-    type="button"
-    aria-label={limitReached ? "Limite de 100 modelos atingido" : addLabel}
-    title={limitReached ? "Limite de 100 modelos atingido" : addLabel}
-    disabled={limitReached}
-    onclick={onadd}
-  >
-    <span class="add-card__mark" aria-hidden="true">
-      <span class="add-card__icon">
-        <Plus size={22} strokeWidth={1.8} />
+  {#if showAdd && canManage}
+    <button
+      class="add-card"
+      type="button"
+      aria-label={limitReached ? "Limite de 100 modelos atingido" : addLabel}
+      title={limitReached ? "Limite de 100 modelos atingido" : addLabel}
+      disabled={limitReached}
+      onclick={onadd}
+    >
+      <span class="add-card__mark" aria-hidden="true">
+        <span class="add-card__icon">
+          <Plus size={22} strokeWidth={1.8} />
+        </span>
+        <LayoutTemplate size={16} strokeWidth={1.8} />
       </span>
-      <LayoutTemplate size={16} strokeWidth={1.8} />
-    </span>
-    <span class="add-card__copy">
-      <strong>Novo modelo</strong>
-      <span>{kind === "service" ? "de serviço" : "de entrega"}</span>
-    </span>
-  </button>
-
+      <span class="add-card__copy">
+        <strong>Novo modelo</strong>
+        <span>{kind === "service" ? "de projeto" : "de entrega"}</span>
+      </span>
+    </button>
+  {/if}
   {#each items as item (item.id)}
     <article
       class="template-card"
       style={`--template-accent: ${item.statusColor}`}
       aria-label={`Modelo de ${entityLabel}: ${item.title}`}
     >
-      <button
-        class="card-open"
-        type="button"
-        aria-label={`Editar ${item.title}`}
-        onclick={() => onedit(item.id)}
-      ></button>
-
-      <div class="card-menu" class:open={openMenuId === item.id}>
+      {#if canManage}
         <button
-          class="menu-trigger"
+          class="card-open"
           type="button"
-          aria-label={`Abrir ações de ${item.title}`}
-          aria-haspopup="true"
-          aria-expanded={openMenuId === item.id}
-          title="Mais opções"
-          onpointerdown={(event) => event.stopPropagation()}
-          onclick={(event) => toggleMenu(event, item.id)}
-        >
-          <EllipsisVertical size={18} strokeWidth={2} />
-        </button>
+          aria-label={`Editar ${item.title}`}
+          onclick={() => onedit(item.id)}
+        ></button>
 
-        {#if openMenuId === item.id}
-          <div
-            class="menu-popover"
-            role="group"
-            aria-label={`Ações de ${item.title}`}
+        <div class="card-menu" class:open={openMenuId === item.id}>
+          <button
+            class="menu-trigger"
+            type="button"
+            aria-label={`Abrir ações de ${item.title}`}
+            aria-haspopup="true"
+            aria-expanded={openMenuId === item.id}
+            title="Mais opções"
+            onpointerdown={(event) => event.stopPropagation()}
+            onclick={(event) => toggleMenu(event, item.id)}
           >
-            <button
-              type="button"
-              onclick={(event) => runAction(event, onedit, item)}
-            >
-              <Pencil size={16} strokeWidth={1.9} />
-              <span>Editar</span>
-            </button>
-            <button
-              type="button"
-              onclick={(event) => runAction(event, onduplicate, item)}
-            >
-              <Copy size={16} strokeWidth={1.9} />
-              <span>Duplicar</span>
-            </button>
-            <button
-              class="danger"
-              type="button"
-              onclick={(event) => runAction(event, ondelete, item)}
-            >
-              <Trash2 size={16} strokeWidth={1.9} />
-              <span>Excluir</span>
-            </button>
-          </div>
-        {/if}
-      </div>
+            <EllipsisVertical size={18} strokeWidth={2} />
+          </button>
 
+          {#if openMenuId === item.id}
+            <div
+              class="menu-popover"
+              role="group"
+              aria-label={`Ações de ${item.title}`}
+            >
+              <button
+                type="button"
+                onclick={(event) => runAction(event, onedit, item)}
+              >
+                <Pencil size={16} strokeWidth={1.9} />
+                <span>Editar</span>
+              </button>
+              <button
+                type="button"
+                onclick={(event) => runAction(event, onduplicate, item)}
+              >
+                <Copy size={16} strokeWidth={1.9} />
+                <span>Duplicar</span>
+              </button>
+              <button
+                class="danger"
+                type="button"
+                onclick={(event) => runAction(event, ondelete, item)}
+              >
+                <Trash2 size={16} strokeWidth={1.9} />
+                <span>Excluir</span>
+              </button>
+            </div>
+          {/if}
+        </div>
+      {/if}
       <header class="card-head">
         <strong class="card-title" title={item.title}>{item.title}</strong>
         <span class="card-template-label">

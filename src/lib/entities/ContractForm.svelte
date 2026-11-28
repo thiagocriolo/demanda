@@ -35,6 +35,11 @@
   import { resolveColor, resolveIcon } from "$lib/ui/icon-color";
   import ContractDeliveryDraftModal from "./ContractDeliveryDraftModal.svelte";
   import ContractProjectDrawer from "./ContractProjectDrawer.svelte";
+  import ScopeImportModal from "$lib/service-packages/ScopeImportModal.svelte";
+  import type {
+    ServicePackageProjectInput,
+    ServicePackageDeliveryInput,
+  } from "$lib/service-packages/types";
   import type {
     ContractScopeDeliveryDraft,
     ContractScopeProjectDraft,
@@ -96,6 +101,15 @@
   } | null>(null);
   let scopeError = $state("");
   let scopeSeq = 0;
+  let importKind = $state<"projects" | "deliveries" | null>(null);
+  let importTarget = $state<string | null>(null);
+  const hasScope = $derived(
+    scopeProjects.some(
+      (project) =>
+        project.included &&
+        (!project.isInstitutional || project.deliveries.length > 0),
+    ),
+  );
   let form = $state(emptyForm());
   const viewOnly = $derived(mode === "view");
   const isCreateMode = $derived(mode === "create");
@@ -419,6 +433,7 @@
       })),
     }));
 
+    form.contractType = pkg.contractType;
     form.nome = pkg.name;
     form.paymentMethod = pkg.paymentMethod;
     form.condicoes = pkg.paymentTerms;
@@ -432,7 +447,81 @@
     }
   }
 
+  function ensureInstitutional(): ContractScopeProjectDraft {
+    let project = scopeProjects.find((item) => item.isInstitutional);
+    if (!project) {
+      project = {
+        localId: nextScopeId("proj"),
+        isInstitutional: true,
+        included: true,
+        name: "Institucional",
+        briefing: "",
+        projectType: "one_off",
+        durationDays: "",
+        responsibleUserId: "",
+        deliveries: [],
+      };
+      scopeProjects = [project, ...scopeProjects];
+    }
+    return project;
+  }
+
+  function importedDelivery(
+    source: ServicePackageDeliveryInput,
+  ): ContractScopeDeliveryDraft {
+    return {
+      ...source,
+      id: undefined,
+      localId: nextScopeId("del"),
+      tasks: source.tasks.map((task) => ({
+        ...task,
+        id: undefined,
+        localId: nextScopeId("task"),
+      })),
+    };
+  }
+
+  function importProject(source: ServicePackageProjectInput): void {
+    ensureInstitutional();
+    if (scopeProjects.length >= MAX_SERVICE_PROJECTS) return;
+    const project: ContractScopeProjectDraft = {
+      localId: nextScopeId("proj"),
+      isInstitutional: false,
+      included: true,
+      name: source.name,
+      briefing: source.briefing,
+      projectType: source.projectType,
+      durationDays: source.durationDays ? String(source.durationDays) : "",
+      responsibleUserId: "",
+      deliveries: source.deliveries.map(importedDelivery),
+    };
+    scopeProjects = [...scopeProjects, project];
+    customizeScopeOpen = true;
+    activeScopeProjectLocalId = project.localId;
+  }
+
+  function importDelivery(source: ServicePackageDeliveryInput): void {
+    const project =
+      scopeProjects.find((item) => item.localId === importTarget) ??
+      ensureInstitutional();
+    if (project.deliveries.length >= 100) return;
+    const copy = importedDelivery(source);
+    if (project.projectType === "one_off") {
+      copy.recurrenceType = "one_off";
+      copy.recurrenceUnit = null;
+      copy.recurrenceDays = [];
+    }
+    scopeProjects = scopeProjects.map((item) =>
+      item.localId === project.localId
+        ? { ...item, included: true, deliveries: [...item.deliveries, copy] }
+        : item,
+    );
+    customizeScopeOpen = true;
+    activeScopeProjectLocalId = project.localId;
+  }
+
   function addCustomScopeProject(): void {
+    ensureInstitutional();
     if (scopeProjects.length >= MAX_SERVICE_PROJECTS) return;
     const explicitCount = scopeProjects.filter(
       (project) => !project.isInstitutional,
@@ -527,7 +616,10 @@
     source: ContractScopeDeliveryDraft,
   ): void {
     scopeProjects = scopeProjects.map((project) => {
-      if (project.localId !== projectLocalId || project.deliveries.length >= 100)
+      if (
+        project.localId !== projectLocalId ||
+        project.deliveries.length >= 100
+      )
         return project;
       const copy: ContractScopeDeliveryDraft = {
         localId: nextScopeId("del"),
@@ -616,7 +708,7 @@
   });
 
   $effect(() => {
-    if (!isCreateMode || !selectedServiceId) return;
+    if (!isCreateMode) return;
     void loadMembersForWorkspace(form.workspaceId);
   });
 
@@ -673,7 +765,8 @@
     event.preventDefault();
     if (viewOnly || !form.nome.trim() || !form.negocioId || !form.workspaceId)
       return;
-    if (isCreateMode && selectedService && !responsibleUserId) return;
+    if (isCreateMode && (selectedService || hasScope) && !responsibleUserId)
+      return;
 
     const payload: Record<string, string> = {
       nome: form.nome.trim(),
@@ -697,9 +790,11 @@
       ),
     };
 
-    if (isCreateMode && selectedService && responsibleUserId) {
+    if (isCreateMode && (selectedService || hasScope) && responsibleUserId) {
       scopeError = "";
-      const includedProjects = scopeProjects.filter((project) => project.included);
+      const includedProjects = scopeProjects.filter(
+        (project) => project.included,
+      );
       const invalidProject = includedProjects.find(
         (project) => !project.isInstitutional && !project.name.trim(),
       );
@@ -747,9 +842,7 @@
                 ? (delivery.recurrenceUnit ?? "week")
                 : null,
             recurrenceDays:
-              effectiveType === "recurring"
-                ? [...delivery.recurrenceDays]
-                : [],
+              effectiveType === "recurring" ? [...delivery.recurrenceDays] : [],
             tasks: delivery.tasks
               .filter((task) => task.name.trim())
               .map((task) => ({
@@ -762,7 +855,7 @@
       });
 
       payload.servicePackage = JSON.stringify({
-        packageId: selectedService.id,
+        ...(selectedService ? { packageId: selectedService.id } : {}),
         responsibleUserId,
         customProjects,
       });
@@ -799,22 +892,22 @@
     <div class="dialog-workspace" class:split={Boolean(activeScopeProject)}>
       <div class="body">
         <form class:view-mode={viewOnly} onsubmit={submit}>
-          {#if isCreateMode && (servicePackages.length > 0 || loadingServices)}
+          {#if isCreateMode}
             <section class="form-section service-blueprint-section">
               <div class="service-section-head">
-                <h3>Modelo de serviço</h3>
-                {#if selectedService}
+                <h3>Modelo e composição do contrato</h3>
+                {#if selectedService || scopeProjects.length > 0}
                   <button
                     type="button"
                     class="clear-service-btn"
                     onclick={() => applyServicePackage("")}
                   >
-                    Remover modelo
+                    {selectedService ? "Remover modelo" : "Limpar escopo"}
                   </button>
                 {/if}
               </div>
 
-              {#if selectedService}
+              {#if selectedService || scopeProjects.length > 0}
                 <div
                   class="selected-service-banner"
                   style={`--svc-accent: ${selectedServiceAccent}`}
@@ -823,10 +916,15 @@
                     <SelectedServiceIcon size={18} strokeWidth={2} />
                   </span>
                   <div class="svc-copy">
-                    <strong>{selectedService.name}</strong>
+                    <strong
+                      >{selectedService?.name ??
+                        "Contrato personalizado"}</strong
+                    >
                     <span>
                       {selectedScopeStats.projects}
-                      {selectedScopeStats.projects === 1 ? "projeto" : "projetos"}
+                      {selectedScopeStats.projects === 1
+                        ? "projeto"
+                        : "projetos"}
                       · {selectedScopeStats.deliveries}
                       {selectedScopeStats.deliveries === 1
                         ? "entrega"
@@ -970,428 +1068,459 @@
                   </select>
                 </div>
               {/if}
+              <div class="scope-source-actions">
+                <button
+                  type="button"
+                  class="scope-add-proj-btn"
+                  disabled={scopeProjects.filter(
+                    (project) => !project.isInstitutional,
+                  ).length >= 99}
+                  onclick={() => {
+                    importTarget = null;
+                    importKind = "projects";
+                  }}><Plus size={14} />Selecionar projeto</button
+                >
+                <button
+                  type="button"
+                  class="scope-add-proj-btn"
+                  disabled={(scopeProjects.find(
+                    (project) => project.isInstitutional,
+                  )?.deliveries.length ?? 0) >= 100}
+                  onclick={() => {
+                    importTarget = null;
+                    importKind = "deliveries";
+                  }}><Plus size={14} />Selecionar entrega direta</button
+                >
+                {#if !selectedService && !hasScope}<button
+                    type="button"
+                    class="scope-add-proj-btn"
+                    onclick={addCustomScopeProject}
+                    ><Plus size={14} />Novo projeto</button
+                  >{/if}
+              </div>
             </section>
           {/if}
 
-        <section class="form-section">
-          <h3>Contrato</h3>
+          <section class="form-section">
+            <h3>Contrato</h3>
 
-          <div class="fields">
-            <div class="control full">
-              <span class="control-icon" aria-hidden="true">
-                <FileText size={16} strokeWidth={1.8} />
-              </span>
-              <input
-                bind:value={form.nome}
-                disabled={viewOnly}
-                required
-                maxlength="140"
-                placeholder="Nome do contrato *"
-                aria-label="Nome do contrato"
-              />
-            </div>
-
-            <div class="two-column-grid full">
-              <div class="control">
-                <span class="control-icon" aria-hidden="true">
-                  <BriefcaseBusiness size={16} strokeWidth={1.8} />
-                </span>
-                <select
-                  bind:value={form.workspaceId}
-                  disabled={viewOnly || mode === "edit"}
-                  required
-                  aria-label="Workspace do contrato"
-                >
-                  <option value="" disabled>Selecione o workspace *</option>
-                  {#each workspaces as workspace (workspace.id)}
-                    <option value={workspace.id}>{workspace.name}</option>
-                  {/each}
-                </select>
-              </div>
-
-              {#if workspaceError}
-                <p class="catalog-state catalog-state--error" role="alert">
-                  {workspaceError}
-                </p>
-              {/if}
-
-              <div class="control business-control">
-                <span class="control-icon" aria-hidden="true">
-                  <BriefcaseBusiness size={16} strokeWidth={1.8} />
-                </span>
-                <select
-                  bind:value={form.negocioId}
-                  disabled={viewOnly || loadingBusinesses}
-                  required
-                  aria-label="Negócio vinculado"
-                >
-                  <option value="" disabled>Selecione o negócio *</option>
-                  {#each businesses as business (business.id)}
-                    <option value={business.id}>{business.name}</option>
-                  {/each}
-                </select>
-              </div>
-            </div>
-
-            {#if isCreateMode && selectedService}
+            <div class="fields">
               <div class="control full">
-                <span class="control-icon" aria-hidden="true">
-                  <UserCheck size={16} strokeWidth={1.8} />
-                </span>
-                <select
-                  bind:value={responsibleUserId}
-                  disabled={loadingMembers || !form.workspaceId}
-                  required
-                  aria-label="Responsável padrão pelos projetos e entregas"
-                >
-                  <option value="" disabled>
-                    {loadingMembers
-                      ? "Carregando responsáveis…"
-                      : "Selecione o responsável *"}
-                  </option>
-                  {#each workspaceMembers as member (member.userId)}
-                    <option value={member.userId}>{member.name}</option>
-                  {/each}
-                </select>
-              </div>
-              {#if membersError}
-                <p class="catalog-state catalog-state--error" role="alert">
-                  {membersError}
-                </p>
-              {/if}
-            {/if}
-
-            {#if loadingBusinesses}
-              <p class="catalog-state" role="status">Carregando negócios…</p>
-            {:else if businessError}
-              <p class="catalog-state catalog-state--error" role="alert">
-                {businessError}
-              </p>
-            {:else if !businesses.length}
-              <p class="catalog-state catalog-state--error" role="alert">
-                Cadastre um negócio antes de criar um contrato.
-              </p>
-            {/if}
-
-            <div class="two-column-grid full">
-              <div class="control">
                 <span class="control-icon" aria-hidden="true">
                   <FileText size={16} strokeWidth={1.8} />
                 </span>
-                <select
-                  value={form.contractType}
-                  disabled={viewOnly}
-                  onchange={(event) =>
-                    updateContractType(
-                      event.currentTarget.value as "one_off" | "recurring",
-                    )}
-                  aria-label="Tipo de contratação"
-                >
-                  <option value="one_off">Pontual</option>
-                  <option value="recurring">Recorrente</option>
-                </select>
-              </div>
-              <div class="control">
-                <span class="control-icon" aria-hidden="true">
-                  <CircleDollarSign size={16} strokeWidth={1.8} />
-                </span>
                 <input
-                  value={form.valor}
+                  bind:value={form.nome}
                   disabled={viewOnly}
-                  inputmode="decimal"
-                  placeholder="Valor"
-                  aria-label="Valor do contrato"
-                  oninput={(event) => updateAmount(event.currentTarget.value)}
+                  required
+                  maxlength="140"
+                  placeholder="Nome do contrato *"
+                  aria-label="Nome do contrato"
                 />
               </div>
-            </div>
-          </div>
-        </section>
 
-        <section class="form-section">
-          <h3>Vigência</h3>
-          <div class="three-column-grid full">
-            <div class="control date-control">
-              <span class="control-icon" aria-hidden="true">
-                <CalendarDays size={16} strokeWidth={1.8} />
-              </span>
-              <input
-                class="date-picker"
-                type="date"
-                onclick={openDatePicker}
-                disabled={viewOnly}
-                value={form.dataInicio}
-                aria-label="Abrir calendário para a data de início"
-                onchange={(event) =>
-                  updateDateFromPicker(event, updateStartDate)}
-              />
-              <input
-                disabled={viewOnly}
-                type="text"
-                inputmode="numeric"
-                autocomplete="off"
-                maxlength="10"
-                placeholder="Início"
-                value={formatDateForField(form.dataInicio)}
-                aria-label="Data de início (DD/MM/AAAA)"
-                oninput={(event) => updateDateField(event, updateStartDate)}
-              />
-            </div>
-            <div class="control date-control">
-              <span class="control-icon" aria-hidden="true">
-                <CalendarDays size={16} strokeWidth={1.8} />
-              </span>
-              <input
-                disabled
-                type="text"
-                placeholder="Fim"
-                value={formatDateForField(form.dataFim)}
-                aria-label="Data de fim calculada"
-              />
-            </div>
-            <div class="control duration-control">
-              <input
-                type="number"
-                min="1"
-                step="1"
-                inputmode="numeric"
-                disabled={viewOnly}
-                value={form.duracao}
-                aria-label="Duração em meses"
-                oninput={(event) => updateDuration(event.currentTarget.value)}
-              />
-              <span class="duration-suffix">/mês</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="form-section">
-          <h3>Pagamento</h3>
-          <div class="fields">
-            {#if form.contractType === "one_off"}
-              <div class="payment-grid full">
-                <div class="control payment-method">
-                  <span class="control-icon" aria-hidden="true">
-                    <CreditCard size={16} strokeWidth={1.8} />
-                  </span>
-                  <input
-                    bind:value={form.paymentMethod}
-                    disabled={viewOnly}
-                    maxlength="120"
-                    placeholder="Forma de pagamento"
-                    aria-label="Forma de pagamento"
-                  />
-                </div>
-                <div class="control installment-count">
-                  <span class="control-label">Parcelas</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="99"
-                    disabled={viewOnly}
-                    title="Parcelas"
-                    aria-label="Parcelas"
-                    value={Math.max(1, form.installments.length)}
-                    onchange={(event) =>
-                      updateInstallmentCount(event.currentTarget.value)}
-                  />
-                </div>
-              </div>
-
-              <div class="installment-list full">
-                {#each form.installments as installment, index (installment.number)}
-                  <div class="installment-row">
-                    <div class="installment-date-group">
-                      <div
-                        class="installment-index"
-                        aria-label={`Parcela ${installment.number}`}
-                      >
-                        <span class="installment-hash" aria-hidden="true"
-                          >#</span
-                        >
-                        <span
-                          >{String(installment.number).padStart(2, "0")}</span
-                        >
-                      </div>
-                      <div class="control date-control">
-                        <span class="control-icon" aria-hidden="true">
-                          <CalendarDays size={16} strokeWidth={1.8} />
-                        </span>
-                        <input
-                          class="date-picker"
-                          type="date"
-                          onclick={openDatePicker}
-                          disabled={viewOnly}
-                          value={installment.dueDate}
-                          aria-label={`Abrir calendário para o vencimento da parcela ${installment.number}`}
-                          onchange={(event) => {
-                            if (index === 0) {
-                              updateDateFromPicker(event, updateFirstDueDate);
-                            } else {
-                              updateDateFromPicker(
-                                event,
-                                (date) => (installment.dueDate = date),
-                              );
-                            }
-                          }}
-                        />
-                        <input
-                          disabled={viewOnly}
-                          type="text"
-                          inputmode="numeric"
-                          autocomplete="off"
-                          maxlength="10"
-                          placeholder="DD/MM/AAAA"
-                          required={index === 0 && moneyToCents(form.valor) > 0}
-                          value={formatDateForField(installment.dueDate)}
-                          aria-label={`Vencimento da parcela ${installment.number} (DD/MM/AAAA)`}
-                          oninput={(event) =>
-                            updateDateField(event, (date) => {
-                              if (index === 0) {
-                                updateFirstDueDate(date);
-                              } else {
-                                installment.dueDate = date;
-                              }
-                            })}
-                        />
-                      </div>
-                    </div>
-                    <div class="control installment-amount">
-                      <span class="control-icon" aria-hidden="true">R$</span>
-                      <input
-                        inputmode="decimal"
-                        disabled={viewOnly}
-                        placeholder="Valor"
-                        bind:value={installment.amount}
-                        aria-label={`Valor da parcela ${installment.number}`}
-                        onchange={(event) =>
-                          rebalanceInstallments(
-                            index,
-                            event.currentTarget.value,
-                          )}
-                      />
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            {:else}
               <div class="two-column-grid full">
                 <div class="control">
                   <span class="control-icon" aria-hidden="true">
-                    <CreditCard size={16} strokeWidth={1.8} />
+                    <BriefcaseBusiness size={16} strokeWidth={1.8} />
                   </span>
-                  <input
-                    bind:value={form.paymentMethod}
-                    disabled={viewOnly}
-                    maxlength="120"
-                    placeholder="Forma de pagamento"
-                    aria-label="Forma de pagamento"
-                  />
+                  <select
+                    bind:value={form.workspaceId}
+                    disabled={viewOnly || mode === "edit"}
+                    required
+                    aria-label="Workspace do contrato"
+                  >
+                    <option value="" disabled>Selecione o workspace *</option>
+                    {#each workspaces as workspace (workspace.id)}
+                      <option value={workspace.id}>{workspace.name}</option>
+                    {/each}
+                  </select>
                 </div>
-                <div class="control date-control">
+
+                {#if workspaceError}
+                  <p class="catalog-state catalog-state--error" role="alert">
+                    {workspaceError}
+                  </p>
+                {/if}
+
+                <div class="control business-control">
                   <span class="control-icon" aria-hidden="true">
-                    <CalendarDays size={16} strokeWidth={1.8} />
+                    <BriefcaseBusiness size={16} strokeWidth={1.8} />
+                  </span>
+                  <select
+                    bind:value={form.negocioId}
+                    disabled={viewOnly || loadingBusinesses}
+                    required
+                    aria-label="Negócio vinculado"
+                  >
+                    <option value="" disabled>Selecione o negócio *</option>
+                    {#each businesses as business (business.id)}
+                      <option value={business.id}>{business.name}</option>
+                    {/each}
+                  </select>
+                </div>
+              </div>
+
+              {#if isCreateMode && (selectedService || hasScope)}
+                <div class="control full">
+                  <span class="control-icon" aria-hidden="true">
+                    <UserCheck size={16} strokeWidth={1.8} />
+                  </span>
+                  <select
+                    bind:value={responsibleUserId}
+                    disabled={loadingMembers || !form.workspaceId}
+                    required
+                    aria-label="Responsável padrão pelos projetos e entregas"
+                  >
+                    <option value="" disabled>
+                      {loadingMembers
+                        ? "Carregando responsáveis…"
+                        : "Selecione o responsável *"}
+                    </option>
+                    {#each workspaceMembers as member (member.userId)}
+                      <option value={member.userId}>{member.name}</option>
+                    {/each}
+                  </select>
+                </div>
+                {#if membersError}
+                  <p class="catalog-state catalog-state--error" role="alert">
+                    {membersError}
+                  </p>
+                {/if}
+              {/if}
+
+              {#if loadingBusinesses}
+                <p class="catalog-state" role="status">Carregando negócios…</p>
+              {:else if businessError}
+                <p class="catalog-state catalog-state--error" role="alert">
+                  {businessError}
+                </p>
+              {:else if !businesses.length}
+                <p class="catalog-state catalog-state--error" role="alert">
+                  Cadastre um negócio antes de criar um contrato.
+                </p>
+              {/if}
+
+              <div class="two-column-grid full">
+                <div class="control">
+                  <span class="control-icon" aria-hidden="true">
+                    <FileText size={16} strokeWidth={1.8} />
+                  </span>
+                  <select
+                    value={form.contractType}
+                    disabled={viewOnly}
+                    onchange={(event) =>
+                      updateContractType(
+                        event.currentTarget.value as "one_off" | "recurring",
+                      )}
+                    aria-label="Tipo de contratação"
+                  >
+                    <option value="one_off">Pontual</option>
+                    <option value="recurring">Recorrente</option>
+                  </select>
+                </div>
+                <div class="control">
+                  <span class="control-icon" aria-hidden="true">
+                    <CircleDollarSign size={16} strokeWidth={1.8} />
                   </span>
                   <input
-                    class="date-picker"
-                    type="date"
-                    onclick={openDatePicker}
+                    value={form.valor}
                     disabled={viewOnly}
-                    value={form.primeiroVencimento}
-                    aria-label="Abrir calendário para a data de vencimento"
-                    onchange={(event) =>
-                      updateDateFromPicker(event, updateFirstDueDate)}
-                  />
-                  <input
-                    disabled={viewOnly}
-                    type="text"
-                    inputmode="numeric"
-                    autocomplete="off"
-                    maxlength="10"
-                    placeholder="DD/MM/AAAA"
-                    value={formatDateForField(form.primeiroVencimento)}
-                    aria-label="Data de vencimento (DD/MM/AAAA)"
-                    oninput={(event) =>
-                      updateDateField(event, updateFirstDueDate)}
+                    inputmode="decimal"
+                    placeholder="Valor"
+                    aria-label="Valor do contrato"
+                    oninput={(event) => updateAmount(event.currentTarget.value)}
                   />
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <h3>Vigência</h3>
+            <div class="three-column-grid full">
+              <div class="control date-control">
+                <span class="control-icon" aria-hidden="true">
+                  <CalendarDays size={16} strokeWidth={1.8} />
+                </span>
+                <input
+                  class="date-picker"
+                  type="date"
+                  onclick={openDatePicker}
+                  disabled={viewOnly}
+                  value={form.dataInicio}
+                  aria-label="Abrir calendário para a data de início"
+                  onchange={(event) =>
+                    updateDateFromPicker(event, updateStartDate)}
+                />
+                <input
+                  disabled={viewOnly}
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  maxlength="10"
+                  placeholder="Início"
+                  value={formatDateForField(form.dataInicio)}
+                  aria-label="Data de início (DD/MM/AAAA)"
+                  oninput={(event) => updateDateField(event, updateStartDate)}
+                />
+              </div>
+              <div class="control date-control">
+                <span class="control-icon" aria-hidden="true">
+                  <CalendarDays size={16} strokeWidth={1.8} />
+                </span>
+                <input
+                  disabled
+                  type="text"
+                  placeholder="Fim"
+                  value={formatDateForField(form.dataFim)}
+                  aria-label="Data de fim calculada"
+                />
+              </div>
+              <div class="control duration-control">
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputmode="numeric"
+                  disabled={viewOnly}
+                  value={form.duracao}
+                  aria-label="Duração em meses"
+                  oninput={(event) => updateDuration(event.currentTarget.value)}
+                />
+                <span class="duration-suffix">/mês</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <h3>Pagamento</h3>
+            <div class="fields">
+              {#if form.contractType === "one_off"}
+                <div class="payment-grid full">
+                  <div class="control payment-method">
+                    <span class="control-icon" aria-hidden="true">
+                      <CreditCard size={16} strokeWidth={1.8} />
+                    </span>
+                    <input
+                      bind:value={form.paymentMethod}
+                      disabled={viewOnly}
+                      maxlength="120"
+                      placeholder="Forma de pagamento"
+                      aria-label="Forma de pagamento"
+                    />
+                  </div>
+                  <div class="control installment-count">
+                    <span class="control-label">Parcelas</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="99"
+                      disabled={viewOnly}
+                      title="Parcelas"
+                      aria-label="Parcelas"
+                      value={Math.max(1, form.installments.length)}
+                      onchange={(event) =>
+                        updateInstallmentCount(event.currentTarget.value)}
+                    />
+                  </div>
+                </div>
+
+                <div class="installment-list full">
+                  {#each form.installments as installment, index (installment.number)}
+                    <div class="installment-row">
+                      <div class="installment-date-group">
+                        <div
+                          class="installment-index"
+                          aria-label={`Parcela ${installment.number}`}
+                        >
+                          <span class="installment-hash" aria-hidden="true"
+                            >#</span
+                          >
+                          <span
+                            >{String(installment.number).padStart(2, "0")}</span
+                          >
+                        </div>
+                        <div class="control date-control">
+                          <span class="control-icon" aria-hidden="true">
+                            <CalendarDays size={16} strokeWidth={1.8} />
+                          </span>
+                          <input
+                            class="date-picker"
+                            type="date"
+                            onclick={openDatePicker}
+                            disabled={viewOnly}
+                            value={installment.dueDate}
+                            aria-label={`Abrir calendário para o vencimento da parcela ${installment.number}`}
+                            onchange={(event) => {
+                              if (index === 0) {
+                                updateDateFromPicker(event, updateFirstDueDate);
+                              } else {
+                                updateDateFromPicker(
+                                  event,
+                                  (date) => (installment.dueDate = date),
+                                );
+                              }
+                            }}
+                          />
+                          <input
+                            disabled={viewOnly}
+                            type="text"
+                            inputmode="numeric"
+                            autocomplete="off"
+                            maxlength="10"
+                            placeholder="DD/MM/AAAA"
+                            required={index === 0 &&
+                              moneyToCents(form.valor) > 0}
+                            value={formatDateForField(installment.dueDate)}
+                            aria-label={`Vencimento da parcela ${installment.number} (DD/MM/AAAA)`}
+                            oninput={(event) =>
+                              updateDateField(event, (date) => {
+                                if (index === 0) {
+                                  updateFirstDueDate(date);
+                                } else {
+                                  installment.dueDate = date;
+                                }
+                              })}
+                          />
+                        </div>
+                      </div>
+                      <div class="control installment-amount">
+                        <span class="control-icon" aria-hidden="true">R$</span>
+                        <input
+                          inputmode="decimal"
+                          disabled={viewOnly}
+                          placeholder="Valor"
+                          bind:value={installment.amount}
+                          aria-label={`Valor da parcela ${installment.number}`}
+                          onchange={(event) =>
+                            rebalanceInstallments(
+                              index,
+                              event.currentTarget.value,
+                            )}
+                        />
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <div class="two-column-grid full">
+                  <div class="control">
+                    <span class="control-icon" aria-hidden="true">
+                      <CreditCard size={16} strokeWidth={1.8} />
+                    </span>
+                    <input
+                      bind:value={form.paymentMethod}
+                      disabled={viewOnly}
+                      maxlength="120"
+                      placeholder="Forma de pagamento"
+                      aria-label="Forma de pagamento"
+                    />
+                  </div>
+                  <div class="control date-control">
+                    <span class="control-icon" aria-hidden="true">
+                      <CalendarDays size={16} strokeWidth={1.8} />
+                    </span>
+                    <input
+                      class="date-picker"
+                      type="date"
+                      onclick={openDatePicker}
+                      disabled={viewOnly}
+                      value={form.primeiroVencimento}
+                      aria-label="Abrir calendário para a data de vencimento"
+                      onchange={(event) =>
+                        updateDateFromPicker(event, updateFirstDueDate)}
+                    />
+                    <input
+                      disabled={viewOnly}
+                      type="text"
+                      inputmode="numeric"
+                      autocomplete="off"
+                      maxlength="10"
+                      placeholder="DD/MM/AAAA"
+                      value={formatDateForField(form.primeiroVencimento)}
+                      aria-label="Data de vencimento (DD/MM/AAAA)"
+                      oninput={(event) =>
+                        updateDateField(event, updateFirstDueDate)}
+                    />
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </section>
+
+          <section class="form-section">
+            <h3>Condições financeiras</h3>
+
+            <div class="fields">
+              <div class="control textarea-control full">
+                <span class="control-icon" aria-hidden="true">
+                  <FileText size={16} strokeWidth={1.8} />
+                </span>
+                <textarea
+                  bind:value={form.condicoes}
+                  disabled={viewOnly}
+                  maxlength="2000"
+                  rows="4"
+                  placeholder="Observações"
+                  aria-label="Observações"></textarea>
+              </div>
+            </div>
+          </section>
+
+          <div class="actions">
+            {#if viewOnly}
+              <div class="action-group action-group-right">
+                <button class="primary" type="button" onclick={onedit}>
+                  <Pencil size={16} strokeWidth={2} />
+                  <span>Editar</span>
+                </button>
+              </div>
+            {:else if mode === "edit"}
+              <div class="action-group">
+                <button class="danger" type="button" onclick={ondelete}>
+                  <Trash2 size={16} strokeWidth={2} />
+                  <span>Excluir</span>
+                </button>
+              </div>
+              <div class="action-group action-group-right">
+                <button class="cancel" type="button" onclick={oncancel}>
+                  <X size={16} strokeWidth={2} />
+                  <span>Cancelar</span>
+                </button>
+                <button
+                  class="success"
+                  type="submit"
+                  disabled={loadingBusinesses ||
+                    !businesses.length ||
+                    !form.workspaceId}
+                >
+                  <Save size={16} strokeWidth={2} />
+                  <span>Salvar</span>
+                </button>
+              </div>
+            {:else}
+              <div class="action-group action-group-right">
+                <button class="cancel" type="button" onclick={oncancel}>
+                  <X size={16} strokeWidth={2} />
+                  <span>Cancelar</span>
+                </button>
+                <button
+                  class="success"
+                  type="submit"
+                  disabled={loadingBusinesses ||
+                    !businesses.length ||
+                    !form.workspaceId ||
+                    (Boolean(selectedService) &&
+                      (!responsibleUserId || loadingMembers))}
+                >
+                  <Save size={16} strokeWidth={2} />
+                  <span>Criar contrato</span>
+                </button>
+              </div>
             {/if}
           </div>
-        </section>
-
-        <section class="form-section">
-          <h3>Condições financeiras</h3>
-
-          <div class="fields">
-            <div class="control textarea-control full">
-              <span class="control-icon" aria-hidden="true">
-                <FileText size={16} strokeWidth={1.8} />
-              </span>
-              <textarea
-                bind:value={form.condicoes}
-                disabled={viewOnly}
-                maxlength="2000"
-                rows="4"
-                placeholder="Observações"
-                aria-label="Observações"></textarea>
-            </div>
-          </div>
-        </section>
-
-        <div class="actions">
-          {#if viewOnly}
-            <div class="action-group action-group-right">
-              <button class="primary" type="button" onclick={onedit}>
-                <Pencil size={16} strokeWidth={2} />
-                <span>Editar</span>
-              </button>
-            </div>
-          {:else if mode === "edit"}
-            <div class="action-group">
-              <button class="danger" type="button" onclick={ondelete}>
-                <Trash2 size={16} strokeWidth={2} />
-                <span>Excluir</span>
-              </button>
-            </div>
-            <div class="action-group action-group-right">
-              <button class="cancel" type="button" onclick={oncancel}>
-                <X size={16} strokeWidth={2} />
-                <span>Cancelar</span>
-              </button>
-              <button
-                class="success"
-                type="submit"
-                disabled={loadingBusinesses ||
-                  !businesses.length ||
-                  !form.workspaceId}
-              >
-                <Save size={16} strokeWidth={2} />
-                <span>Salvar</span>
-              </button>
-            </div>
-          {:else}
-            <div class="action-group action-group-right">
-              <button class="cancel" type="button" onclick={oncancel}>
-                <X size={16} strokeWidth={2} />
-                <span>Cancelar</span>
-              </button>
-              <button
-                class="success"
-                type="submit"
-                disabled={loadingBusinesses ||
-                  !businesses.length ||
-                  !form.workspaceId ||
-                  (Boolean(selectedService) &&
-                    (!responsibleUserId || loadingMembers))}
-              >
-                <Save size={16} strokeWidth={2} />
-                <span>Criar contrato</span>
-              </button>
-            </div>
-          {/if}
-        </div>
-      </form>
+        </form>
       </div>
 
       {#if activeScopeProject && scopeProjects[activeScopeProjectIndex]}
@@ -1399,6 +1528,10 @@
           bind:project={scopeProjects[activeScopeProjectIndex]}
           {workspaceMembers}
           onclose={() => (activeScopeProjectLocalId = null)}
+          onimportdelivery={() => {
+            importTarget = activeScopeProject.localId;
+            importKind = "deliveries";
+          }}
           onadddelivery={() => openAddDeliveryModal(activeScopeProject)}
           oneditdelivery={(delivery) =>
             openEditDeliveryModal(activeScopeProject, delivery)}
@@ -1414,6 +1547,15 @@
     </div>
   </div>
 </div>
+
+{#if importKind}
+  <ScopeImportModal
+    kind={importKind}
+    onproject={importProject}
+    ondelivery={importDelivery}
+    onclose={() => (importKind = null)}
+  />
+{/if}
 
 {#if editingDeliveryModal && editingDeliveryProject}
   <ContractDeliveryDraftModal
@@ -1437,10 +1579,19 @@
 
 <svelte:window
   onkeydown={(event) =>
-    event.key === "Escape" && !editingDeliveryModal && oncancel()}
+    event.key === "Escape" &&
+    !editingDeliveryModal &&
+    !importKind &&
+    oncancel()}
 />
 
 <style>
+  .scope-source-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
   .backdrop {
     position: fixed;
     z-index: 3200;

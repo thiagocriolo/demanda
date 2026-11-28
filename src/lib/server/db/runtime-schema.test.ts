@@ -202,6 +202,7 @@ function upToDateCatalog(): FakeCatalog {
       "financial_entries",
     ]),
     columns: new Set([
+      "service_packages.contract_type",
       "contracts.contract_type",
       "contracts.start_date",
       "contracts.end_date",

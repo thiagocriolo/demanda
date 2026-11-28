@@ -7,7 +7,7 @@ type RuntimeSchemaGlobals = typeof globalThis & {
   __demandaRuntimeSchemaVersion?: string;
 };
 
-const RUNTIME_SCHEMA_VERSION = "2026-11-27-empty-database-v1";
+const RUNTIME_SCHEMA_VERSION = "2026-11-27-service-contract-recurrence-v1";
 const runtimeSchemaGlobals = globalThis as RuntimeSchemaGlobals;
 
 /**
@@ -41,6 +41,12 @@ export function ensureRuntimeSchema(database: Database): Promise<void> {
 export async function applyRuntimeSchema(database: Database): Promise<void> {
   await initializeEmptyDatabase(database);
   await ensureServicePackagesSchema(database);
+  await addColumnIfMissing(
+    database,
+    "service_packages",
+    "contract_type",
+    "varchar(16) NOT NULL DEFAULT 'one_off'",
+  );
   await ensureContractsSchema(database);
 
   await addColumnIfMissing(

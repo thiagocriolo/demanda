@@ -32,6 +32,7 @@
     onclose,
     oneditdelivery,
     onadddelivery,
+    onimportdelivery,
     onduplicatedelivery,
     onremovedelivery,
     onremoveproject,
@@ -41,6 +42,7 @@
     onclose: () => void;
     oneditdelivery: (delivery: ContractScopeDeliveryDraft) => void;
     onadddelivery: () => void;
+    onimportdelivery?: () => void;
     onduplicatedelivery: (delivery: ContractScopeDeliveryDraft) => void;
     onremovedelivery: (deliveryLocalId: string) => void;
     onremoveproject?: () => void;
@@ -78,7 +80,9 @@
       </span>
       <div class="drawer-copy">
         <span class="drawer-eyebrow">
-          {project.isInstitutional ? "Projeto automático" : "Projeto do contrato"}
+          {project.isInstitutional
+            ? "Projeto automático"
+            : "Projeto do contrato"}
         </span>
         <h3>{project.name.trim() || "Projeto sem nome"}</h3>
       </div>
@@ -204,8 +208,7 @@
               rows="3"
               maxlength="2000"
               placeholder="Briefing do projeto"
-              aria-label="Briefing do projeto"
-            ></textarea>
+              aria-label="Briefing do projeto"></textarea>
           </div>
         {/if}
       </div>
@@ -229,6 +232,12 @@
         </button>
       </div>
 
+      {#if onimportdelivery}<button
+          type="button"
+          class="add-delivery-btn"
+          disabled={project.deliveries.length >= 100}
+          onclick={onimportdelivery}>Selecionar entrega existente</button
+        >{/if}
       {#if project.deliveries.length === 0}
         <div class="empty-deliveries">
           <p>Nenhuma entrega neste projeto.</p>

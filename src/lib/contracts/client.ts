@@ -261,15 +261,18 @@ function parseServicePackageSelection(
     if (!parsed || typeof parsed !== "object") return undefined;
     const source = parsed as Record<string, unknown>;
     if (
-      typeof source.packageId !== "string" ||
-      !source.packageId.trim() ||
+      (!(typeof source.packageId === "string" && source.packageId.trim()) &&
+        !Array.isArray(source.customProjects)) ||
       typeof source.responsibleUserId !== "string" ||
       !source.responsibleUserId.trim()
     ) {
       return undefined;
     }
     return {
-      packageId: source.packageId.trim(),
+      packageId:
+        typeof source.packageId === "string"
+          ? source.packageId.trim() || undefined
+          : undefined,
       responsibleUserId: source.responsibleUserId.trim(),
       includedProjectIds: Array.isArray(source.includedProjectIds)
         ? source.includedProjectIds.filter(
@@ -303,7 +306,9 @@ export function entityValuesToContractInput(
 ): ContractMutationInput {
   const servicePackage = parseServicePackageSelection(values.servicePackage);
   return {
-    workspaceId: (values.workspaceId ?? values.contractWorkspaceId ?? "").trim() || undefined,
+    workspaceId:
+      (values.workspaceId ?? values.contractWorkspaceId ?? "").trim() ||
+      undefined,
     name: (values.nome ?? values.name ?? "").trim(),
     businessId: (values.negocioId ?? values.businessId ?? "").trim(),
     contractType:

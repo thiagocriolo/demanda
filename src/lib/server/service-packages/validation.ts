@@ -40,7 +40,10 @@ const deliveryInputSchema = z
       .enum(["one_off", "daily", "weekly", "monthly", "custom"])
       .default("one_off"),
     recurrenceUnit: z.enum(["week", "month"]).nullable().default(null),
-    recurrenceDays: z.array(z.number().int().min(0).max(31)).max(31).default([]),
+    recurrenceDays: z
+      .array(z.number().int().min(0).max(31))
+      .max(31)
+      .default([]),
     tasks: z.array(taskInputSchema).max(30).default([]),
   })
   .strict();
@@ -59,6 +62,7 @@ const projectInputSchema = z
 
 export const servicePackageMutationSchema = z
   .object({
+    contractType: z.enum(["one_off", "recurring"]).default("one_off"),
     name: z.string().trim().min(1).max(140),
     description: z.string().trim().max(2_000).default(""),
     icon: z.string().trim().min(1).max(80).default("package"),
@@ -148,7 +152,7 @@ const customContractProjectInputSchema = projectInputSchema
 
 export const contractServicePackageSelectionSchema = z
   .object({
-    packageId: z.string().uuid(),
+    packageId: z.string().uuid().optional(),
     responsibleUserId: z.string().uuid(),
     includedProjectIds: z
       .array(z.string().uuid())
@@ -164,6 +168,13 @@ export const contractServicePackageSelectionSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (!value.packageId && !value.customProjects?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Selecione um serviço ou informe o escopo do contrato.",
+        path: ["customProjects"],
+      });
+    }
     if (!value.customProjects) return;
     const institutionalCount = value.customProjects.filter(
       (project) => project.isInstitutional,

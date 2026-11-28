@@ -1,11 +1,7 @@
 export type ServiceProjectNature = "one_off" | "recurring";
 
 export type ServiceDeliveryRecurrenceType =
-  | "one_off"
-  | "daily"
-  | "weekly"
-  | "monthly"
-  | "custom";
+  "one_off" | "daily" | "weekly" | "monthly" | "custom";
 
 export type ServiceDeliveryRecurrenceUnit = "week" | "month";
 
@@ -68,6 +64,7 @@ export type ServicePackage = {
   icon: string;
   color: string;
   amountCents: number;
+  contractType: "one_off" | "recurring";
   durationMonths: number | null;
   installmentCount: number;
   paymentMethod: string;
@@ -113,6 +110,7 @@ export type ServicePackageMutationInput = {
   icon: string;
   color: string;
   amountCents: number;
+  contractType: "one_off" | "recurring";
   durationMonths: number | null;
   installmentCount: number;
   paymentMethod: string;
@@ -134,7 +132,7 @@ export type CustomContractProjectInput = ServicePackageProjectInput & {
 };
 
 export type ContractServicePackageSelection = {
-  packageId: string;
+  packageId?: string;
   responsibleUserId: string;
   /** IDs dos projetos do serviço incluídos nesta contratação. Se omitido, inclui todos. */
   includedProjectIds?: string[];

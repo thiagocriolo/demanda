@@ -197,6 +197,13 @@
       "when": 1794400000021,
       "tag": "0027_institutional_projects_always_one_off",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "5",
+      "when": 1794400000022,
+      "tag": "0028_service_contract_recurrence",
+      "breakpoints": true
     }
   ]
 }
